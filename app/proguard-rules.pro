@@ -1,0 +1,2 @@
+-keep class com.novcloud.echo.playback.PlaybackService { *; }
+-dontwarn org.slf4j.**

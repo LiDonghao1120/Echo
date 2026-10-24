@@ -1,0 +1,207 @@
+package com.novcloud.echo.playback
+
+import android.content.ComponentName
+import android.content.Context
+import androidx.compose.runtime.Immutable
+import androidx.core.content.ContextCompat
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.novcloud.echo.data.Library
+import com.novcloud.echo.data.Song
+import com.novcloud.echo.data.UNKNOWN
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+@Immutable
+data class QueueEntry(val index: Int, val song: Song)
+
+@Immutable
+data class PlayerState(
+    val song: Song? = null,
+    val isPlaying: Boolean = false,
+    val buffering: Boolean = false,
+    val durationMs: Long = 0,
+    val shuffle: Boolean = false,
+    val repeat: Int = Player.REPEAT_MODE_OFF,
+    val queue: List<QueueEntry> = emptyList(),
+    val currentIndex: Int = -1,
+)
+
+class PlayerConnection(
+    private val context: Context,
+    private val library: StateFlow<Library>,
+    private val scope: CoroutineScope,
+) {
+    private var controller: MediaController? = null
+    private var connecting = false
+    private val pending = ArrayList<(MediaController) -> Unit>()
+    private val _state = MutableStateFlow(PlayerState())
+    val state: StateFlow<PlayerState> = _state.asStateFlow()
+    private val _position = MutableStateFlow(0L)
+    val position: StateFlow<Long> = _position.asStateFlow()
+    private var ticker: Job? = null
+
+    fun connect() {
+        if (controller != null || connecting) return
+        connecting = true
+        val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
+        val future = MediaController.Builder(context, token).buildAsync()
+        future.addListener({
+            connecting = false
+            val c = runCatching { future.get() }.getOrNull() ?: return@addListener
+            controller = c
+            c.addListener(object : Player.Listener {
+                override fun onEvents(player: Player, events: Player.Events) = sync()
+            })
+            sync()
+            pending.forEach { it(c) }
+            pending.clear()
+            startTicker()
+        }, ContextCompat.getMainExecutor(context))
+    }
+
+    fun release() {
+        ticker?.cancel()
+        controller?.release()
+        controller = null
+    }
+
+    private fun withController(block: (MediaController) -> Unit) {
+        val c = controller
+        if (c != null) block(c) else { pending += block; connect() }
+    }
+
+    private fun startTicker() {
+        ticker?.cancel()
+        ticker = scope.launch {
+            while (isActive) {
+                controller?.let { _position.value = it.currentPosition }
+                delay(if (_state.value.isPlaying) 200 else 600)
+            }
+        }
+    }
+
+    fun refresh() = sync()
+
+    private fun sync() {
+        val c = controller ?: return
+        val lib = library.value
+        val timeline = c.currentTimeline
+        val queue = ArrayList<QueueEntry>()
+        if (!timeline.isEmpty) {
+            var i = timeline.getFirstWindowIndex(c.shuffleModeEnabled)
+            var guard = 0
+            while (i != C.INDEX_UNSET && guard++ < 10_000) {
+                val item = c.getMediaItemAt(i)
+                songFor(item, lib)?.let { queue += QueueEntry(i, it) }
+                i = timeline.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, c.shuffleModeEnabled)
+            }
+        }
+        _state.value = PlayerState(
+            song = c.currentMediaItem?.let { songFor(it, lib) },
+            isPlaying = c.isPlaying,
+            buffering = c.playbackState == Player.STATE_BUFFERING,
+            durationMs = c.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: (c.currentMediaItem?.let { songFor(it, lib)?.durationMs } ?: 0),
+            shuffle = c.shuffleModeEnabled,
+            repeat = c.repeatMode,
+            queue = queue,
+            currentIndex = c.currentMediaItemIndex,
+        )
+        _position.value = c.currentPosition
+    }
+
+    private fun songFor(item: MediaItem, lib: Library): Song? {
+        val id = item.songId() ?: return null
+        lib.songById[id]?.let { return it }
+        val m = item.mediaMetadata
+        return Song(
+            id = id, title = m.title?.toString() ?: "", artist = m.artist?.toString() ?: UNKNOWN,
+            album = m.albumTitle?.toString() ?: UNKNOWN, albumId = m.extras?.getLong(EXTRA_ALBUM_ID, -1) ?: -1,
+            albumArtist = "", genre = m.genre?.toString() ?: "", durationMs = m.durationMs ?: 0, track = 0, disc = 1,
+            year = 0, dateAdded = 0, path = "", folder = "", mimeType = "", size = 0,
+        )
+    }
+
+    fun play(songs: List<Song>, start: Int = 0, shuffle: Boolean = false) {
+        if (songs.isEmpty()) return
+        withController { c ->
+            val startIndex = if (shuffle) songs.indices.random() else start.coerceIn(songs.indices)
+            c.shuffleModeEnabled = shuffle
+            c.setMediaItems(songs.map { it.toMediaItem() }, startIndex, 0)
+            c.prepare()
+            c.play()
+        }
+    }
+
+    fun playSong(song: Song, context: List<Song>) {
+        val idx = context.indexOfFirst { it.id == song.id }
+        if (idx < 0) play(listOf(song)) else {
+            withController { c ->
+                c.setMediaItems(context.map { it.toMediaItem() }, idx, 0)
+                c.prepare()
+                c.play()
+            }
+        }
+    }
+
+    fun toggle() = withController { c ->
+        if (c.isPlaying) c.pause() else {
+            if (c.playbackState == Player.STATE_IDLE) c.prepare()
+            if (c.playbackState == Player.STATE_ENDED) c.seekTo(c.currentMediaItemIndex, 0)
+            c.play()
+        }
+    }
+
+    fun next() = withController { it.seekToNextMediaItem() }
+    fun previous() = withController { c ->
+        if (c.currentPosition > 3000 || !c.hasPreviousMediaItem()) c.seekTo(0) else c.seekToPreviousMediaItem()
+    }
+    fun seekTo(ms: Long) = withController { it.seekTo(ms); _position.value = ms }
+    fun toggleShuffle() = withController { it.shuffleModeEnabled = !it.shuffleModeEnabled }
+    fun cycleRepeat() = withController {
+        it.repeatMode = when (it.repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+            else -> Player.REPEAT_MODE_OFF
+        }
+    }
+
+    fun playAt(index: Int) = withController { c ->
+        c.seekTo(index, 0)
+        if (c.playbackState == Player.STATE_IDLE) c.prepare()
+        c.play()
+    }
+
+    fun removeAt(index: Int) = withController { it.removeMediaItem(index) }
+
+    fun playNext(songs: List<Song>) = withController { c ->
+        if (c.mediaItemCount == 0) { play(songs); return@withController }
+        val at = c.timelineNextIndex()
+        c.addMediaItems(at, songs.map { it.toMediaItem() })
+    }
+
+    fun enqueue(songs: List<Song>) = withController { c ->
+        if (c.mediaItemCount == 0) { play(songs); return@withController }
+        c.addMediaItems(songs.map { it.toMediaItem() })
+    }
+
+    fun moveInQueue(from: Int, to: Int) = withController { it.moveMediaItem(from, to) }
+
+    fun clearQueue() = withController { c ->
+        val cur = c.currentMediaItemIndex
+        if (cur + 1 < c.mediaItemCount) c.removeMediaItems(cur + 1, c.mediaItemCount)
+        if (cur > 0) c.removeMediaItems(0, cur)
+    }
+
+    private fun MediaController.timelineNextIndex(): Int =
+        (currentMediaItemIndex + 1).coerceAtMost(mediaItemCount)
+}
