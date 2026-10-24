@@ -109,8 +109,14 @@ private fun PermissionGate(onResult: () -> Unit) {
         add(MainActivity.audioPermission)
         if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
     }.toTypedArray()
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { onResult() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var asked by remember { mutableStateOf(0) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { asked++; onResult() }
     LaunchedEffect(Unit) { launcher.launch(perms) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        onResult()
+        onPauseOrDispose { }
+    }
     Column(
         Modifier.fillMaxSize().padding(40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -120,7 +126,11 @@ private fun PermissionGate(onResult: () -> Unit) {
         Spacer(Modifier.height(20.dp))
         Text(androidx.compose.ui.res.stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(28.dp))
-        Button(onClick = { launcher.launch(perms) }) { Text("允许访问音乐") }
+        Button(onClick = {
+            if (asked >= 2) context.startActivity(
+                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)),
+            ) else launcher.launch(perms)
+        }) { Text("允许访问音乐") }
     }
 }
 

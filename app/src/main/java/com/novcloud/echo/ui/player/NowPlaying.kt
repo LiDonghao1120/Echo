@@ -108,7 +108,9 @@ fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onColla
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    BackHandler { if (pane != PlayerPane.Art) pane = PlayerPane.Art else onCollapse() }
+    BackHandler(enabled = avs.transition.targetState == androidx.compose.animation.EnterExitState.Visible) {
+        if (pane != PlayerPane.Art) pane = PlayerPane.Art else onCollapse()
+    }
 
     val dismissDrag = Modifier.pointerInput(Unit) {
         detectVerticalDragGestures(

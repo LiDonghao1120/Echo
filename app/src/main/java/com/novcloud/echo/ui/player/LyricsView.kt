@@ -52,6 +52,7 @@ import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.lyrics.Lyrics
 import com.novcloud.echo.ui.components.LocalActions
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
@@ -59,6 +60,16 @@ fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
     val container = (context.applicationContext as EchoApp).container
     val tree by container.prefs.lyricsTree.collectAsState(initial = null)
     val keepOn by container.prefs.keepScreenOnLyrics.collectAsState(initial = true)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            scope.launch {
+                container.lyrics.invalidate()
+                container.prefs.setLyricsTree(uri.toString())
+            }
+        }
+    }
     var lyrics by remember(song.id) { mutableStateOf<Lyrics?>(null) }
     var loaded by remember(song.id) { mutableStateOf(false) }
     LaunchedEffect(song.id, tree) {
@@ -79,6 +90,9 @@ fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
             l == null -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Rounded.Lyrics, null, tint = Color.White.copy(alpha = 0.35f))
                 Text("暂无歌词", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.45f), modifier = Modifier.padding(top = 10.dp))
+                if (tree == null) androidx.compose.material3.TextButton(onClick = { picker.launch(null) }, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("选择歌词文件夹", color = Color.White.copy(alpha = 0.85f))
+                }
             }
             else -> LyricsList(l, accent)
         }

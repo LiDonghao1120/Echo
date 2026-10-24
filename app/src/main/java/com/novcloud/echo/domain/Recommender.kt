@@ -72,22 +72,25 @@ object Recommender {
         val zone = ZoneId.systemDefault()
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         if (lib.songs.isEmpty()) return HomeData(day = today)
-        val aff = Affinity(events, now)
+        val dayStart = today.atStartOfDay(zone).toInstant().toEpochMilli()
+        val past = events.filter { it.startedAt < dayStart }
+        val aff = Affinity(past, dayStart)
+        val live = Affinity(events, now)
         val seed = today.toEpochDay()
         val hasHistory = events.isNotEmpty()
 
-        val daily = Mix("daily", "每日推荐", "", MixKind.Daily, daily(lib, aff, now, Random(seed)))
+        val daily = Mix("daily", "每日推荐", "", MixKind.Daily, daily(lib, aff, dayStart, Random(seed)))
 
         val mixes = ArrayList<Mix>()
-        val genres = if (hasHistory) aff.genre.entries.sortedByDescending { it.value }.map { it.key }
+        val genres = if (aff.genre.isNotEmpty()) aff.genre.entries.sortedByDescending { it.value }.map { it.key }
         else lib.genres.map { it.name }
         genres.take(3).forEachIndexed { i, g ->
             val pool = lib.genres.firstOrNull { it.name == g }?.songs.orEmpty()
             val r = Random(seed * 31 + i)
-            val picked = diverse(pool.sortedByDescending { scoreOf(it, aff, now, r, 0.6) }, 25, 3)
+            val picked = diverse(pool.sortedByDescending { scoreOf(it, aff, dayStart, r, 0.6) }, 25, 3)
             if (picked.size >= 5) mixes += Mix("genre:$g", g, "精选", MixKind.Genre, picked)
         }
-        val topArtists = if (hasHistory) aff.artist.entries.sortedByDescending { it.value }.map { it.key }
+        val topArtists = if (aff.artist.isNotEmpty()) aff.artist.entries.sortedByDescending { it.value }.map { it.key }
         else lib.artists.filter { it.name != UNKNOWN }.sortedByDescending { it.songs.size }.map { it.name }
         topArtists.take(3).forEachIndexed { i, name ->
             val artist = lib.artistByName[name] ?: return@forEachIndexed
@@ -102,8 +105,8 @@ object Recommender {
             val songs = interleave(own, similar)
             if (songs.size >= 5) mixes += Mix("artist:$name", name, "电台", MixKind.Artist, songs)
         }
-        if (hasHistory) {
-            val monthAgo = now - 30L * 86_400_000
+        if (past.isNotEmpty()) {
+            val monthAgo = dayStart - 30L * 86_400_000
             val rediscover = aff.plays.entries.filter { (id, c) -> c >= 3 && (aff.lastPlayed[id] ?: 0) < monthAgo }
                 .sortedByDescending { it.value }.mapNotNull { lib.songById[it.key] }
             if (rediscover.size >= 5) mixes += Mix("rediscover", "重温", "好久没听", MixKind.Rediscover, diverse(rediscover, 25, 3))
@@ -119,7 +122,7 @@ object Recommender {
             val moment = momentCounts.entries.sortedByDescending { it.value + r.nextDouble() }.mapNotNull { lib.songById[it.key] }
             if (moment.size >= 6) mixes += Mix("moment", momentTitle(hour), "此刻常听", MixKind.Moment, diverse(moment, 25, 3))
         }
-        val fresh = lib.songs.filter { it.id !in aff.plays }.sortedByDescending { it.dateAdded }
+        val fresh = lib.songs.filter { it.id !in live.plays }.sortedByDescending { it.dateAdded }
             .take(120).shuffled(Random(seed * 13)).let { diverse(it, 25, 2) }
         if (fresh.size >= 5) mixes += Mix("fresh", "新发现", "还没听过", MixKind.Fresh, fresh)
 
@@ -129,11 +132,12 @@ object Recommender {
             if (recentIds.size >= 20) break
         }
         val recent = recentIds.mapNotNull { lib.songById[it] }
-        val most = aff.plays.entries.sortedByDescending { it.value }.take(10).mapNotNull { (id, c) -> lib.songById[id]?.let { it to c } }
+        val most = live.plays.entries.sortedByDescending { it.value }.take(10).mapNotNull { (id, c) -> lib.songById[id]?.let { it to c } }
         val added = lib.albums.sortedByDescending { it.dateAdded }.take(12)
-        val artists = topArtists.mapNotNull { lib.artistByName[it] }.filter { it.name != UNKNOWN }.take(12)
+        val artistOrder = if (live.artist.isNotEmpty()) live.artist.entries.sortedByDescending { it.value }.map { it.key } else topArtists
+        val artists = artistOrder.mapNotNull { lib.artistByName[it] }.filter { it.name != UNKNOWN }.take(12)
 
-        return HomeData(today, daily, mixes, recent, most, added, artists, hasHistory, aff.plays)
+        return HomeData(today, daily, mixes, recent, most, added, artists, hasHistory, live.plays)
     }
 
     private fun daily(lib: Library, aff: Affinity, now: Long, r: Random): List<Song> {
@@ -164,8 +168,9 @@ object Recommender {
             byArtist.merge(a, 1, Int::plus)
             byAlbum.merge(s.albumId, 1, Int::plus)
         }
-        if (out.size < min(limit, songs.size) / 2) {
-            for (s in songs) { if (out.size >= limit) break; if (s !in out) out += s }
+        if (out.size < limit) {
+            val taken = out.mapTo(HashSet()) { it.id }
+            for (s in songs) { if (out.size >= limit) break; if (taken.add(s.id)) out += s }
         }
         return out
     }

@@ -1,7 +1,6 @@
 package com.novcloud.echo.ui
 
 import android.net.Uri
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
@@ -107,7 +106,7 @@ fun AppRoot(openPlayer: StateFlow<Long>) {
     LaunchedEffect(openTick) { if (openTick > 0 && container.player.state.value.song != null) expanded = true }
 
     val actions = remember(nav) {
-        AppActions(nav, container.player, container.library, { s, c -> menuFor = s to c }, { expanded = true })
+        AppActions(nav, container.player, container.library, { s, c -> menuFor = s to c }, { expanded = true }, { expanded = false })
     }
     val hasSong = playerState.song != null
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -161,7 +160,6 @@ fun AppRoot(openPlayer: StateFlow<Long>) {
             }
         }
         menuFor?.let { (s, c) -> SongMenuSheet(s, c) { menuFor = null } }
-        if (expanded) BackHandler { expanded = false }
     }
 }
 

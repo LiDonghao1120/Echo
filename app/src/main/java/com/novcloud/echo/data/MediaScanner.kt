@@ -22,8 +22,8 @@ class MediaScanner(private val context: Context) {
             add(MediaStore.Audio.Media.DATA)
             add(MediaStore.Audio.Media.MIME_TYPE)
             add(MediaStore.Audio.Media.SIZE)
-            add("album_artist")
             if (Build.VERSION.SDK_INT >= 30) {
+                add(MediaStore.Audio.Media.ALBUM_ARTIST)
                 add(MediaStore.Audio.Media.GENRE)
                 add(MediaStore.Audio.Media.DISC_NUMBER)
             }
@@ -43,7 +43,7 @@ class MediaScanner(private val context: Context) {
             val iData = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             val iMime = c.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
             val iSize = c.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
-            val iAlbumArtist = c.getColumnIndex("album_artist")
+            val iAlbumArtist = if (Build.VERSION.SDK_INT >= 30) c.getColumnIndex(MediaStore.Audio.Media.ALBUM_ARTIST) else -1
             val iGenre = if (Build.VERSION.SDK_INT >= 30) c.getColumnIndex(MediaStore.Audio.Media.GENRE) else -1
             val iDisc = if (Build.VERSION.SDK_INT >= 30) c.getColumnIndex(MediaStore.Audio.Media.DISC_NUMBER) else -1
             while (c.moveToNext()) {

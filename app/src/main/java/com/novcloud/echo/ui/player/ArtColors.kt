@@ -39,7 +39,12 @@ fun rememberArtColors(model: Any?): ArtColors {
         val req = ImageRequest.Builder(context).data(model).size(160).allowHardware(false).build()
         val result = context.imageLoader.execute(req)
         val bmp = ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap ?: return@LaunchedEffect
-        val c = withContext(Dispatchers.Default) { extract(bmp) }
+        val c = withContext(Dispatchers.Default) {
+            runCatching {
+                val soft = if (bmp.config == Bitmap.Config.HARDWARE) bmp.copy(Bitmap.Config.ARGB_8888, false) else bmp
+                extract(soft)
+            }.getOrNull()
+        } ?: return@LaunchedEffect
         synchronized(cache) { cache[model] = c }
         colors = c
     }

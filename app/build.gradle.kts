@@ -82,7 +82,6 @@ kotlin {
             "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi",
             "-opt-in=androidx.compose.animation.ExperimentalSharedTransitionApi",
             "-opt-in=androidx.compose.animation.ExperimentalAnimationApi",
-            "-opt-in=androidx.media3.common.util.UnstableApi",
         )
     }
 }
@@ -122,4 +121,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.androidx.palette)
     implementation(libs.androidx.documentfile)
+
+    testImplementation(libs.junit)
 }

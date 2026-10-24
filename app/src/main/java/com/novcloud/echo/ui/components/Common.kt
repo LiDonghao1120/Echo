@@ -79,15 +79,20 @@ class AppActions(
     val repo: LibraryRepository,
     val openSongMenu: (Song, SongMenuContext) -> Unit,
     val expandPlayer: () -> Unit,
+    val collapsePlayer: () -> Unit,
 ) {
-    fun openAlbum(id: Long) = nav.navigate("album/$id")
-    fun openArtist(name: String) = nav.navigate("artist/${Uri.encode(name)}")
-    fun openMix(id: String) = nav.navigate("mix/${Uri.encode(id)}")
-    fun openPlaylist(id: Long) = nav.navigate("playlist/$id")
-    fun openGenre(name: String) = nav.navigate("genre/${Uri.encode(name)}")
-    fun openFolder(path: String) = nav.navigate("folder/${Uri.encode(path)}")
-    fun openList(kind: String) = nav.navigate("list/$kind")
-    fun openSettings() = nav.navigate("settings")
+    private fun go(route: String) {
+        collapsePlayer()
+        nav.navigate(route) { launchSingleTop = true }
+    }
+    fun openAlbum(id: Long) = go("album/$id")
+    fun openArtist(name: String) = go("artist/${Uri.encode(name)}")
+    fun openMix(id: String) = go("mix/${Uri.encode(id)}")
+    fun openPlaylist(id: Long) = go("playlist/$id")
+    fun openGenre(name: String) = go("genre/${Uri.encode(name)}")
+    fun openFolder(path: String) = go("folder/${Uri.encode(path)}")
+    fun openList(kind: String) = go("list/${Uri.encode(kind)}")
+    fun openSettings() = go("settings")
     fun back() = nav.popBackStack()
 }
 

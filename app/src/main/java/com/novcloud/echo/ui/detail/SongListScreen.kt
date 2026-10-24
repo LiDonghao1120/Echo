@@ -86,8 +86,10 @@ fun SongListScreen(source: ListSource) {
     val state by actions.player.state.collectAsState()
 
     val playlistId = (source as? ListSource.PlaylistSrc)?.id
-    val playlist by (playlistId?.let { container.library.playlist(it) } ?: kotlinx.coroutines.flow.flowOf(null)).collectAsState(initial = null)
-    val playlistIds by (playlistId?.let { container.library.playlistSongs(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
+    val playlistFlow = remember(playlistId) { playlistId?.let { container.library.playlist(it) } ?: kotlinx.coroutines.flow.flowOf(null) }
+    val idsFlow = remember(playlistId) { playlistId?.let { container.library.playlistSongs(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList()) }
+    val playlist by playlistFlow.collectAsState(initial = null)
+    val playlistIds by idsFlow.collectAsState(initial = emptyList())
 
     val (title, eyebrow, songs) = remember(source, lib, home, favorites, events, playlist, playlistIds) {
         when (source) {
