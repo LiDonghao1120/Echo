@@ -87,7 +87,8 @@ jobs:
           echo "Release certificate OK"
 
       - name: APK size
-        run: echo "APK size: $(stat -c %s "${{ steps.apk.outputs.file }}") bytes"
+        run: |
+          echo "APK size: $(stat -c %s "${{ steps.apk.outputs.file }}") bytes"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
