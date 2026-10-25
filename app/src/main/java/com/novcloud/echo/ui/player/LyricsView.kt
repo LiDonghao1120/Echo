@@ -50,6 +50,16 @@ import androidx.compose.ui.unit.dp
 import com.novcloud.echo.EchoApp
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.lyrics.Lyrics
+import com.novcloud.echo.data.lyrics.LyricsLoader
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyListItemInfo
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.key
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import com.novcloud.echo.ui.components.LocalActions
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -58,7 +68,7 @@ import kotlinx.coroutines.launch
 fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val container = (context.applicationContext as EchoApp).container
-    val tree by container.prefs.lyricsTree.collectAsState(initial = null)
+    val tree by container.lyricsTree.collectAsState()
     val keepOn by container.prefs.keepScreenOnLyrics.collectAsState(initial = true)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -70,11 +80,9 @@ fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
             }
         }
     }
-    var lyrics by remember(song.id) { mutableStateOf<Lyrics?>(null) }
-    var loaded by remember(song.id) { mutableStateOf(false) }
+    var loaded by remember(song.id, tree) { mutableStateOf(container.lyrics.peek(song, tree)) }
     LaunchedEffect(song.id, tree) {
-        lyrics = container.lyrics.load(song, tree)
-        loaded = true
+        if (loaded == null) loaded = LyricsLoader.Loaded(container.lyrics.load(song, tree))
     }
     if (keepOn) {
         DisposableEffect(Unit) {
@@ -84,9 +92,14 @@ fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
         }
     }
     Box(modifier.fillMaxSize()) {
-        val l = lyrics
+        val state = loaded
+        val l = state?.lyrics
         when {
-            !loaded -> Unit
+            state == null -> {
+                var slow by remember(song.id) { mutableStateOf(false) }
+                LaunchedEffect(song.id) { delay(500); slow = true }
+                if (slow) Text("读取歌词…", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.4f), modifier = Modifier.align(Alignment.Center))
+            }
             l == null -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Rounded.Lyrics, null, tint = Color.White.copy(alpha = 0.35f))
                 Text("暂无歌词", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.45f), modifier = Modifier.padding(top = 10.dp))
@@ -94,19 +107,37 @@ fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
                     Text("选择歌词文件夹", color = Color.White.copy(alpha = 0.85f))
                 }
             }
-            else -> LyricsList(l, accent)
+            else -> key(song.id, l) { LyricsList(l) }
         }
     }
 }
 
+private suspend fun LazyListState.centerOn(index: Int, animate: Boolean) {
+    fun find() = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+    var item = find() ?: withTimeoutOrNull(400) { snapshotFlow { find() }.filterNotNull().first() }
+    if (item == null) {
+        scrollToItem(index)
+        item = withTimeoutOrNull(400) { snapshotFlow { find() }.filterNotNull().first() } ?: return
+        scrollBy(centerDelta(item))
+        return
+    }
+    val d = centerDelta(item)
+    if (animate) animateScrollBy(d, spring(dampingRatio = 1f, stiffness = 120f)) else scrollBy(d)
+}
+
+private fun LazyListState.centerDelta(item: LazyListItemInfo): Float {
+    val info = layoutInfo
+    val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+    return item.offset + item.size / 2f - center
+}
+
 @Composable
-private fun LyricsList(lyrics: Lyrics, accent: Color) {
+private fun LyricsList(lyrics: Lyrics) {
     val actions = LocalActions.current
     val position by actions.player.position.collectAsState()
     val active by remember(lyrics) { derivedStateOf { lyrics.indexAt(position + 250) } }
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = if (lyrics.synced) active.coerceAtLeast(0) else 0)
     var lastUserScroll by remember { mutableLongStateOf(0L) }
-    val density = LocalDensity.current
     val userScroll = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -116,23 +147,28 @@ private fun LyricsList(lyrics: Lyrics, accent: Color) {
         }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val anchor = with(density) { (maxHeight * 0.3f).roundToPx() }
-        LaunchedEffect(active) {
-            if (active < 0) return@LaunchedEffect
-            if (System.currentTimeMillis() - lastUserScroll < 3500) return@LaunchedEffect
-            listState.animateScrollToItem(active, -anchor)
-        }
-        LaunchedEffect(Unit) {
-            while (true) {
-                delay(1000)
-                if (active >= 0 && lastUserScroll != 0L && System.currentTimeMillis() - lastUserScroll in 3500..4600 && !listState.isScrollInProgress) {
-                    listState.animateScrollToItem(active, -anchor)
+        if (lyrics.synced) {
+            var first by remember { mutableStateOf(true) }
+            LaunchedEffect(active) {
+                if (System.currentTimeMillis() - lastUserScroll < 3500) return@LaunchedEffect
+                listState.centerOn(active.coerceAtLeast(0), animate = !first)
+                first = false
+            }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(500)
+                    val idle = System.currentTimeMillis() - lastUserScroll
+                    if (lastUserScroll != 0L && idle >= 3500 && !listState.isScrollInProgress) {
+                        lastUserScroll = 0L
+                        listState.centerOn(active.coerceAtLeast(0), animate = true)
+                    }
                 }
             }
         }
+        val pad = if (lyrics.synced) maxHeight / 2 else 24.dp
         LazyColumn(
             state = listState,
-            contentPadding = PaddingValues(top = maxHeight * 0.3f, bottom = maxHeight * 0.6f),
+            contentPadding = PaddingValues(top = pad, bottom = pad),
             modifier = Modifier
                 .fillMaxSize()
                 .nestedScroll(userScroll)
@@ -148,11 +184,14 @@ private fun LyricsList(lyrics: Lyrics, accent: Color) {
             itemsIndexed(lyrics.lines) { i, line ->
                 val isActive = i == active || !lyrics.synced
                 val alpha by animateFloatAsState(if (isActive) 1f else if (lyrics.synced) 0.32f else 0.8f, label = "a")
-                val scale by animateFloatAsState(if (i == active) 1f else 0.94f, spring(dampingRatio = 0.75f, stiffness = 300f), label = "s")
+                val scale by animateFloatAsState(if (i == active || !lyrics.synced) 1f else 0.94f, spring(dampingRatio = 0.75f, stiffness = 300f), label = "s")
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = lyrics.synced) { actions.player.seekTo(line.timeMs) }
+                        .clickable(enabled = lyrics.synced) {
+                            lastUserScroll = 0L
+                            actions.player.seekTo(line.timeMs)
+                        }
                         .padding(horizontal = 28.dp, vertical = 10.dp)
                         .graphicsLayer {
                             this.alpha = alpha
@@ -167,7 +206,13 @@ private fun LyricsList(lyrics: Lyrics, accent: Color) {
                         color = Color.White,
                     )
                     line.translation?.let {
-                        Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.75f), modifier = Modifier.padding(top = 4.dp))
+                        Text(
+                            it,
+                            style = if (lyrics.synced) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(alpha = 0.62f),
+                            modifier = Modifier.padding(top = 3.dp),
+                        )
                     }
                 }
             }

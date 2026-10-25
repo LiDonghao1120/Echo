@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -42,6 +43,10 @@ class LibraryRepository(
 ) {
     private val scanner = MediaScanner(context)
     private val treeScanner = TreeScanner(context)
+    private val genres = GenreResolver(context)
+    private var genreJob: Job? = null
+    private val _genreProbing = MutableStateFlow(false)
+    val genreProbing: StateFlow<Boolean> = _genreProbing.asStateFlow()
     private var treeSongs: List<Song> = emptyList()
     private val _progress = MutableStateFlow<ScanProgress?>(null)
     val progress: StateFlow<ScanProgress?> = _progress.asStateFlow()
@@ -82,6 +87,7 @@ class LibraryRepository(
 
     suspend fun rescan(full: Boolean = true) = mutex.withLock {
         _scanning.value = true
+        genreJob?.cancel()
         try {
             val min = prefs.minDurationSec.first() * 1000L
             val rules = FolderRules(prefs.scanIncluded.first(), prefs.scanExcluded.first())
@@ -95,14 +101,41 @@ class LibraryRepository(
                     }.getOrDefault(treeSongs)
                 }
                 val extra = treeSongs.filter { it.durationMs >= min && rules.accepts(it.folder, true) && it.path.lowercase() !in store.knownPaths }
-                Dedupe.merge(store.songs, extra)
+                genres.apply(Dedupe.merge(store.songs, extra))
             }
             _library.value = withContext(Dispatchers.Default) { Library.build(songs) }
+            fillGenres(songs)
         } finally {
             _scanning.value = false
             _progress.value = null
         }
         registerObserver()
+    }
+
+    private fun fillGenres(songs: List<Song>) {
+        genreJob = scope.launch(Dispatchers.IO) {
+            val todo = genres.unresolved(songs)
+            if (todo.isEmpty()) return@launch
+            _genreProbing.value = true
+            try {
+                var found = 0
+                for ((i, s) in todo.withIndex()) {
+                    if (!isActive) break
+                    if (genres.probe(s).isNotEmpty()) found++
+                    if ((i + 1) % 200 == 0 || i == todo.lastIndex) {
+                        genres.save()
+                        if (found > 0) {
+                            found = 0
+                            val lib = Library.build(genres.apply(_library.value.songs))
+                            if (isActive) _library.value = lib
+                        }
+                    }
+                }
+            } finally {
+                genres.save()
+                _genreProbing.value = false
+            }
+        }
     }
 
     private fun hasPermission(tree: String) = context.contentResolver.persistedUriPermissions.any { it.uri.toString() == tree && it.isReadPermission }

@@ -248,6 +248,13 @@ private fun GenresTab() {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
+    val probing by container.library.genreProbing.collectAsState()
+    if (lib.genres.isEmpty()) {
+        Box(Modifier.fillMaxSize().padding(bottom = LocalBottomInset.current), contentAlignment = Alignment.Center) {
+            com.novcloud.echo.ui.components.EmptyState(null, if (probing || !lib.loaded) "正在读取流派…" else "歌曲里没有流派标签")
+        }
+        return
+    }
     LazyVerticalGrid(
         GridCells.Adaptive(160.dp), Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp),

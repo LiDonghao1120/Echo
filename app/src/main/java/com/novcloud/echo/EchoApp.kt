@@ -21,7 +21,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -37,6 +39,7 @@ class AppContainer(app: Application) {
     val library = LibraryRepository(app, db, prefs, appScope)
     val lyrics = LyricsLoader(app)
     val player = PlayerConnection(app, library.library, appScope)
+    val lyricsTree: StateFlow<String?> = prefs.lyricsTree.stateIn(appScope, SharingStarted.Eagerly, null)
 
     val allEvents = db.events().since(0).stateIn(appScope, SharingStarted.Eagerly, emptyList())
 
@@ -57,6 +60,13 @@ class AppContainer(app: Application) {
             }
         }
         appScope.launch { library.library.collect { player.refresh() } }
+        appScope.launch {
+            combine(player.state.map { it.song }.distinctUntilChanged { a, b -> a?.id == b?.id }, lyricsTree) { s, t -> s to t }
+                .collectLatest { (song, tree) ->
+                    lyrics.warmTree(tree)
+                    if (song != null) runCatching { lyrics.load(song, tree) }
+                }
+        }
     }
 }
 

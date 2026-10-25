@@ -50,6 +50,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import com.novcloud.echo.data.ArtistImages
 import com.novcloud.echo.data.splitArtists
@@ -71,6 +78,8 @@ import kotlinx.coroutines.flow.StateFlow
 
 data class SongMenuContext(val playlistId: Long? = null)
 
+enum class NavMotion { Push, Tab, Instant }
+
 class AppActions(
     val nav: NavController,
     val player: PlayerConnection,
@@ -79,11 +88,41 @@ class AppActions(
     val openSongMenu: (Song, SongMenuContext) -> Unit,
     val expandPlayer: () -> Unit,
     val collapsePlayer: () -> Unit,
+    private val isPlayerOpen: () -> Boolean = { false },
+    private val scope: CoroutineScope? = null,
 ) {
+    var motion by mutableStateOf(NavMotion.Push)
+
     private fun go(route: String) {
-        collapsePlayer()
-        nav.navigate(route) { launchSingleTop = true }
+        if (!isPlayerOpen()) {
+            motion = NavMotion.Push
+            nav.navigate(route) { launchSingleTop = true }
+            return
+        }
+        if (nav.currentBackStackEntry?.concreteRoute() != route) {
+            motion = NavMotion.Instant
+            nav.navigate(route) { launchSingleTop = true }
+        }
+        if (scope == null) collapsePlayer() else scope.launch {
+            delay(48)
+            collapsePlayer()
+        }
     }
+
+    fun switchTab(route: String) {
+        motion = NavMotion.Tab
+        nav.navigate(route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    fun popToTab(route: String) {
+        motion = NavMotion.Tab
+        nav.popBackStack(route, inclusive = false)
+    }
+
     fun openAlbum(id: Long) = go("album/$id")
     fun openArtist(name: String) {
         val known = repo.library.value.artistByName
@@ -101,7 +140,20 @@ class AppActions(
         val entry = nav.currentBackStackEntry ?: return
         if (nav.previousBackStackEntry == null) return
         if (!entry.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return
+        motion = NavMotion.Push
         nav.popBackStack()
+    }
+}
+
+private val routeArg = Regex("\\{(\\w+)\\}")
+
+fun NavBackStackEntry.concreteRoute(): String? = destination.route?.let { r ->
+    routeArg.replace(r) { m ->
+        when (val v = arguments?.get(m.groupValues[1])) {
+            is String -> Uri.encode(v)
+            null -> ""
+            else -> v.toString()
+        }
     }
 }
 

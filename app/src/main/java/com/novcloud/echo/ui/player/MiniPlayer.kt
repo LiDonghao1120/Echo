@@ -3,6 +3,9 @@ package com.novcloud.echo.ui.player
 import com.novcloud.echo.ui.theme.EchoMotion
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
@@ -119,17 +122,23 @@ fun SharedTransitionScope.MiniPlayer(avs: AnimatedVisibilityScope, onExpand: () 
             Spacer(Modifier.width(12.dp))
             AnimatedContent(
                 targetState = song,
+                contentKey = { it.id },
                 transitionSpec = {
-                    (slideInVertically(tween(EchoMotion.Medium)) { it / 2 } + fadeIn(tween(EchoMotion.Standard))) togetherWith (slideOutVertically(tween(EchoMotion.Standard)) { -it / 2 } + fadeOut(tween(EchoMotion.Quick)))
+                    (slideInVertically(tween(EchoMotion.Medium, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(EchoMotion.Standard))) togetherWith
+                        (slideOutVertically(tween(EchoMotion.Medium, easing = FastOutSlowInEasing)) { -it } + fadeOut(tween(EchoMotion.Quick))) using
+                        SizeTransform(clip = true)
                 },
-                modifier = Modifier.weight(1f).graphicsLayer { alpha = 1f - (abs(dragX.value) / 400f).coerceIn(0f, 0.7f) },
+                modifier = Modifier
+                    .weight(1f)
+                    .sharedBounds(rememberSharedContentState("title"), avs)
+                    .clipToBounds()
+                    .graphicsLayer { alpha = 1f - (abs(dragX.value) / 400f).coerceIn(0f, 0.7f) },
                 label = "mini_title",
             ) { s ->
-                Column {
+                Column(Modifier.fillMaxWidth()) {
                     Text(
                         s.title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Paper, maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.sharedBounds(rememberSharedContentState("title"), avs),
                     )
                     Text(
                         displayArtist(s.artist), style = MaterialTheme.typography.bodySmall,

@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.text.font.FontWeight
 import com.novcloud.echo.ui.theme.palette
+import com.novcloud.echo.ui.theme.EchoTheme
+import com.novcloud.echo.ui.theme.LocalMotion
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -58,9 +60,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NamedNavArgument
+import androidx.compose.runtime.rememberCoroutineScope
+import com.novcloud.echo.ui.components.NavMotion
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -93,7 +100,6 @@ private data class Tab(val route: String, val label: String)
 
 private val tabs = listOf(Tab("home", "首页"), Tab("library", "曲库"), Tab("search", "搜索"), Tab("stats", "统计"))
 private val tabRoutes = tabs.map { it.route }.toSet()
-private val immersiveRoutes = setOf("settings", "settings/folders")
 
 @Composable
 fun AppRoot(openPlayer: StateFlow<Long>, startRoute: String = "home", startExpanded: Boolean = false) {
@@ -106,42 +112,50 @@ fun AppRoot(openPlayer: StateFlow<Long>, startRoute: String = "home", startExpan
     LaunchedEffect(Unit) { if (startRoute != "home") nav.navigate(startRoute) }
     LaunchedEffect(openTick) { if (openTick > 0 && container.player.state.value.song != null) expanded = true }
 
+    val scope = rememberCoroutineScope()
     val actions = remember(nav) {
-        AppActions(nav, container.player, container.library, container.home, { s, c -> menuFor = s to c }, { expanded = true }, { expanded = false })
+        AppActions(
+            nav, container.player, container.library, container.home, { s, c -> menuFor = s to c }, { expanded = true }, { expanded = false },
+            isPlayerOpen = { expanded }, scope = scope,
+        )
     }
     val hasSong = playerState.song != null
     val entry by nav.currentBackStackEntryAsState()
-    val barVisible = entry?.destination?.route !in immersiveRoutes
+    val barVisible = entry?.destination?.route.let { it == null || it in tabRoutes }
+    LaunchedEffect(entry) {
+        kotlinx.coroutines.delay(EchoMotion.Emphasized.toLong())
+        actions.motion = com.novcloud.echo.ui.components.NavMotion.Push
+    }
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val bottomInset = navInset + (if (barVisible) 58.dp else 0.dp) + if (hasSong) 70.dp else 0.dp
 
     CompositionLocalProvider(LocalActions provides actions, LocalBottomInset provides bottomInset) {
-        SharedTransitionLayout(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+        SharedTransitionLayout(Modifier.fillMaxSize().background(Color.Black)) {
             val contentScale by animateFloatAsState(if (expanded) 0.94f else 1f, spring(dampingRatio = 0.9f, stiffness = 300f), label = "behind")
             Box(Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxSize().graphicsLayer { scaleX = contentScale; scaleY = contentScale }) {
                     NavHost(
                         nav, startDestination = "home",
-                        enterTransition = { enter() }, exitTransition = { exit() },
-                        popEnterTransition = { popEnter() }, popExitTransition = { popExit() },
+                        enterTransition = { enter(actions.motion) }, exitTransition = { exit(actions.motion) },
+                        popEnterTransition = { EnterTransition.None }, popExitTransition = { popExit(actions.motion) },
                     ) {
-                        composable("home") { HomeScreen() }
-                        composable("library") { LibraryScreen() }
-                        composable("search") { SearchScreen() }
-                        composable("stats") { StatsScreen() }
-                        composable("settings") { SettingsScreen() }
-                        composable("settings/folders") { ScanFoldersScreen() }
-                        composable("album/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
+                        screen("home") { HomeScreen() }
+                        screen("library") { LibraryScreen() }
+                        screen("search") { SearchScreen() }
+                        screen("stats") { StatsScreen() }
+                        screen("settings") { SettingsScreen() }
+                        screen("settings/folders") { ScanFoldersScreen() }
+                        screen("album/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
                             AlbumScreen(it.arguments?.getLong("id") ?: -1)
                         }
-                        composable("artist/{name}") { ArtistScreen(arg(it, "name")) }
-                        composable("mix/{id}") { SongListScreen(ListSource.MixSrc(arg(it, "id"))) }
-                        composable("playlist/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
+                        screen("artist/{name}") { ArtistScreen(arg(it, "name")) }
+                        screen("mix/{id}") { SongListScreen(ListSource.MixSrc(arg(it, "id"))) }
+                        screen("playlist/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
                             SongListScreen(ListSource.PlaylistSrc(it.arguments?.getLong("id") ?: -1))
                         }
-                        composable("genre/{name}") { SongListScreen(ListSource.GenreSrc(arg(it, "name"))) }
-                        composable("folder/{path}") { SongListScreen(ListSource.FolderSrc(arg(it, "path"))) }
-                        composable("list/{kind}") { SongListScreen(ListSource.Kind(arg(it, "kind"))) }
+                        screen("genre/{name}") { SongListScreen(ListSource.GenreSrc(arg(it, "name"))) }
+                        screen("folder/{path}") { SongListScreen(ListSource.FolderSrc(arg(it, "path"))) }
+                        screen("list/{kind}") { SongListScreen(ListSource.Kind(arg(it, "kind"))) }
                     }
                 }
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
@@ -156,7 +170,7 @@ fun AppRoot(openPlayer: StateFlow<Long>, startRoute: String = "home", startExpan
                         visible = barVisible,
                         enter = expandVertically(tween(EchoMotion.Medium, easing = FastOutSlowInEasing), expandFrom = Alignment.Top) + fadeIn(tween(EchoMotion.Standard, 80)),
                         exit = shrinkVertically(tween(EchoMotion.Medium, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) + fadeOut(tween(EchoMotion.Quick)),
-                    ) { BottomBar(nav) }
+                    ) { BottomBar(nav, actions) }
                     AnimatedVisibility(
                         visible = !barVisible,
                         enter = expandVertically(tween(EchoMotion.Medium, easing = FastOutSlowInEasing)),
@@ -172,39 +186,48 @@ fun AppRoot(openPlayer: StateFlow<Long>, startRoute: String = "home", startExpan
                 }
             }
         }
-        menuFor?.let { (s, c) -> SongMenuSheet(s, c) { menuFor = null } }
+        menuFor?.let { (s, c) ->
+            if (expanded) EchoTheme(dark = true, motion = LocalMotion.current) { SongMenuSheet(s, c) { menuFor = null } }
+            else SongMenuSheet(s, c) { menuFor = null }
+        }
     }
 }
 
 private fun arg(entry: NavBackStackEntry, key: String) = Uri.decode(entry.arguments?.getString(key).orEmpty())
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.isTabSwitch() =
-    initialState.destination.route in tabRoutes && targetState.destination.route in tabRoutes
+private fun NavGraphBuilder.screen(
+    route: String,
+    arguments: List<NamedNavArgument> = emptyList(),
+    content: @Composable (NavBackStackEntry) -> Unit,
+) = composable(route, arguments) { entry ->
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) { content(entry) }
+}
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.enter(): EnterTransition =
-    if (isTabSwitch()) fadeIn(tween(EchoMotion.Standard, 60)) + slideInVertically(tween(EchoMotion.Emphasized, 40, FastOutSlowInEasing)) { it / 24 }
-    else slideInHorizontally(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(EchoMotion.Medium))
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.isTabSwitch(motion: NavMotion) =
+    motion == NavMotion.Tab || initialState.destination.route in tabRoutes && targetState.destination.route in tabRoutes
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.exit(): ExitTransition =
-    if (isTabSwitch()) fadeOut(tween(EchoMotion.Quick))
-    else slideOutHorizontally(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { -it / 10 } + fadeOut(tween(EchoMotion.Medium)) + scaleOut(targetScale = 0.96f, animationSpec = tween(EchoMotion.Emphasized))
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.enter(motion: NavMotion): EnterTransition = when {
+    motion == NavMotion.Instant -> EnterTransition.None
+    isTabSwitch(motion) -> fadeIn(tween(EchoMotion.Standard, 60)) + slideInVertically(tween(EchoMotion.Emphasized, 40, FastOutSlowInEasing)) { it / 24 }
+    else -> slideInHorizontally(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it / 4 } + fadeIn(tween(EchoMotion.Standard))
+}
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.popEnter(): EnterTransition =
-    if (isTabSwitch()) fadeIn(tween(EchoMotion.Standard))
-    else slideInHorizontally(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { -it / 10 } + fadeIn(tween(EchoMotion.Medium)) + scaleIn(initialScale = 0.96f, animationSpec = tween(EchoMotion.Emphasized))
+private fun exit(motion: NavMotion): ExitTransition =
+    if (motion == NavMotion.Instant) ExitTransition.None else fadeOut(tween(durationMillis = 1, delayMillis = EchoMotion.Emphasized))
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(): ExitTransition =
-    if (isTabSwitch()) fadeOut(tween(EchoMotion.Quick))
-    else slideOutHorizontally(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it / 3 } + fadeOut(tween(EchoMotion.Standard))
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(motion: NavMotion): ExitTransition = when {
+    motion == NavMotion.Instant -> ExitTransition.None
+    isTabSwitch(motion) -> fadeOut(tween(EchoMotion.Standard))
+    else -> slideOutHorizontally(tween(EchoMotion.Medium, easing = FastOutSlowInEasing)) { it / 4 } + fadeOut(tween(EchoMotion.Standard))
+}
 
 @Composable
-private fun BottomBar(nav: androidx.navigation.NavHostController) {
-    val entry by nav.currentBackStackEntryAsState()
-    val current = entry?.destination?.route
-    var lastTab by rememberSaveable { mutableStateOf(tabs.first().route) }
-    if (current != null && current in tabRoutes && current != lastTab) lastTab = current
+private fun BottomBar(nav: androidx.navigation.NavHostController, actions: AppActions) {
+    val stack by nav.currentBackStack.collectAsState()
+    val current = stack.lastOrNull()?.destination?.route
+    val selectedRoute = stack.lastOrNull { it.destination.route in tabRoutes }?.destination?.route ?: tabs.first().route
     val p = palette
-    val selectedIndex = tabs.indexOfFirst { it.route == lastTab }.coerceAtLeast(0)
+    val selectedIndex = tabs.indexOfFirst { it.route == selectedRoute }.coerceAtLeast(0)
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(p.rule))
         BoxWithConstraints(Modifier.fillMaxWidth().navigationBarsPadding().height(57.dp)) {
@@ -222,12 +245,8 @@ private fun BottomBar(nav: androidx.navigation.NavHostController) {
                         Modifier.weight(1f).fillMaxSize().clickable(remember { MutableInteractionSource() }, null) {
                             when {
                                 current == t.route -> Unit
-                                lastTab == t.route && nav.popBackStack(t.route, inclusive = false) -> Unit
-                                else -> nav.navigate(t.route) {
-                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
+                                selectedRoute == t.route -> actions.popToTab(t.route)
+                                else -> actions.switchTab(t.route)
                             }
                         },
                         horizontalAlignment = Alignment.CenterHorizontally,

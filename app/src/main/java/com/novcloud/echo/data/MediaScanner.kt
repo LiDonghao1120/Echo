@@ -47,7 +47,7 @@ class MediaScanner(private val context: Context) {
             if (s.durationMs < minDurationMs || s.durationMs <= 0) continue
             out += s
         }
-        return Result(if (Build.VERSION.SDK_INT < 30 && out.isNotEmpty()) withLegacyGenres(out) else out, known)
+        return Result(out, known)
     }
 
     private fun query(): List<Row> {
@@ -119,35 +119,13 @@ class MediaScanner(private val context: Context) {
         return out
     }
 
-    private fun withLegacyGenres(songs: List<Song>): List<Song> {
-        val map = HashMap<Long, String>()
-        val resolver = context.contentResolver
-        runCatching {
-            resolver.query(
-                MediaStore.Audio.Genres.EXTERNAL_CONTENT_URI,
-                arrayOf(MediaStore.Audio.Genres._ID, MediaStore.Audio.Genres.NAME), null, null, null,
-            )?.use { g ->
-                while (g.moveToNext()) {
-                    val gid = g.getLong(0)
-                    val name = cleanGenre(g.getString(1))
-                    if (name.isEmpty()) continue
-                    resolver.query(
-                        MediaStore.Audio.Genres.Members.getContentUri("external", gid),
-                        arrayOf(MediaStore.Audio.Genres.Members.AUDIO_ID), null, null, null,
-                    )?.use { m -> while (m.moveToNext()) map[m.getLong(0)] = name }
-                }
-            }
-        }
-        return if (map.isEmpty()) songs else songs.map { s -> map[s.id]?.let { s.copy(genre = it) } ?: s }
-    }
-
     companion object {
         fun cleanGenre(raw: String?): String {
-            val g = raw?.trim().orEmpty()
-            if (g.isEmpty() || g == UNKNOWN) return ""
-            val numeric = Regex("^\\(?(\\d{1,3})\\)?$").find(g)?.groupValues?.get(1)?.toIntOrNull()
+            val first = raw.orEmpty().split('\u0000', ';', '；', '/', ',', '|', '、').map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: return ""
+            if (first == UNKNOWN) return ""
+            val numeric = Regex("^\\((\\d{1,3})\\).*$|^(\\d{1,3})$").find(first)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }?.toIntOrNull()
             if (numeric != null) return ID3_GENRES.getOrNull(numeric) ?: ""
-            return g.split(';', '/', ',').first().trim()
+            return first
         }
 
         private val ID3_GENRES = listOf(

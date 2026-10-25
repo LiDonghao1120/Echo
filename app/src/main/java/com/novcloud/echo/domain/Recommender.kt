@@ -35,7 +35,7 @@ data class HomeData(
     fun mix(id: String): Mix? = if (daily?.id == id) daily else mixes.firstOrNull { it.id == id }
 }
 
-class Affinity(events: List<PlayEvent>, now: Long) {
+class Affinity(events: List<PlayEvent>, now: Long, genreOf: (PlayEvent) -> String = { it.genre }) {
     val artist = HashMap<String, Double>()
     val genre = HashMap<String, Double>()
     val album = HashMap<Long, Double>()
@@ -50,7 +50,8 @@ class Affinity(events: List<PlayEvent>, now: Long) {
             val ratio = if (e.songDurationMs > 0) min(1.0, e.listenedMs.toDouble() / e.songDurationMs) else 0.5
             val w = decay * (if (e.completed) 1.0 else 0.4 + 0.6 * ratio)
             com.novcloud.echo.data.splitArtists(e.artist).forEach { if (it != UNKNOWN) artist.merge(it, w, Double::plus) }
-            if (e.genre.isNotBlank()) genre.merge(e.genre, w, Double::plus)
+            val g = genreOf(e)
+            if (g.isNotBlank()) genre.merge(g, w, Double::plus)
             album.merge(e.albumId, w, Double::plus)
             song.merge(e.songId, w, Double::plus)
             if (e.completed || e.listenedMs >= 30_000) plays.merge(e.songId, 1, Int::plus)
@@ -74,8 +75,9 @@ object Recommender {
         if (lib.songs.isEmpty()) return HomeData(day = today)
         val dayStart = today.atStartOfDay(zone).toInstant().toEpochMilli()
         val past = events.filter { it.startedAt < dayStart }
-        val aff = Affinity(past, dayStart)
-        val live = Affinity(events, now)
+        val genreOf: (PlayEvent) -> String = { e -> lib.songById[e.songId]?.genre?.ifBlank { null } ?: e.genre }
+        val aff = Affinity(past, dayStart, genreOf)
+        val live = Affinity(events, now, genreOf)
         val seed = today.toEpochDay()
         val hasHistory = events.isNotEmpty()
 

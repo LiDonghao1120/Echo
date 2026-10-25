@@ -2,7 +2,7 @@ package com.novcloud.echo.data.lyrics
 
 import android.content.Context
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
+import android.provider.DocumentsContract
 import com.novcloud.echo.data.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -60,29 +60,96 @@ object LrcParser {
         }
         if (raw.isEmpty()) {
             val lines = plain.filter { it.isNotBlank() }
-            return if (lines.isEmpty()) null else Lyrics(lines.map { LyricLine(-1, it) }, synced = false)
+            return if (lines.isEmpty()) null else Lyrics(Bilingual.split(lines.map { LyricLine(-1, it) }), synced = false)
         }
         val grouped = raw.sortedBy { it.first }.groupBy { it.first }
         val lines = grouped.map { (t, items) ->
-            val texts = items.map { it.second }.filter { it.isNotBlank() }
+            val texts = items.map { it.second }.filter { it.isNotBlank() }.distinct()
             LyricLine(t, texts.firstOrNull() ?: "", texts.drop(1).firstOrNull())
         }
-        val trimmed = lines.dropWhile { it.text.isBlank() }
+        val trimmed = Bilingual.split(lines.dropWhile { it.text.isBlank() })
         return if (trimmed.none { it.text.isNotBlank() }) null else Lyrics(trimmed, synced = true)
     }
 }
 
-class LyricsLoader(private val context: Context) {
-    private val cache = object : LinkedHashMap<Long, Lyrics?>(32, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Lyrics?>?) = size > 40
+object Bilingual {
+    private enum class Script { Latin, Han, Kana, Hangul, None }
+
+    private val separators = listOf(" // ", " / ", " | ", "｜", "\t", " ／ ")
+    private const val OPENERS = "(（[【「『“\"'《〈"
+
+    fun split(lines: List<LyricLine>): List<LyricLine> {
+        val bySeparator = lines.map { l -> if (l.translation == null) splitSeparator(l) else l }
+        val texts = bySeparator.filter { it.text.isNotBlank() }
+        val inline = texts.count { it.translation == null && inlineIndex(it.text) > 0 }
+        if (inline < 3 || inline * 2 < texts.size) return bySeparator
+        return bySeparator.map { l ->
+            if (l.translation != null) return@map l
+            val i = inlineIndex(l.text)
+            if (i <= 0) l else l.copy(text = l.text.substring(0, i).trim(), translation = l.text.substring(i).trim())
+        }
     }
-    private var treeIndex: Pair<String, Map<String, Uri>>? = null
+
+    private fun splitSeparator(l: LyricLine): LyricLine {
+        for (sep in separators) {
+            val i = l.text.indexOf(sep)
+            if (i <= 0) continue
+            val a = l.text.substring(0, i).trim()
+            val b = l.text.substring(i + sep.length).trim()
+            if (a.isEmpty() || b.isEmpty()) continue
+            val sa = script(a)
+            val sb = script(b)
+            if (sa != sb && sa != Script.None && sb != Script.None) return l.copy(text = a, translation = b)
+        }
+        return l
+    }
+
+    fun inlineIndex(text: String): Int {
+        val first = text.indexOfFirst { isHan(it) || isKana(it) }
+        if (first <= 0) return -1
+        var cut = first
+        while (cut > 0 && (text[cut - 1] in OPENERS || text[cut - 1].isWhitespace())) cut--
+        while (cut < first && text[cut].isWhitespace()) cut++
+        val head = text.substring(0, cut)
+        if (head.count { it.isLetter() && it.code < 0x250 } < 2) return -1
+        if (head.any { isHan(it) || isKana(it) || isHangul(it) }) return -1
+        return cut
+    }
+
+    private fun script(s: String): Script = when {
+        s.any(::isKana) -> Script.Kana
+        s.any(::isHangul) -> Script.Hangul
+        s.any(::isHan) -> Script.Han
+        s.any { it.isLetter() } -> Script.Latin
+        else -> Script.None
+    }
+
+    private fun isHan(c: Char) = c in '\u4E00'..'\u9FFF' || c in '\u3400'..'\u4DBF' || c in '\uF900'..'\uFAFF'
+    private fun isKana(c: Char) = c in '\u3040'..'\u30FF'
+    private fun isHangul(c: Char) = c in '\uAC00'..'\uD7AF' || c in '\u1100'..'\u11FF'
+}
+
+class LyricsLoader(private val context: Context) {
+    class Loaded(val lyrics: Lyrics?)
+
+    private val cache = object : LinkedHashMap<String, Loaded>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Loaded>?) = size > 40
+    }
+    @Volatile private var treeIndex: Pair<String, Map<String, Uri>>? = null
+
+    private fun key(song: Song, tree: String?) = "${song.id}|${tree.orEmpty()}"
+
+    fun peek(song: Song, tree: String?): Loaded? = synchronized(cache) { cache[key(song, tree)] }
 
     suspend fun load(song: Song, lyricsTree: String?): Lyrics? = withContext(Dispatchers.IO) {
-        synchronized(cache) { if (cache.containsKey(song.id)) return@withContext cache[song.id] }
+        peek(song, lyricsTree)?.let { return@withContext it.lyrics }
         val result = sidecar(song) ?: fromTree(song, lyricsTree) ?: embedded(song)
-        synchronized(cache) { cache[song.id] = result }
+        synchronized(cache) { cache[key(song, lyricsTree)] = Loaded(result) }
         result
+    }
+
+    suspend fun warmTree(tree: String?) = withContext(Dispatchers.IO) {
+        if (tree != null && treeIndex?.first != tree) treeIndex = tree to buildIndex(tree)
     }
 
     fun invalidate() {
@@ -116,17 +183,30 @@ class LyricsLoader(private val context: Context) {
 
     private fun buildIndex(tree: String): Map<String, Uri> {
         val map = HashMap<String, Uri>()
-        val root = runCatching { DocumentFile.fromTreeUri(context, Uri.parse(tree)) }.getOrNull() ?: return map
-        fun walk(dir: DocumentFile, depth: Int) {
-            dir.listFiles().forEach { f ->
-                if (f.isDirectory && depth < 3) walk(f, depth + 1)
-                else {
-                    val n = f.name ?: return@forEach
-                    if (n.endsWith(".lrc", true)) map.putIfAbsent(n.substringBeforeLast('.').lowercase(), f.uri)
+        val treeUri = runCatching { Uri.parse(tree) }.getOrNull() ?: return map
+        val rootId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull() ?: return map
+        val cols = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+        )
+        fun walk(docId: String, depth: Int) {
+            val dirs = ArrayList<String>()
+            runCatching {
+                context.contentResolver.query(DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId), cols, null, null, null)?.use { c ->
+                    while (c.moveToNext()) {
+                        val id = c.getString(0) ?: continue
+                        val name = c.getString(1) ?: continue
+                        if (c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) dirs += id
+                        else if (name.endsWith(".lrc", true)) {
+                            map.putIfAbsent(name.substringBeforeLast('.').lowercase(), DocumentsContract.buildDocumentUriUsingTree(treeUri, id))
+                        }
+                    }
                 }
             }
+            if (depth < 3) dirs.forEach { walk(it, depth + 1) }
         }
-        runCatching { walk(root, 0) }
+        walk(rootId, 0)
         return map
     }
 

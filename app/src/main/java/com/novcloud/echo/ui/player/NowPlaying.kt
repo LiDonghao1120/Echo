@@ -5,6 +5,8 @@ import com.novcloud.echo.ui.theme.EchoMotion
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
@@ -287,18 +289,21 @@ private fun SharedTransitionScope.TitleBlock(song: Song, liked: Boolean, avs: An
     Row(Modifier.fillMaxWidth().padding(start = 28.dp, end = 14.dp, top = 6.dp), verticalAlignment = Alignment.Bottom) {
         Column(Modifier.weight(1f)) {
             AnimatedContent(
-                song.id,
+                song,
+                contentKey = { it.id },
                 transitionSpec = {
                     (slideInVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(EchoMotion.Medium))) togetherWith
-                        (slideOutVertically(tween(EchoMotion.Medium)) { -it } + fadeOut(tween(EchoMotion.Standard)))
+                        (slideOutVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { -it } + fadeOut(tween(EchoMotion.Quick))) using
+                        SizeTransform(clip = true)
                 },
+                modifier = Modifier.sharedBounds(rememberSharedContentState("title"), avs).clipToBounds(),
                 label = "title",
-            ) { _ ->
-                val text = markTitle(song.title)
+            ) { s ->
+                val text = markTitle(s.title)
                 Text(
                     text,
                     style = displayStyle(text, 34.sp), color = Paper, maxLines = 1,
-                    modifier = Modifier.sharedBounds(rememberSharedContentState("title"), avs).basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2200),
+                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2200),
                 )
             }
             Spacer(Modifier.height(6.dp))
@@ -433,6 +438,6 @@ private fun PaneButton(icon: androidx.compose.ui.graphics.vector.ImageVector, on
         Modifier.size(44.dp).echoClick(corner = 8.dp, color = accent, onClick = onClick).clip(EchoShape.card).background(Paper.copy(alpha = 0.92f * bg)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, Modifier.size(23.dp), tint = if (on) Ink else Paper.copy(alpha = 0.7f))
+        Icon(icon, null, Modifier.size(23.dp), tint = lerp(Paper.copy(alpha = 0.7f), Ink, bg))
     }
 }

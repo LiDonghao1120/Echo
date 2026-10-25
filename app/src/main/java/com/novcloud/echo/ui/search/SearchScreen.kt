@@ -2,6 +2,7 @@ package com.novcloud.echo.ui.search
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -137,6 +138,16 @@ fun SearchScreen() {
                     items(rows) { row ->
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             row.forEach { g -> Box(Modifier.weight(1f)) { GenreTile(g.name, g.songs.firstOrNull()?.art) { actions.openGenre(g.name) } } }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                } else if (lib.artists.isNotEmpty()) {
+                    item { SectionHeader("歌手") }
+                    items(lib.artists.sortedByDescending { it.songs.size }.take(6).chunked(2)) { row ->
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            row.forEach { a ->
+                                com.novcloud.echo.ui.components.ArtistCard(a.name, Modifier.weight(1f).aspectRatio(0.78f)) { actions.openArtist(a.name) }
+                            }
                             if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }

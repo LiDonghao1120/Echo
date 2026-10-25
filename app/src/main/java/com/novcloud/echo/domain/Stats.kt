@@ -97,7 +97,7 @@ object StatsEngine {
             Ranked(id.toString(), displayAlbum(al?.title ?: l.last().album), al?.artist ?: l.last().artist, al?.art ?: ArtRef(id, l.last().songId), l.sumOf { it.listenedMs }, l.size)
         }.sortedByDescending { it.ms }.take(10)
 
-        val genreAgg = events.filter { it.genre.isNotBlank() }.groupBy { it.genre }.map { (g, l) ->
+        val genreAgg = events.groupBy { lib.songById[it.songId]?.genre?.ifBlank { null } ?: it.genre }.filterKeys { it.isNotBlank() }.map { (g, l) ->
             Ranked(g, g, "", null, l.sumOf { it.listenedMs }, l.size)
         }.sortedByDescending { it.ms }.take(6)
 

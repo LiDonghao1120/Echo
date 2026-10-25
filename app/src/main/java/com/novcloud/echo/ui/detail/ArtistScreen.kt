@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -157,7 +158,7 @@ fun ArtistScreen(name: String) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 24.dp)) {
             item(key = "poster") {
                 Box(
-                    Modifier.fillMaxWidth().height(posterH)
+                    Modifier.fillMaxWidth().height(posterH).clipToBounds()
                         .combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { editing = true }) {},
                 ) {
                     val g = remember(name) { seededGradient(name) }
