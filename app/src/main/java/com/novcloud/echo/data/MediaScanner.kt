@@ -4,9 +4,53 @@ import android.content.Context
 import android.os.Build
 import android.provider.MediaStore
 
+data class AudioFolder(val path: String, val count: Int, val music: Int)
+
 class MediaScanner(private val context: Context) {
 
-    fun scan(minDurationMs: Long): List<Song> {
+    private class Row(val song: Song, val isMusic: Boolean)
+
+    fun folders(): List<AudioFolder> {
+        val counts = HashMap<String, IntArray>()
+        runCatching {
+            context.contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Audio.Media.DATA, MediaStore.Audio.Media.IS_MUSIC), null, null, null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val folder = c.getString(0).orEmpty().substringBeforeLast('/', "")
+                    if (folder.isEmpty()) continue
+                    val a = counts.getOrPut(folder) { IntArray(2) }
+                    a[0]++
+                    if (c.getInt(1) != 0) a[1]++
+                }
+            }
+        }
+        return counts.map { (p, a) -> AudioFolder(p, a[0], a[1]) }.sortedBy { it.path.lowercase() }
+    }
+
+    class Result(val songs: List<Song>, val knownPaths: Set<String>)
+
+    fun scan(rules: FolderRules, minDurationMs: Long): Result {
+        val rows = query()
+        val known = rows.mapTo(HashSet(rows.size)) { it.song.path.lowercase() }
+        val out = ArrayList<Song>(rows.size)
+        var probes = 0
+        for (r in rows) {
+            if (!rules.accepts(r.song.folder, r.isMusic)) continue
+            var s = r.song
+            if (s.durationMs <= 0 && probes < 400) {
+                probes++
+                val d = TagProbe.duration(context, s.uri)
+                if (d > 0) s = s.copy(durationMs = d)
+            }
+            if (s.durationMs < minDurationMs || s.durationMs <= 0) continue
+            out += s
+        }
+        return Result(if (Build.VERSION.SDK_INT < 30 && out.isNotEmpty()) withLegacyGenres(out) else out, known)
+    }
+
+    private fun query(): List<Row> {
         val resolver = context.contentResolver
         val uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         val cols = buildList {
@@ -22,15 +66,15 @@ class MediaScanner(private val context: Context) {
             add(MediaStore.Audio.Media.DATA)
             add(MediaStore.Audio.Media.MIME_TYPE)
             add(MediaStore.Audio.Media.SIZE)
+            add(MediaStore.Audio.Media.IS_MUSIC)
             if (Build.VERSION.SDK_INT >= 30) {
                 add(MediaStore.Audio.Media.ALBUM_ARTIST)
                 add(MediaStore.Audio.Media.GENRE)
                 add(MediaStore.Audio.Media.DISC_NUMBER)
             }
         }.toTypedArray()
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} >= ?"
-        val out = ArrayList<Song>()
-        resolver.query(uri, cols, selection, arrayOf(minDurationMs.toString()), null)?.use { c ->
+        val out = ArrayList<Row>()
+        resolver.query(uri, cols, null, null, null)?.use { c ->
             val iId = c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
             val iTitle = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
             val iArtist = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
@@ -43,6 +87,7 @@ class MediaScanner(private val context: Context) {
             val iData = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             val iMime = c.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
             val iSize = c.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+            val iMusic = c.getColumnIndexOrThrow(MediaStore.Audio.Media.IS_MUSIC)
             val iAlbumArtist = if (Build.VERSION.SDK_INT >= 30) c.getColumnIndex(MediaStore.Audio.Media.ALBUM_ARTIST) else -1
             val iGenre = if (Build.VERSION.SDK_INT >= 30) c.getColumnIndex(MediaStore.Audio.Media.GENRE) else -1
             val iDisc = if (Build.VERSION.SDK_INT >= 30) c.getColumnIndex(MediaStore.Audio.Media.DISC_NUMBER) else -1
@@ -50,7 +95,7 @@ class MediaScanner(private val context: Context) {
                 val path = c.getString(iData).orEmpty()
                 val rawTrack = c.getInt(iTrack)
                 val discFromCol = if (iDisc >= 0) c.getString(iDisc)?.substringBefore('/')?.trim()?.toIntOrNull() else null
-                out += Song(
+                val song = Song(
                     id = c.getLong(iId),
                     title = c.getString(iTitle)?.takeIf { it.isNotBlank() } ?: path.substringAfterLast('/').substringBeforeLast('.'),
                     artist = c.getString(iArtist)?.takeIf { it.isNotBlank() } ?: UNKNOWN,
@@ -68,9 +113,9 @@ class MediaScanner(private val context: Context) {
                     mimeType = c.getString(iMime).orEmpty(),
                     size = c.getLong(iSize),
                 )
+                out += Row(song, c.getInt(iMusic) != 0)
             }
         }
-        if (Build.VERSION.SDK_INT < 30 && out.isNotEmpty()) return withLegacyGenres(out)
         return out
     }
 
@@ -96,15 +141,15 @@ class MediaScanner(private val context: Context) {
         return if (map.isEmpty()) songs else songs.map { s -> map[s.id]?.let { s.copy(genre = it) } ?: s }
     }
 
-    private fun cleanGenre(raw: String?): String {
-        val g = raw?.trim().orEmpty()
-        if (g.isEmpty() || g == UNKNOWN) return ""
-        val numeric = Regex("^\\(?(\\d{1,3})\\)?$").find(g)?.groupValues?.get(1)?.toIntOrNull()
-        if (numeric != null) return ID3_GENRES.getOrNull(numeric) ?: ""
-        return g.split(';', '/', ',').first().trim()
-    }
-
     companion object {
+        fun cleanGenre(raw: String?): String {
+            val g = raw?.trim().orEmpty()
+            if (g.isEmpty() || g == UNKNOWN) return ""
+            val numeric = Regex("^\\(?(\\d{1,3})\\)?$").find(g)?.groupValues?.get(1)?.toIntOrNull()
+            if (numeric != null) return ID3_GENRES.getOrNull(numeric) ?: ""
+            return g.split(';', '/', ',').first().trim()
+        }
+
         private val ID3_GENRES = listOf(
             "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal",
             "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial",

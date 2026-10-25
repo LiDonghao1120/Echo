@@ -149,6 +149,9 @@ interface ArtistImageDao {
     @Query("SELECT * FROM artist_image")
     fun all(): Flow<List<ArtistImage>>
 
+    @Query("SELECT * FROM artist_image WHERE artist = :artist")
+    suspend fun get(artist: String): ArtistImage?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(a: ArtistImage)
 
@@ -160,6 +163,9 @@ interface ArtistImageDao {
 interface ArtistLogoDao {
     @Query("SELECT * FROM artist_logo")
     fun all(): Flow<List<ArtistLogo>>
+
+    @Query("SELECT * FROM artist_logo WHERE artist = :artist")
+    suspend fun get(artist: String): ArtistLogo?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(a: ArtistLogo)

@@ -48,8 +48,11 @@ class ArtFetcher(private val ref: ArtRef, private val options: Options) : Fetche
     }
 
     private fun embedded(): FetchResult? {
-        if (ref.songId < 0) return null
-        val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, ref.songId)
+        val uri = when {
+            ref.docUri.isNotEmpty() -> Uri.parse(ref.docUri)
+            ref.songId >= 0 -> ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, ref.songId)
+            else -> return null
+        }
         val mmr = MediaMetadataRetriever()
         return try {
             mmr.setDataSource(context, uri)

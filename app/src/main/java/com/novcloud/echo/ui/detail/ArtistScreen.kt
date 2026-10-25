@@ -5,6 +5,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import com.novcloud.echo.data.displayArtist
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -41,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +82,7 @@ import com.novcloud.echo.ui.player.rememberArtColors
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
 import com.novcloud.echo.ui.theme.Ink
+import com.novcloud.echo.ui.theme.LightSystemIcons
 import com.novcloud.echo.ui.theme.Paper
 import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.seededGradient
@@ -95,7 +98,17 @@ fun ArtistScreen(name: String) {
     val home by container.home.collectAsState()
     val events by container.allEvents.collectAsState()
     val state by actions.player.state.collectAsState()
-    val artist = lib.artistByName[name] ?: return
+    LightSystemIcons()
+    var editing by rememberSaveable { mutableStateOf(false) }
+    val artActions = rememberArtistArtActions(name)
+    val artist = lib.artistByName[name]
+    if (artist == null) {
+        if (lib.loaded) Box(Modifier.fillMaxSize()) {
+            com.novcloud.echo.ui.components.EmptyState(null, displayArtist(name), Modifier.align(Alignment.Center))
+            CollapsingTopBar("", 0f)
+        }
+        return
+    }
     val logo = logos[name]
     val model = remember(artist, custom[name], home.playCounts) { ArtistImages.source.image(artist, custom, home.playCounts) }
     val colors = rememberArtColors(model)
@@ -106,7 +119,6 @@ fun ArtistScreen(name: String) {
         val l = events.filter { name in splitArtists(it.artist) }
         l.size to l.sumOf { it.listenedMs } / 60_000
     }
-    var editing by remember { mutableStateOf(false) }
     val p = palette
     val bg = MaterialTheme.colorScheme.surface
     val barTone = lerp(colors.bottom, Ink, 0.25f)
@@ -242,7 +254,7 @@ fun ArtistScreen(name: String) {
             BarIcon { IconButton(onClick = { editing = true }) { Icon(Icons.Rounded.AutoFixHigh, null, tint = Paper) } }
         }
     }
-    if (editing) ArtistArtSheet(name, custom[name], logo) { editing = false }
+    if (editing) ArtistArtSheet(name, custom[name], logo, artActions) { editing = false }
 }
 
 @Composable

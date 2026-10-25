@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.novcloud.echo.data.ArtistImages
+import com.novcloud.echo.data.splitArtists
 import com.novcloud.echo.data.ArtistLogoInfo
 import com.novcloud.echo.data.Library
 import com.novcloud.echo.data.LibraryRepository
@@ -84,14 +85,24 @@ class AppActions(
         nav.navigate(route) { launchSingleTop = true }
     }
     fun openAlbum(id: Long) = go("album/$id")
-    fun openArtist(name: String) = go("artist/${Uri.encode(name)}")
+    fun openArtist(name: String) {
+        val known = repo.library.value.artistByName
+        val target = if (name in known) name else splitArtists(name).firstOrNull { it in known } ?: name
+        go("artist/${Uri.encode(target)}")
+    }
     fun openMix(id: String) = go("mix/${Uri.encode(id)}")
     fun openPlaylist(id: Long) = go("playlist/$id")
     fun openGenre(name: String) = go("genre/${Uri.encode(name)}")
     fun openFolder(path: String) = go("folder/${Uri.encode(path)}")
     fun openList(kind: String) = go("list/${Uri.encode(kind)}")
     fun openSettings() = go("settings")
-    fun back() = nav.popBackStack()
+    fun openScanFolders() = go("settings/folders")
+    fun back() {
+        val entry = nav.currentBackStackEntry ?: return
+        if (nav.previousBackStackEntry == null) return
+        if (!entry.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return
+        nav.popBackStack()
+    }
 }
 
 val LocalActions = staticCompositionLocalOf<AppActions> { error("no actions") }
@@ -100,15 +111,13 @@ val LocalBottomInset = staticCompositionLocalOf { 0.dp }
 @Composable
 fun EchoMark(modifier: Modifier = Modifier, color: Color = LocalContentColor.current, core: Color = color) {
     Canvas(modifier) {
-        val s = size.minDimension
-        val c = Offset(size.width / 2, size.height / 2)
-        fun sq(side: Float) = Offset(c.x - side / 2, c.y - side / 2)
-        val outer = s * 0.92f
-        val mid = s * 0.62f
-        val inner = s * 0.28f
-        drawRoundRect(color.copy(alpha = color.alpha * 0.45f), sq(outer), Size(outer, outer), androidx.compose.ui.geometry.CornerRadius(s * 0.1f), style = Stroke(s * 0.055f))
-        drawRoundRect(color, sq(mid), Size(mid, mid), androidx.compose.ui.geometry.CornerRadius(s * 0.07f), style = Stroke(s * 0.085f))
-        drawRoundRect(core, sq(inner), Size(inner, inner), androidx.compose.ui.geometry.CornerRadius(s * 0.035f))
+        val u = size.minDimension / 45.7f
+        val o = Offset((size.width - 45.7f * u) / 2, (size.height - 45.7f * u) / 2)
+        fun ring(l: Float, t: Float, r: Float, b: Float, w: Float, c: Color) =
+            drawRect(c, o + Offset(l * u, t * u), Size((r - l) * u, (b - t) * u), style = Stroke(w * u))
+        ring(0.65f, 0.65f, 45.05f, 45.05f, 1.3f, color.copy(alpha = color.alpha * 0.66f))
+        ring(5.25f, 12.65f, 33.05f, 40.45f, 2.3f, color)
+        drawRect(core, o + Offset(9.2f * u, 24f * u), Size(12.5f * u, 12.5f * u))
     }
 }
 

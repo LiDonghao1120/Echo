@@ -1,5 +1,7 @@
 package com.novcloud.echo.ui.player
 
+import com.novcloud.echo.ui.theme.EchoMotion
+
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -102,6 +104,7 @@ import com.novcloud.echo.ui.components.echoClick
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
 import com.novcloud.echo.ui.theme.Ink
+import com.novcloud.echo.ui.theme.LightSystemIcons
 import com.novcloud.echo.ui.theme.Paper
 import com.novcloud.echo.ui.theme.Vermilion
 import com.novcloud.echo.ui.theme.displayStyle
@@ -122,6 +125,7 @@ fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onColla
     val dragY = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    LightSystemIcons(navigation = true)
 
     BackHandler(enabled = avs.transition.targetState == androidx.compose.animation.EnterExitState.Visible) {
         if (pane != PlayerPane.Art) pane = PlayerPane.Art else onCollapse()
@@ -172,7 +176,7 @@ fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onColla
             AnimatedContent(
                 targetState = pane,
                 transitionSpec = {
-                    (fadeIn(tween(280, 60)) + slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it / 14 }) togetherWith fadeOut(tween(160))
+                    (fadeIn(tween(EchoMotion.Medium, 60)) + slideInVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it / 14 }) togetherWith fadeOut(tween(EchoMotion.Quick))
                 },
                 modifier = Modifier.weight(1f),
                 label = "pane",
@@ -285,8 +289,8 @@ private fun SharedTransitionScope.TitleBlock(song: Song, liked: Boolean, avs: An
             AnimatedContent(
                 song.id,
                 transitionSpec = {
-                    (slideInVertically(tween(420, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(300))) togetherWith
-                        (slideOutVertically(tween(300)) { -it } + fadeOut(tween(200)))
+                    (slideInVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(EchoMotion.Medium))) togetherWith
+                        (slideOutVertically(tween(EchoMotion.Medium)) { -it } + fadeOut(tween(EchoMotion.Standard)))
                 },
                 label = "title",
             ) { _ ->

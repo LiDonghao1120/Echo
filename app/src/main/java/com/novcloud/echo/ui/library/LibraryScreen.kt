@@ -73,6 +73,8 @@ import com.novcloud.echo.ui.theme.seededGradient
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.unit.sp
 import com.novcloud.echo.ui.components.ArtistCard
 import com.novcloud.echo.ui.components.Eyebrow
@@ -117,7 +119,7 @@ fun LibraryScreen() {
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            t, Modifier.padding(vertical = 10.dp),
+                            t, Modifier.padding(top = 13.dp, bottom = 11.dp),
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (selected) FontWeight.Black else FontWeight.Medium), color = c,
                         )
                         Box(Modifier.width(28.dp * bar).height(3.dp).background(p.signal))
@@ -161,7 +163,7 @@ private fun SongsTab() {
     val scope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp)) {
         item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f), primary = true) { actions.player.play(songs) }
                 Spacer(Modifier.width(10.dp))
                 PillButton(Icons.Rounded.Shuffle, "随机", Modifier.weight(1f)) { actions.player.play(songs, shuffle = true) }
@@ -277,6 +279,15 @@ private fun FoldersTab() {
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp)) {
+        item(key = "manage") {
+            Row(
+                Modifier.fillMaxWidth().clickable { actions.openScanFolders() }.heightIn(min = 52.dp).padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("扫描文件夹", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = palette.signal)
+                Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = palette.faint)
+            }
+        }
         items(lib.folders, key = { it.path }) { f ->
             Row(
                 Modifier.fillMaxWidth().clickable { actions.openFolder(f.path) }.padding(horizontal = 20.dp, vertical = 10.dp),
@@ -288,7 +299,7 @@ private fun FoldersTab() {
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(f.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(f.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(f.path.removePrefix("/storage/emulated/0"), style = MaterialTheme.typography.bodySmall, color = palette.muted, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
                 }
                 Text("${f.songs.size}", style = EchoType.numeral(14.sp), color = palette.muted)
             }

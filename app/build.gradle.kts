@@ -12,7 +12,7 @@ val appId = "com.novcloud.echo"
 
 val refName: String? = System.getenv("GITHUB_REF_NAME")
 val tagVersion: String? = refName?.takeIf { System.getenv("GITHUB_REF_TYPE") == "tag" && it.startsWith("v") }?.removePrefix("v")
-val appVersionName: String = tagVersion ?: "0.2.0"
+val appVersionName: String = tagVersion ?: "0.3.0"
 val appVersionCode: Int = run {
     val parts = appVersionName.substringBefore('-').split('.').mapNotNull { it.toIntOrNull() }
     val (ma, mi, pa) = Triple(parts.getOrElse(0) { 0 }, parts.getOrElse(1) { 1 }, parts.getOrElse(2) { 0 })
@@ -71,7 +71,13 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
-            all { test -> test.maxHeapSize = "3g" }
+            all { test ->
+                test.maxHeapSize = "3g"
+                providers.gradleProperty("echo.robolectricDeps").orNull?.let { dir ->
+                    test.systemProperty("robolectric.offline", "true")
+                    test.systemProperty("robolectric.dependency.dir", dir)
+                }
+            }
         }
     }
     dependenciesInfo {

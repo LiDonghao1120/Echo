@@ -3,6 +3,8 @@ package com.novcloud.echo.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import android.os.Build
 import android.net.Uri
 import androidx.compose.runtime.Immutable
 import java.io.File
@@ -48,6 +50,14 @@ object ArtistFileMatcher {
     }
 }
 
+object ArtFiles {
+    fun name(kind: ArtKind, artist: String, version: Long): String {
+        val prefix = if (kind == ArtKind.Poster) "p" else "l"
+        val ext = if (kind == ArtKind.Poster) "jpg" else "png"
+        return "${prefix}_${artist.hashCode().toUInt()}_${version.toString(36)}.$ext"
+    }
+}
+
 object ArtistArtStore {
     private const val LOGO_MAX_W = 1600
     private const val LOGO_MAX_H = 900
@@ -56,6 +66,19 @@ object ArtistArtStore {
     fun dir(context: Context) = File(context.filesDir, "artists").apply { mkdirs() }
 
     private fun decode(context: Context, uri: Uri, maxW: Int, maxH: Int): Bitmap? {
+        if (Build.VERSION.SDK_INT >= 28) {
+            runCatching {
+                val src = ImageDecoder.createSource(context.contentResolver, uri)
+                return ImageDecoder.decodeBitmap(src) { d, info, _ ->
+                    val w = info.size.width
+                    val h = info.size.height
+                    val scale = minOf(1f, maxW.toFloat() / w, maxH.toFloat() / h)
+                    if (scale < 1f) d.setTargetSize(max(1, (w * scale).roundToInt()), max(1, (h * scale).roundToInt()))
+                    d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                    d.isMutableRequired = false
+                }
+            }
+        }
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return null
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -72,7 +95,7 @@ object ArtistArtStore {
 
     fun savePoster(context: Context, artist: String, uri: Uri): File? {
         val bmp = decode(context, uri, POSTER_MAX, POSTER_MAX) ?: return null
-        val file = File(dir(context), "p_${artist.hashCode().toUInt()}_${System.currentTimeMillis()}.jpg")
+        val file = File(dir(context), ArtFiles.name(ArtKind.Poster, artist, System.nanoTime()))
         val ok = runCatching { file.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) } }.getOrDefault(false)
         bmp.recycle()
         return file.takeIf { ok }
@@ -83,7 +106,7 @@ object ArtistArtStore {
         val bmp = trim(decoded)
         if (bmp !== decoded) decoded.recycle()
         val luma = luma(bmp)
-        val file = File(dir(context), "l_${artist.hashCode().toUInt()}_${System.currentTimeMillis()}.png")
+        val file = File(dir(context), ArtFiles.name(ArtKind.Logo, artist, System.nanoTime()))
         val ok = runCatching { file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) } }.getOrDefault(false)
         val aspect = bmp.width.toFloat() / bmp.height
         bmp.recycle()

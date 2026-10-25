@@ -23,14 +23,15 @@ data class Song(
     val folder: String,
     val mimeType: String,
     val size: Long,
+    val docUri: String = "",
 ) {
-    val uri: Uri get() = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-    val art: ArtRef get() = ArtRef(albumId, id)
+    val uri: Uri get() = if (docUri.isNotEmpty()) Uri.parse(docUri) else ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
+    val art: ArtRef get() = ArtRef(albumId, id, docUri)
     val artists: List<String> get() = splitArtists(artist)
 }
 
 @Immutable
-data class ArtRef(val albumId: Long, val songId: Long)
+data class ArtRef(val albumId: Long, val songId: Long, val docUri: String = "")
 
 @Immutable
 data class Album(
@@ -40,7 +41,7 @@ data class Album(
     val year: Int,
     val songs: List<Song>,
 ) {
-    val art: ArtRef get() = ArtRef(id, songs.firstOrNull()?.id ?: -1)
+    val art: ArtRef get() = songs.firstOrNull().let { ArtRef(id, it?.id ?: -1, it?.docUri.orEmpty()) }
     val durationMs: Long get() = songs.sumOf { it.durationMs }
     val dateAdded: Long get() = songs.maxOfOrNull { it.dateAdded } ?: 0
 }

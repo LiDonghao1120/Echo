@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -31,6 +32,9 @@ class Prefs(private val context: Context) {
         val theme = stringPreferencesKey("theme")
         val songSort = stringPreferencesKey("song_sort")
         val keepScreenLyrics = booleanPreferencesKey("lyrics_keep_screen")
+        val scanIncluded = stringSetPreferencesKey("scan_included")
+        val scanExcluded = stringSetPreferencesKey("scan_excluded")
+        val scanTrees = stringSetPreferencesKey("scan_trees")
     }
 
     val minDurationSec: Flow<Int> = ds.data.map { it[K.minDuration] ?: 30 }
@@ -38,6 +42,36 @@ class Prefs(private val context: Context) {
     val theme: Flow<ThemeMode> = ds.data.map { p -> ThemeMode.entries.firstOrNull { it.name == p[K.theme] } ?: ThemeMode.System }
     val songSort: Flow<String> = ds.data.map { it[K.songSort] ?: "title" }
     val keepScreenOnLyrics: Flow<Boolean> = ds.data.map { it[K.keepScreenLyrics] ?: true }
+
+    val scanIncluded: Flow<Set<String>> = ds.data.map { it[K.scanIncluded].orEmpty() }
+    val scanExcluded: Flow<Set<String>> = ds.data.map { it[K.scanExcluded].orEmpty() }
+    val scanTrees: Flow<Set<String>> = ds.data.map { it[K.scanTrees].orEmpty() }
+
+    suspend fun setFolder(path: String, on: Boolean) = edit {
+        val inc = it[K.scanIncluded].orEmpty().toMutableSet()
+        val exc = it[K.scanExcluded].orEmpty().toMutableSet()
+        if (on) { inc += path; exc -= path } else { exc += path; inc -= path }
+        it[K.scanIncluded] = inc
+        it[K.scanExcluded] = exc
+    }
+
+    suspend fun resetFolder(path: String) = edit {
+        it[K.scanIncluded] = it[K.scanIncluded].orEmpty() - path
+        it[K.scanExcluded] = it[K.scanExcluded].orEmpty() - path
+    }
+
+    suspend fun addTree(uri: String, path: String?) = edit {
+        it[K.scanTrees] = it[K.scanTrees].orEmpty() + uri
+        if (path != null) {
+            it[K.scanIncluded] = it[K.scanIncluded].orEmpty() + path
+            it[K.scanExcluded] = it[K.scanExcluded].orEmpty() - path
+        }
+    }
+
+    suspend fun removeTree(uri: String, path: String?) = edit {
+        it[K.scanTrees] = it[K.scanTrees].orEmpty() - uri
+        if (path != null) it[K.scanIncluded] = it[K.scanIncluded].orEmpty() - path
+    }
 
     suspend fun setMinDuration(sec: Int) = edit { it[K.minDuration] = sec }
     suspend fun setLyricsTree(uri: String?) = edit { if (uri == null) it.remove(K.lyricsTree) else it[K.lyricsTree] = uri }

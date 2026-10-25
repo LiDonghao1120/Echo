@@ -2,6 +2,7 @@ package com.novcloud.echo.ui.detail
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,12 +30,15 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,26 +81,33 @@ class ArtistArtActions(
 )
 
 @Composable
-fun ArtistArtSheet(name: String, customPoster: String?, logo: ArtistLogoInfo?, onDismiss: () -> Unit) {
-    val container = (LocalContext.current.applicationContext as EchoApp).container
-    val repo = container.library
+fun rememberArtistArtActions(name: String): ArtistArtActions {
+    val context = LocalContext.current
+    val repo = (context.applicationContext as EchoApp).container.library
     val poster = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) repo.setArtistImage(name, uri) }
     val logoGallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) repo.setArtistLogo(name, uri) }
     val logoFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) repo.setArtistLogo(name, uri) }
     val batch = rememberFolderImport()
+    LaunchedEffect(name) {
+        repo.artFailed.collect { a -> if (a == name) Toast.makeText(context, "无法读取这张图片", Toast.LENGTH_SHORT).show() }
+    }
+    return remember(name, poster, logoGallery, logoFile, batch) {
+        ArtistArtActions(
+            pickPoster = { poster.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            clearPoster = { repo.clearArtistImage(name) },
+            pickLogoGallery = { logoGallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            pickLogoFile = { logoFile.launch(arrayOf("image/png", "image/webp", "image/*")) },
+            clearLogo = { repo.clearArtistLogo(name) },
+            batch = batch,
+        )
+    }
+}
+
+@Composable
+fun ArtistArtSheet(name: String, customPoster: String?, logo: ArtistLogoInfo?, actions: ArtistArtActions, onDismiss: () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismiss, sheetState = state, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, shape = EchoShape.card) {
-        ArtistArtSheetContent(
-            name, customPoster != null, logo,
-            ArtistArtActions(
-                pickPoster = { poster.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                clearPoster = { repo.clearArtistImage(name) },
-                pickLogoGallery = { logoGallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                pickLogoFile = { logoFile.launch(arrayOf("image/png", "image/webp", "image/*")) },
-                clearLogo = { repo.clearArtistLogo(name) },
-                batch = batch,
-            ),
-        )
+        ArtistArtSheetContent(name, customPoster != null, logo, actions)
     }
 }
 
@@ -137,6 +148,7 @@ fun ArtistArtSheetContent(name: String, hasPoster: Boolean, logo: ArtistLogoInfo
 @Composable
 private fun PosterPreview(name: String, logo: ArtistLogoInfo?) {
     val poster = rememberArtistPoster(name)
+    val busy by (LocalContext.current.applicationContext as EchoApp).container.library.artBusy.collectAsState()
     val base = remember(name) { seededColor(name) }
     BoxWithConstraints(
         Modifier.fillMaxWidth().aspectRatio(16f / 10f).clip(EchoShape.card).background(lerp(base, Ink, 0.5f)),
@@ -147,6 +159,10 @@ private fun PosterPreview(name: String, logo: ArtistLogoInfo?) {
         ArtistNameMark(
             name, logo, maxWidth - 48.dp, maxHeight * 0.38f,
             Modifier.align(Alignment.Center), textSize = 40.sp, minTextSize = 18.sp,
+        )
+        if (name in busy) LinearProgressIndicator(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(2.dp),
+            color = palette.signal, trackColor = Color.Transparent,
         )
     }
 }
@@ -192,7 +208,7 @@ fun rememberFolderImport(): () -> Unit {
     }
     report?.let { r -> ImportReportDialog(r) { report = null } }
     if (busy) AlertDialog(onDismissRequest = {}, confirmButton = {}, title = { Text("正在导入…") })
-    return { launcher.launch(null) }
+    return remember(launcher) { { launcher.launch(null) } }
 }
 
 @Composable

@@ -52,6 +52,7 @@ private const val PHONE = "zh-rCN-w400dp-h880dp-normal-long-notround-any-xhdpi-k
 
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
+@org.robolectric.annotation.ConscryptMode(org.robolectric.annotation.ConscryptMode.Mode.OFF)
 @Config(sdk = [34], qualifiers = PHONE)
 class ScreenshotTest {
 
@@ -138,6 +139,8 @@ class ScreenshotTest {
     @Test fun album_dark() = app("album_dark", route = "album/1")
     @Test fun search_dark() = app("search_dark", route = "search")
     @Test fun settings_dark() = app("settings_dark", route = "settings")
+    @Test fun settings_light() = app("settings_light", dark = false, route = "settings")
+    @Test fun folders_dark() = app("folders_dark", route = "settings/folders")
     @Test fun daily_dark() = app("daily_dark", route = "mix/daily")
 
     @Test fun artist_sheet_dark() {

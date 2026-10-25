@@ -194,3 +194,10 @@ fun seededGradient(seed: String): List<Color> {
     val c = seededColor(seed)
     return listOf(c, androidx.compose.ui.graphics.lerp(c, Ink, 0.55f))
 }
+
+object EchoMotion {
+    const val Quick = 160
+    const val Standard = 260
+    const val Medium = 300
+    const val Emphasized = 420
+}

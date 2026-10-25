@@ -42,6 +42,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.novcloud.echo.data.ThemeMode
 import com.novcloud.echo.ui.AppRoot
 import com.novcloud.echo.ui.theme.EchoTheme
+import com.novcloud.echo.ui.theme.SystemBars
 import com.novcloud.echo.ui.components.echoAura
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -56,11 +57,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             val mode by container.prefs.theme.collectAsState(initial = ThemeMode.System)
             val dark = when (mode) { ThemeMode.Dark -> true; ThemeMode.Light -> false; else -> isSystemInDarkTheme() }
-            LaunchedEffect(dark) {
+            val lightStatus = dark || SystemBars.lightStatusIcons
+            val lightNav = dark || SystemBars.lightNavIcons
+            LaunchedEffect(lightStatus, lightNav) {
                 val scrim = android.graphics.Color.TRANSPARENT
                 enableEdgeToEdge(
-                    statusBarStyle = if (dark) SystemBarStyle.dark(scrim) else SystemBarStyle.light(scrim, scrim),
-                    navigationBarStyle = if (dark) SystemBarStyle.dark(scrim) else SystemBarStyle.light(scrim, scrim),
+                    statusBarStyle = if (lightStatus) SystemBarStyle.dark(scrim) else SystemBarStyle.light(scrim, scrim),
+                    navigationBarStyle = if (lightNav) SystemBarStyle.dark(scrim) else SystemBarStyle.light(scrim, scrim),
                 )
             }
             EchoTheme(dark) {

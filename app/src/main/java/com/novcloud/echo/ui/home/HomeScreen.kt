@@ -114,10 +114,22 @@ fun HomeScreen() {
                 }
             }
         }
-        if (lib.loaded && lib.songs.isEmpty()) {
-            item {
+        if (!lib.loaded) {
+            item(key = "loading") {
+                androidx.compose.material3.LinearProgressIndicator(
+                    Modifier.padding(horizontal = 20.dp, vertical = 24.dp).fillMaxWidth().height(2.dp),
+                    color = p.signal, trackColor = p.rule,
+                )
+            }
+            return@LazyColumn
+        }
+        if (lib.songs.isEmpty()) {
+            item(key = "empty") {
                 EmptyState(null, "未找到本地音乐", Modifier.padding(top = 60.dp)) {
-                    SolidButton("重新扫描") { if (!scanning) container.library.refresh() }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SolidButton("扫描文件夹") { actions.openScanFolders() }
+                        SolidButton("重新扫描", primary = false) { if (!scanning) container.library.refresh() }
+                    }
                 }
             }
             return@LazyColumn

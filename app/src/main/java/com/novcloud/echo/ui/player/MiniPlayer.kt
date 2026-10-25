@@ -1,5 +1,7 @@
 package com.novcloud.echo.ui.player
 
+import com.novcloud.echo.ui.theme.EchoMotion
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -118,7 +120,7 @@ fun SharedTransitionScope.MiniPlayer(avs: AnimatedVisibilityScope, onExpand: () 
             AnimatedContent(
                 targetState = song,
                 transitionSpec = {
-                    (slideInVertically(tween(320)) { it / 2 } + fadeIn(tween(240))) togetherWith (slideOutVertically(tween(240)) { -it / 2 } + fadeOut(tween(160)))
+                    (slideInVertically(tween(EchoMotion.Medium)) { it / 2 } + fadeIn(tween(EchoMotion.Standard))) togetherWith (slideOutVertically(tween(EchoMotion.Standard)) { -it / 2 } + fadeOut(tween(EchoMotion.Quick)))
                 },
                 modifier = Modifier.weight(1f).graphicsLayer { alpha = 1f - (abs(dragX.value) / 400f).coerceIn(0f, 0.7f) },
                 label = "mini_title",
