@@ -32,15 +32,20 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    val storeFilePath = providers.gradleProperty("ECHO_STORE_FILE").orNull
+    val hasReleaseKey = storeFilePath != null && file(storeFilePath).exists()
+
     signingConfigs {
-        create("release") {
-            storeFile = file(providers.gradleProperty("ECHO_STORE_FILE").get())
-            storePassword = providers.gradleProperty("ECHO_STORE_PASSWORD").get()
-            keyAlias = providers.gradleProperty("ECHO_KEY_ALIAS").get()
-            keyPassword = providers.gradleProperty("ECHO_KEY_PASSWORD").get()
-            enableV1Signing = true
-            enableV2Signing = true
-            enableV3Signing = true
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(storeFilePath!!)
+                storePassword = providers.gradleProperty("ECHO_STORE_PASSWORD").get()
+                keyAlias = providers.gradleProperty("ECHO_KEY_ALIAS").get()
+                keyPassword = providers.gradleProperty("ECHO_KEY_PASSWORD").get()
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
         }
     }
 
@@ -49,11 +54,11 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseKey) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
         debug {
             applicationIdSuffix = ".debug"
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseKey) signingConfig = signingConfigs.getByName("release")
         }
     }
 

@@ -33,6 +33,28 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Restore release keystore
+        env:
+          ECHO_KEYSTORE_BASE64: ${{ secrets.ECHO_KEYSTORE_BASE64 }}
+          ECHO_STORE_PASSWORD: ${{ secrets.ECHO_STORE_PASSWORD }}
+          ECHO_KEY_ALIAS: ${{ secrets.ECHO_KEY_ALIAS }}
+          ECHO_KEY_PASSWORD: ${{ secrets.ECHO_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ECHO_KEYSTORE_BASE64" ]; then
+            mkdir -p keystore
+            echo "$ECHO_KEYSTORE_BASE64" | base64 -d > keystore/release.jks
+            mkdir -p ~/.gradle
+            {
+              echo "ECHO_STORE_FILE=$GITHUB_WORKSPACE/keystore/release.jks"
+              echo "ECHO_STORE_PASSWORD=$ECHO_STORE_PASSWORD"
+              echo "ECHO_KEY_ALIAS=$ECHO_KEY_ALIAS"
+              echo "ECHO_KEY_PASSWORD=$ECHO_KEY_PASSWORD"
+            } >> ~/.gradle/gradle.properties
+            echo "SIGNED=true" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No release keystore secrets; building with debug signing"
+          fi
+
       - name: Build release APK
         run: |
           chmod +x gradlew
@@ -49,8 +71,9 @@ jobs:
           ls -la "$DEST"
 
       - name: Verify APK signature
+        if: env.SIGNED == 'true'
         env:
-          # SHA-256 of keystore/release.jks (alias echo). Every release must match, or installs can't upgrade.
+          # SHA-256 of the release keystore (alias echo). Every release must match, or installs can't upgrade.
           EXPECTED_CERT_SHA256: ae1ae1bc6f1e51bf6cb025ec951f41acbb57a22aa6a60845cb4b2f3f325012af
         run: |
           # build-tools/* can match several versions; use the newest explicitly.
