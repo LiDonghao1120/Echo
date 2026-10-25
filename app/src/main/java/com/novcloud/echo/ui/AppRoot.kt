@@ -27,6 +27,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.text.font.FontWeight
 import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.EchoTheme
@@ -102,7 +104,12 @@ private val tabs = listOf(Tab("home", "首页"), Tab("library", "曲库"), Tab("
 private val tabRoutes = tabs.map { it.route }.toSet()
 
 @Composable
-fun AppRoot(openPlayer: StateFlow<Long>, startRoute: String = "home", startExpanded: Boolean = false) {
+fun AppRoot(
+    openPlayer: StateFlow<Long>,
+    startRoute: String = "home",
+    startExpanded: Boolean = false,
+    startPane: com.novcloud.echo.ui.player.PlayerPane = com.novcloud.echo.ui.player.PlayerPane.Art,
+) {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val nav = rememberNavController()
     val playerState by container.player.state.collectAsState()
@@ -164,7 +171,13 @@ fun AppRoot(openPlayer: StateFlow<Long>, startRoute: String = "home", startExpan
                         enter = fadeIn(tween(EchoMotion.Standard)) + slideInVertically { it / 2 },
                         exit = fadeOut(tween(EchoMotion.Standard)),
                     ) {
-                        MiniPlayer(this, onExpand = { expanded = true }, modifier = Modifier.padding(bottom = 6.dp))
+                        val dock by animateColorAsState(
+                            if (barVisible) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surface.copy(alpha = 0f),
+                            tween(EchoMotion.Medium), label = "dock",
+                        )
+                        Box(Modifier.fillMaxWidth().drawBehind { drawRect(dock) }) {
+                            MiniPlayer(this@AnimatedVisibility, onExpand = { expanded = true }, modifier = Modifier.padding(bottom = 6.dp))
+                        }
                     }
                     AnimatedVisibility(
                         visible = barVisible,
@@ -182,7 +195,7 @@ fun AppRoot(openPlayer: StateFlow<Long>, startRoute: String = "home", startExpan
                     enter = fadeIn(tween(EchoMotion.Standard)),
                     exit = fadeOut(tween(EchoMotion.Standard)),
                 ) {
-                    NowPlayingScreen(this, onCollapse = { expanded = false })
+                    NowPlayingScreen(this, onCollapse = { expanded = false }, startPane = startPane)
                 }
             }
         }

@@ -2,10 +2,14 @@ package com.novcloud.echo.playback
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.SystemClock
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -28,13 +32,14 @@ class PlaybackService : MediaSessionService() {
     private lateinit var player: ExoPlayer
     private lateinit var tracker: PlayTracker
     private var restored = false
+    private val watchdog = PlaybackWatchdog()
 
     private val app get() = application as EchoApp
 
     override fun onCreate() {
         super.onCreate()
         val c = app.container
-        player = ExoPlayer.Builder(this)
+        player = ExoPlayer.Builder(this, DefaultRenderersFactory(this).forceDisableMediaCodecAsynchronousQueueing())
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
                 true,
@@ -65,6 +70,20 @@ class PlaybackService : MediaSessionService() {
                 if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) saveQueue()
             }
 
+            override fun onPlayerError(error: PlaybackException) {
+                Log.w(TAG, "player error ${error.errorCodeName} on ${player.currentMediaItem?.mediaId}", error)
+                val fatal = error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
+                    error.errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ||
+                    error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
+                val action = watchdog.onError(SystemClock.elapsedRealtime(), player.currentMediaItem?.mediaId, player.hasNextMediaItem(), fatal)
+                scope.launch { recover(action, resume = true) }
+            }
+
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK && !player.isPlaying) saveQueue()
+            }
+
             override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = saveQueue()
             override fun onRepeatModeChanged(repeatMode: Int) = saveQueue()
         })
@@ -87,6 +106,49 @@ class PlaybackService : MediaSessionService() {
                 if (player.isPlaying) saveQueue()
             }
         }
+        scope.launch {
+            while (isActive) {
+                delay(1_000)
+                val action = watchdog.tick(SystemClock.elapsedRealtime(), snapshot())
+                if (action != PlaybackWatchdog.Action.None) {
+                    Log.w(TAG, "playback stalled at ${player.currentPosition} ms on ${player.currentMediaItem?.mediaId}: $action")
+                    recover(action, resume = true)
+                }
+            }
+        }
+    }
+
+    private fun snapshot() = PlaybackWatchdog.Snapshot(
+        itemKey = player.currentMediaItem?.mediaId,
+        playWhenReady = player.playWhenReady,
+        ready = player.playbackState == Player.STATE_READY,
+        buffering = player.playbackState == Player.STATE_BUFFERING,
+        suppressed = player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE,
+        positionMs = player.currentPosition,
+        hasNext = player.hasNextMediaItem(),
+    )
+
+    /** stop() + prepare() releases the renderers and the source, so a hung decoder or read is rebuilt. */
+    private fun recover(action: PlaybackWatchdog.Action, resume: Boolean) {
+        when (action) {
+            PlaybackWatchdog.Action.None -> return
+            PlaybackWatchdog.Action.Reprepare -> {
+                val index = player.currentMediaItemIndex
+                val position = player.currentPosition
+                player.stop()
+                player.seekTo(index, position)
+                player.prepare()
+            }
+            PlaybackWatchdog.Action.Skip -> {
+                player.seekToNextMediaItem()
+                player.prepare()
+            }
+            PlaybackWatchdog.Action.Stop -> {
+                player.pause()
+                return
+            }
+        }
+        if (resume) player.playWhenReady = true
     }
 
     private suspend fun restore() {
@@ -100,6 +162,7 @@ class PlaybackService : MediaSessionService() {
             player.setMediaItems(items, idx, if (items[idx].songId() == currentId) saved.positionMs else 0)
             player.shuffleModeEnabled = saved.shuffle
             player.repeatMode = saved.repeat
+            player.prepare()
         }
         restored = true
     }
@@ -131,6 +194,10 @@ class PlaybackService : MediaSessionService() {
         session = null
         scope.cancel()
         super.onDestroy()
+    }
+
+    private companion object {
+        const val TAG = "EchoPlayback"
     }
 
     private inner class Callback : MediaSession.Callback {

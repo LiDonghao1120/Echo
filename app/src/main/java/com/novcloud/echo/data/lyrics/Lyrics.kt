@@ -78,11 +78,18 @@ object Bilingual {
     private val separators = listOf(" // ", " / ", " | ", "｜", "\t", " ／ ")
     private const val OPENERS = "(（[【「『“\"'《〈"
 
+    /**
+     * Inline "original translation" lines are only split when the song as a whole looks bilingual: at least three
+     * such lines, covering half of the lines in a foreign script, and more of them than plain Chinese lines.
+     * That keeps Chinese songs with an English phrase here and there ("Baby 我想你") intact.
+     */
     fun split(lines: List<LyricLine>): List<LyricLine> {
         val bySeparator = lines.map { l -> if (l.translation == null) splitSeparator(l) else l }
-        val texts = bySeparator.filter { it.text.isNotBlank() }
-        val inline = texts.count { it.translation == null && inlineIndex(it.text) > 0 }
-        if (inline < 3 || inline * 2 < texts.size) return bySeparator
+        val open = bySeparator.filter { it.translation == null && it.text.isNotBlank() }
+        val inline = open.count { inlineIndex(it.text) > 0 }
+        val foreign = open.count { t -> t.text.any { isKana(it) || isHangul(it) || isLatin(it) } }
+        val plainHan = open.count { t -> t.text.any(::isHan) && t.text.none { isKana(it) || isHangul(it) || isLatin(it) } }
+        if (inline < 3 || inline * 2 < foreign || plainHan >= inline) return bySeparator
         return bySeparator.map { l ->
             if (l.translation != null) return@map l
             val i = inlineIndex(l.text)
@@ -104,16 +111,47 @@ object Bilingual {
         return l
     }
 
+    /**
+     * Start of a trailing translation inside one line, or -1. Candidates are whitespace boundaries (including the
+     * full-width space) and direct Latin-to-CJK transitions; the leftmost one whose tail is a translation wins, so
+     * "dirtyはnothingだ　歪んだbrain 脑子不值一提" cuts before 脑, not inside the Japanese.
+     * A tail is a translation when it has no Latin letters and its script is missing from the head:
+     * pure Han after kana/hangul/Latin (Chinese), kana after Latin/hangul (Japanese), hangul after anything else (Korean).
+     */
     fun inlineIndex(text: String): Int {
-        val first = text.indexOfFirst { isHan(it) || isKana(it) }
-        if (first <= 0) return -1
-        var cut = first
-        while (cut > 0 && (text[cut - 1] in OPENERS || text[cut - 1].isWhitespace())) cut--
-        while (cut < first && text[cut].isWhitespace()) cut++
-        val head = text.substring(0, cut)
-        if (head.count { it.isLetter() && it.code < 0x250 } < 2) return -1
-        if (head.any { isHan(it) || isKana(it) || isHangul(it) }) return -1
-        return cut
+        var i = 1
+        while (i < text.length) {
+            val boundary = when {
+                text[i - 1].isWhitespace() && !text[i].isWhitespace() -> true
+                isLatin(text[i - 1]) && (isHan(text[i]) || isKana(text[i]) || isHangul(text[i])) -> true
+                else -> false
+            }
+            if (boundary) {
+                var cut = i
+                while (cut > 0 && text[cut - 1] in OPENERS) cut--
+                if (isTranslation(text.substring(0, cut), text.substring(cut))) return cut
+            }
+            i++
+        }
+        return -1
+    }
+
+    private fun isTranslation(head: String, tail: String): Boolean {
+        val h = head.trim()
+        if (h.isEmpty() || tail.isBlank() || tail.any(::isLatin)) return false
+        val hKana = h.any(::isKana)
+        val hHangul = h.any(::isHangul)
+        val hHan = h.any(::isHan)
+        val hLatin = h.count(::isLatin)
+        val tKana = tail.any(::isKana)
+        val tHangul = tail.any(::isHangul)
+        val tHan = tail.any(::isHan)
+        return when {
+            tHangul -> !tKana && !hHangul && (hKana || hHan || hLatin >= 2)
+            tKana -> !hKana && !hHan && (hHangul || hLatin >= 2)
+            tHan -> hKana || hHangul || (!hHan && hLatin >= 2)
+            else -> false
+        }
     }
 
     private fun script(s: String): Script = when {
@@ -124,9 +162,11 @@ object Bilingual {
         else -> Script.None
     }
 
-    private fun isHan(c: Char) = c in '\u4E00'..'\u9FFF' || c in '\u3400'..'\u4DBF' || c in '\uF900'..'\uFAFF'
+    private fun isHan(c: Char) = c in '\u4E00'..'\u9FFF' || c in '\u3400'..'\u4DBF' || c in '\uF900'..'\uFAFF' || c == '\u3005'
     private fun isKana(c: Char) = c in '\u3040'..'\u30FF'
-    private fun isHangul(c: Char) = c in '\uAC00'..'\uD7AF' || c in '\u1100'..'\u11FF'
+    /** Letters of alphabetic scripts (Latin, Cyrillic, Greek…), i.e. anything that is not CJK. */
+    private fun isLatin(c: Char) = c.isLetter() && !isHan(c) && !isKana(c) && !isHangul(c) && c.code < 0x2E80
+    private fun isHangul(c: Char) = c in '\uAC00'..'\uD7AF' || c in '\u1100'..'\u11FF' || c in '\u3130'..'\u318F'
 }
 
 class LyricsLoader(private val context: Context) {
@@ -138,6 +178,8 @@ class LyricsLoader(private val context: Context) {
     @Volatile private var treeIndex: Pair<String, Map<String, Uri>>? = null
 
     private fun key(song: Song, tree: String?) = "${song.id}|${tree.orEmpty()}"
+
+    internal fun prime(song: Song, tree: String?, lyrics: Lyrics?) = synchronized(cache) { cache[key(song, tree)] = Loaded(lyrics) }
 
     fun peek(song: Song, tree: String?): Loaded? = synchronized(cache) { cache[key(song, tree)] }
 

@@ -89,4 +89,71 @@ class BilingualLyricsTest {
         val l = LrcParser.parse("[00:01.00]La la la\n[00:01.00]La la la\n[00:02.00]Na na")!!
         assertNull(l.lines[0].translation)
     }
+
+    @Test
+    fun japaneseAndMixedJapaneseEnglishWithChineseInSameLine() {
+        val l = LrcParser.parse(
+            """
+            [00:01.00]Discord-disco - 十明
+            [00:05.00]They couldn't feel the love because of discord. 就因不够和谐他们无法感受爱意
+            [00:09.00]やけに気取ってもうてるgentle 如此装腔作势的温柔
+            [00:13.00]なんで、なんで、なんでなんでって 为何 为何 请告诉我为何
+            [00:16.00]♪
+            [00:20.00]物語のあの子は可憐さ 故事里的那个孩子真可怜
+            [00:24.00]dirtyはnothingだ　歪んだbrain 脑子不值一提 但他太脑子就变形
+            [00:28.00]Oh oh oh
+            """.trimIndent(),
+        )!!
+        val byText = l.lines.associateBy { it.text }
+        assertEquals("就因不够和谐他们无法感受爱意", byText["They couldn't feel the love because of discord."]!!.translation)
+        assertEquals("如此装腔作势的温柔", byText["やけに気取ってもうてるgentle"]!!.translation)
+        assertEquals("为何 为何 请告诉我为何", byText["なんで、なんで、なんでなんでって"]!!.translation)
+        assertEquals("故事里的那个孩子真可怜", byText["物語のあの子は可憐さ"]!!.translation)
+        assertEquals("脑子不值一提 但他太脑子就变形", byText["dirtyはnothingだ　歪んだbrain"]!!.translation)
+        assertNull(byText["Oh oh oh"]!!.translation)
+        assertNull(byText["♪"]!!.translation)
+    }
+
+    @Test
+    fun koreanGermanFrenchWithChinese() {
+        val l = LrcParser.parse(
+            """
+            [00:01.00]사랑해 너를 我爱你
+            [00:02.00]Ich liebe dich so sehr 我如此爱你
+            [00:03.00]Je ne regrette rien 我无怨无悔
+            [00:04.00]Всё будет хорошо 一切都会好的
+            """.trimIndent(),
+        )!!
+        assertEquals("사랑해 너를", l.lines[0].text)
+        assertEquals("我爱你", l.lines[0].translation)
+        assertEquals("Ich liebe dich so sehr", l.lines[1].text)
+        assertEquals("我无怨无悔", l.lines[2].translation)
+        assertEquals("Всё будет хорошо", l.lines[3].text)
+        assertEquals("一切都会好的", l.lines[3].translation)
+    }
+
+    @Test
+    fun japaneseSongWithoutTranslationStaysWhole() {
+        val l = LrcParser.parse(
+            """
+            [00:01.00]夢を見た 未来
+            [00:02.00]君と歩いた道
+            [00:03.00]忘れないで
+            [00:04.00]空を見上げて 明日
+            [00:05.00]さよなら
+            [00:06.00]光の中で
+            """.trimIndent(),
+        )!!
+        assertEquals("夢を見た 未来", l.lines[0].text)
+        assertNull(l.lines[0].translation)
+        assertEquals("空を見上げて 明日", l.lines[3].text)
+    }
+
+    @Test
+    fun englishWithJapaneseTranslation() {
+        val l = LrcParser.parse("[00:01.00]I love you 愛してる\n[00:02.00]Stay with me 一緒にいて\n[00:03.00]Forever and ever ずっと")!!
+        assertEquals("I love you", l.lines[0].text)
+        assertEquals("愛してる", l.lines[0].translation)
+        assertEquals("ずっと", l.lines[2].translation)
+    }
 }

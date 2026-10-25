@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -224,7 +225,7 @@ private fun ReportPoster(s: Stats, range: StatsRange, today: LocalDate) {
             }
         }
         Spacer(Modifier.height(4.dp))
-        Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
             PosterFigure(s.plays.toLong(), "次播放", Modifier.weight(1f))
             Box(Modifier.width(1.dp).fillMaxHeight().background(Paper.copy(alpha = 0.14f)))
             PosterFigure(s.songs.toLong(), "首歌", Modifier.weight(1f).padding(start = 14.dp))
@@ -246,7 +247,8 @@ private fun ReportPoster(s: Stats, range: StatsRange, today: LocalDate) {
 private fun PosterFigure(value: Long, label: String, modifier: Modifier = Modifier) {
     Column(modifier) {
         AnimatedNumber(value, style = EchoType.poster(34.sp), color = Paper)
-        Text(label, style = MaterialTheme.typography.labelMedium, color = Paper.copy(alpha = 0.55f))
+        Spacer(Modifier.height(4.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Paper.copy(alpha = 0.55f), maxLines = 1, softWrap = false)
     }
 }
 

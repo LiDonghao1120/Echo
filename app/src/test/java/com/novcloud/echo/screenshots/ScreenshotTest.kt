@@ -82,6 +82,7 @@ class ScreenshotTest {
         dark: Boolean = true,
         route: String = "home",
         expanded: Boolean = false,
+        pane: com.novcloud.echo.ui.player.PlayerPane = com.novcloud.echo.ui.player.PlayerPane.Art,
         playing: Boolean = true,
         tall: Int? = null,
         withArt: Boolean = true,
@@ -95,7 +96,7 @@ class ScreenshotTest {
         compose.setContent {
             EchoTheme(dark, motion = false) {
                 Surface(color = MaterialTheme.colorScheme.surface) {
-                    AppRoot(MutableStateFlow(0L), startRoute = route, startExpanded = expanded)
+                    AppRoot(MutableStateFlow(0L), startRoute = route, startExpanded = expanded, startPane = pane)
                 }
             }
         }
@@ -131,6 +132,11 @@ class ScreenshotTest {
     @Test fun stats_light_tall() = app("stats_light_tall", dark = false, route = "stats", tall = 3300)
 
     @Test fun nowplaying_dark() = app("nowplaying_dark", expanded = true)
+
+    @Test fun lyrics_dark() {
+        Samples.primeLyrics(ctx)
+        app("lyrics_dark", expanded = true, pane = com.novcloud.echo.ui.player.PlayerPane.Lyrics)
+    }
 
     @Test fun library_artists_dark() = app("library_artists_dark", route = "library") {
         compose.onNodeWithText("歌手").performClick()

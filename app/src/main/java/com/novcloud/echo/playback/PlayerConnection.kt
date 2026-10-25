@@ -49,18 +49,31 @@ class PlayerConnection(
     private val _position = MutableStateFlow(0L)
     val position: StateFlow<Long> = _position.asStateFlow()
     private var ticker: Job? = null
+    private var pendingSeek: Long? = null
 
     fun connect() {
         if (controller != null || connecting) return
         connecting = true
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        val future = MediaController.Builder(context, token).buildAsync()
+        val future = MediaController.Builder(context, token)
+            .setListener(object : MediaController.Listener {
+                override fun onDisconnected(controller: MediaController) = onLost(controller)
+            })
+            .buildAsync()
         future.addListener({
             connecting = false
-            val c = runCatching { future.get() }.getOrNull() ?: return@addListener
+            val c = runCatching { future.get() }.getOrNull()
+            if (c == null) {
+                scope.launch { delay(1_000); if (pending.isNotEmpty()) connect() }
+                return@addListener
+            }
             controller = c
             c.addListener(object : Player.Listener {
-                override fun onEvents(player: Player, events: Player.Events) = sync()
+                override fun onEvents(player: Player, events: Player.Events) {
+                    if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) pendingSeek = null
+                    applyPendingSeek(c)
+                    sync()
+                }
             })
             sync()
             pending.forEach { it(c) }
@@ -71,20 +84,34 @@ class PlayerConnection(
 
     fun release() {
         ticker?.cancel()
-        controller?.release()
+        val c = controller
         controller = null
+        c?.release()
+    }
+
+    /** The session went away (service destroyed or crashed): drop the dead controller instead of showing its last state. */
+    private fun onLost(c: MediaController) {
+        if (controller !== c) return
+        controller = null
+        ticker?.cancel()
+        _state.value = _state.value.copy(isPlaying = false, buffering = false)
+        connect()
     }
 
     private fun withController(block: (MediaController) -> Unit) {
-        val c = controller
-        if (c != null) block(c) else { pending += block; connect() }
+        val c = controller?.takeIf { it.isConnected }
+        if (c != null) block(c) else {
+            controller?.let { onLost(it) }
+            pending += block
+            connect()
+        }
     }
 
     private fun startTicker() {
         ticker?.cancel()
         ticker = scope.launch {
             while (isActive) {
-                controller?.let { _position.value = it.currentPosition }
+                controller?.takeIf { it.isConnected && pendingSeek == null }?.let { _position.value = it.currentPosition }
                 delay(if (_state.value.isPlaying) 200 else 600)
             }
         }
@@ -98,7 +125,7 @@ class PlayerConnection(
     }
 
     private fun sync() {
-        val c = controller ?: return
+        val c = controller?.takeIf { it.isConnected } ?: return
         val lib = library.value
         val timeline = c.currentTimeline
         val queue = ArrayList<QueueEntry>()
@@ -113,7 +140,7 @@ class PlayerConnection(
         }
         _state.value = PlayerState(
             song = c.currentMediaItem?.let { songFor(it, lib) },
-            isPlaying = c.isPlaying,
+            isPlaying = c.playingOrBuffering(),
             buffering = c.playbackState == Player.STATE_BUFFERING,
             durationMs = c.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: (c.currentMediaItem?.let { songFor(it, lib)?.durationMs } ?: 0),
             shuffle = c.shuffleModeEnabled,
@@ -121,7 +148,7 @@ class PlayerConnection(
             queue = queue,
             currentIndex = c.currentMediaItemIndex,
         )
-        _position.value = c.currentPosition
+        if (pendingSeek == null) _position.value = c.currentPosition
     }
 
     private fun songFor(item: MediaItem, lib: Library): Song? {
@@ -159,7 +186,7 @@ class PlayerConnection(
     }
 
     fun toggle() = withController { c ->
-        if (c.isPlaying) c.pause() else {
+        if (c.playingOrBuffering()) c.pause() else {
             if (c.playbackState == Player.STATE_IDLE) c.prepare()
             if (c.playbackState == Player.STATE_ENDED) c.seekTo(c.currentMediaItemIndex, 0)
             c.play()
@@ -170,7 +197,28 @@ class PlayerConnection(
     fun previous() = withController { c ->
         if (c.currentPosition > 3000 || !c.hasPreviousMediaItem()) c.seekTo(0) else c.seekToPreviousMediaItem()
     }
-    fun seekTo(ms: Long) = withController { it.seekTo(ms); _position.value = ms }
+    /**
+     * Before the current item is prepared its timeline window is a non-seekable placeholder, so the session does not
+     * offer COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM and MediaController.seekTo is silently dropped. Prepare and seek once
+     * the command shows up.
+     */
+    fun seekTo(ms: Long) = withController { c ->
+        _position.value = ms
+        if (c.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)) {
+            pendingSeek = null
+            c.seekTo(ms)
+        } else {
+            pendingSeek = ms
+            if (c.playbackState == Player.STATE_IDLE) c.prepare()
+        }
+    }
+
+    private fun applyPendingSeek(c: MediaController) {
+        val ms = pendingSeek ?: return
+        if (!c.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)) return
+        pendingSeek = null
+        c.seekTo(ms)
+    }
     fun toggleShuffle() = withController { it.shuffleModeEnabled = !it.shuffleModeEnabled }
     fun cycleRepeat() = withController {
         it.repeatMode = when (it.repeatMode) {
@@ -206,6 +254,8 @@ class PlayerConnection(
         if (cur + 1 < c.mediaItemCount) c.removeMediaItems(cur + 1, c.mediaItemCount)
         if (cur > 0) c.removeMediaItems(0, cur)
     }
+
+    private fun Player.playingOrBuffering() = isPlaying || playWhenReady && playbackState == Player.STATE_BUFFERING
 
     private fun MediaController.timelineNextIndex(): Int =
         (currentMediaItemIndex + 1).coerceAtMost(mediaItemCount)

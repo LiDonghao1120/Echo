@@ -12,7 +12,7 @@ val appId = "com.novcloud.echo"
 
 val refName: String? = System.getenv("GITHUB_REF_NAME")
 val tagVersion: String? = refName?.takeIf { System.getenv("GITHUB_REF_TYPE") == "tag" && it.startsWith("v") }?.removePrefix("v")
-val appVersionName: String = tagVersion ?: "0.4.0"
+val appVersionName: String = tagVersion ?: "0.5.0"
 val appVersionCode: Int = run {
     val parts = appVersionName.substringBefore('-').split('.').mapNotNull { it.toIntOrNull() }
     val (ma, mi, pa) = Triple(parts.getOrElse(0) { 0 }, parts.getOrElse(1) { 1 }, parts.getOrElse(2) { 0 })

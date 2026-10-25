@@ -117,12 +117,12 @@ import kotlin.math.roundToInt
 enum class PlayerPane { Art, Lyrics, Queue }
 
 @Composable
-fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onCollapse: () -> Unit) {
+fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onCollapse: () -> Unit, startPane: PlayerPane = PlayerPane.Art) {
     val actions = LocalActions.current
     val state by actions.player.state.collectAsState()
     val favorites by actions.repo.favorites.collectAsState()
     val song = state.song
-    var pane by rememberSaveable { mutableStateOf(PlayerPane.Art) }
+    var pane by rememberSaveable { mutableStateOf(startPane) }
     val colors = rememberArtColors(song?.art)
     val dragY = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()

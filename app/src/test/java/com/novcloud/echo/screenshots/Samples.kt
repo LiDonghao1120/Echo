@@ -137,4 +137,28 @@ object Samples {
             s.durationMs * 37 / 100,
         )
     }
+
+    /** Self-written bilingual lines in the formats real LRC files use: inline, mixed Japanese/English, separator. */
+    fun primeLyrics(context: Context, songTitle: String = "Paper Satellites") {
+        val s = songs.first { it.title == songTitle }
+        val step = s.durationMs / 14
+        val raw = listOf(
+            "Paper satellites over the bay 纸做的卫星飞过海湾",
+            "夜明けまで待ってるよ 我会等到天亮",
+            "ネオンの海でdancing alone 在霓虹之海独自起舞",
+            "We folded every letter into wings 我们把每封信折成翅膀",
+            "♪",
+            "静かなstatic 君の声 寂静的杂音 你的声音",
+            "Hold the signal, hold it close 抓住信号 紧紧抓住",
+            "遠くへ 遠くへ 去远方 去远方",
+            "Ich höre dich im Rauschen 我在杂音里听见你",
+            "Paper satellites, come home / 纸卫星啊 回家吧",
+        )
+        val lrc = raw.mapIndexed { i, line ->
+            val t = step * (i + 1)
+            "[%02d:%02d.%02d]%s".format(t / 60_000, t / 1000 % 60, t % 1000 / 10, line)
+        }.joinToString("\n")
+        val c = app(context)
+        c.lyrics.prime(s, c.lyricsTree.value, com.novcloud.echo.data.lyrics.LrcParser.parse(lrc))
+    }
 }

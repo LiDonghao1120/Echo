@@ -61,7 +61,7 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 ### Lyrics
 - **Synced LRC lyrics** that scroll with the song. Tap a line to jump to it.
 - Echo looks for a `.lrc` file next to the song, then in a lyrics folder you choose, then for lyrics embedded in the file (ID3 USLT, FLAC `LYRICS`).
-- **Bilingual lyrics**: the translation sits under the original line. Lines with the same timestamp, `/`-separated pairs and "English 中文" lines are all recognised.
+- **Bilingual lyrics**: the translation sits under the original line. Lines with the same timestamp, `/`-separated pairs and "original translation" lines (English, Japanese, Korean, mixed Japanese and English, German…, followed by the Chinese) are all recognised.
 - Handles multiple timestamps, offsets and word-timing tags, and detects UTF-8 and GB18030 encodings.
 - Optionally keeps the screen on while lyrics are showing.
 
@@ -75,6 +75,7 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 - Media3 ExoPlayer in a background service, with controls in the notification, on the lock screen and on Bluetooth or wired headsets.
 - Pauses when headphones are unplugged and respects audio focus.
 - Your queue and position are restored after a restart.
+- If a track stalls or fails to decode, Echo restarts it where it stopped, and skips it if it keeps failing.
 - Dark, light or follow the system.
 
 ## Screenshots
