@@ -6,7 +6,9 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import androidx.documentfile.provider.DocumentFile
 import com.novcloud.echo.data.db.ArtistImage
+import com.novcloud.echo.data.db.ArtistLogo
 import com.novcloud.echo.data.db.EchoDatabase
 import com.novcloud.echo.data.db.Favorite
 import com.novcloud.echo.data.db.Playlist
@@ -50,6 +52,14 @@ class LibraryRepository(
     val artistImages: StateFlow<Map<String, String>> = db.artistImages().all()
         .map { l -> l.associate { it.artist to it.path } }
         .stateIn(scope, SharingStarted.Eagerly, emptyMap())
+
+    val artistLogos: StateFlow<Map<String, ArtistLogoInfo>> = db.artistLogos().all()
+        .map { l -> l.associate { it.artist to ArtistLogoInfo(File(it.path), it.aspect, it.luma) } }
+        .stateIn(scope, SharingStarted.Eagerly, emptyMap())
+
+    internal fun publish(lib: Library) {
+        _library.value = lib
+    }
 
     fun refresh() {
         scope.launch { rescan() }
@@ -107,20 +117,52 @@ class LibraryRepository(
     fun renamePlaylist(id: Long, name: String) = scope.launch { db.playlists().rename(id, name) }
     fun deletePlaylist(id: Long) = scope.launch { db.playlists().delete(id) }
 
-    fun setArtistImage(artist: String, source: Uri) = scope.launch(Dispatchers.IO) {
-        val dir = File(context.filesDir, "artists").apply { mkdirs() }
-        val file = File(dir, "${artist.hashCode().toUInt()}_${System.currentTimeMillis()}.jpg")
-        val ok = runCatching {
-            context.contentResolver.openInputStream(source)?.use { input -> file.outputStream().use { input.copyTo(it) } } != null
-        }.getOrDefault(false)
-        if (ok) {
-            artistImages.value[artist]?.let { File(it).delete() }
-            db.artistImages().put(ArtistImage(artist, file.absolutePath, System.currentTimeMillis()))
-        }
-    }
+    fun setArtistImage(artist: String, source: Uri) = scope.launch(Dispatchers.IO) { putPoster(artist, source) }
 
     fun clearArtistImage(artist: String) = scope.launch(Dispatchers.IO) {
         artistImages.value[artist]?.let { File(it).delete() }
         db.artistImages().remove(artist)
+    }
+
+    fun setArtistLogo(artist: String, source: Uri) = scope.launch(Dispatchers.IO) { putLogo(artist, source) }
+
+    fun clearArtistLogo(artist: String) = scope.launch(Dispatchers.IO) {
+        artistLogos.value[artist]?.file?.delete()
+        db.artistLogos().remove(artist)
+    }
+
+    private suspend fun putPoster(artist: String, source: Uri): Boolean {
+        val file = runCatching { ArtistArtStore.savePoster(context, artist, source) }.getOrNull() ?: return false
+        artistImages.value[artist]?.let { if (it != file.absolutePath) File(it).delete() }
+        db.artistImages().put(ArtistImage(artist, file.absolutePath, System.currentTimeMillis()))
+        return true
+    }
+
+    private suspend fun putLogo(artist: String, source: Uri): Boolean {
+        val info = runCatching { ArtistArtStore.saveLogo(context, artist, source) }.getOrNull() ?: return false
+        artistLogos.value[artist]?.file?.let { if (it != info.file) it.delete() }
+        db.artistLogos().put(ArtistLogo(artist, info.file.absolutePath, info.aspect, info.luma, System.currentTimeMillis()))
+        return true
+    }
+
+    suspend fun importFolder(tree: Uri): ImportReport = withContext(Dispatchers.IO) {
+        val root = DocumentFile.fromTreeUri(context, tree) ?: return@withContext ImportReport(0, 0, emptyList())
+        val index = ArtistFileMatcher.index(_library.value.artists.map { it.name })
+        var logos = 0
+        var posters = 0
+        val unmatched = ArrayList<String>()
+        root.listFiles().filter { it.isFile }.forEach { f ->
+            val name = f.name ?: return@forEach
+            val m = ArtistFileMatcher.match(name, index)
+            if (m == null) {
+                if (name.substringAfterLast('.', "").lowercase() in setOf("png", "jpg", "jpeg", "webp")) unmatched += name
+                return@forEach
+            }
+            when (m.kind) {
+                ArtKind.Logo -> if (putLogo(m.artist, f.uri)) logos++
+                ArtKind.Poster -> if (putPoster(m.artist, f.uri)) posters++
+            }
+        }
+        ImportReport(logos, posters, unmatched)
     }
 }

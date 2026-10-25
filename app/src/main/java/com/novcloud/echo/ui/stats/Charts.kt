@@ -7,7 +7,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,19 +16,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.novcloud.echo.domain.TrendPoint
+import com.novcloud.echo.ui.theme.EchoType
+import com.novcloud.echo.ui.theme.LocalMotion
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
@@ -37,9 +43,10 @@ import kotlin.math.min
 import kotlin.math.sin
 
 @Composable
-private fun rememberGrow(key: Any): Float {
-    val a = remember(key) { Animatable(0f) }
-    LaunchedEffect(key) { a.animateTo(1f, tween(900, easing = FastOutSlowInEasing)) }
+fun rememberGrow(key: Any, delayMs: Int = 0): Float {
+    val motion = LocalMotion.current
+    val a = remember(key) { Animatable(if (motion) 0f else 1f) }
+    LaunchedEffect(key) { if (motion) a.animateTo(1f, tween(1100, delayMs, FastOutSlowInEasing)) }
     return a.value
 }
 
@@ -53,145 +60,194 @@ fun shortDuration(ms: Long): String {
 }
 
 @Composable
-fun BarChart(points: List<TrendPoint>, color: Color, modifier: Modifier = Modifier) {
+fun HourDial(hourly: List<Long>, day: Color, night: Color, track: Color, ink: Color, modifier: Modifier = Modifier) {
+    val grow = rememberGrow(hourly)
+    val measurer = rememberTextMeasurer()
+    val maxV = max(1L, hourly.maxOrNull() ?: 1L)
+    val peak = hourly.indices.maxByOrNull { hourly[it] } ?: 0
+    Canvas(modifier) {
+        val r = min(size.width, size.height) / 2
+        val c = Offset(size.width / 2, size.height / 2)
+        val inner = r * 0.34f
+        val outer = r * 0.9f
+        val wedge = 360f / 24f
+        for (h in 0 until 24) {
+            val start = h * wedge - 90f + 1.2f
+            val sweep = wedge - 2.4f
+            val frac = hourly[h].toFloat() / maxV
+            drawArc(track, start, sweep, false, Offset(c.x - inner, c.y - inner), Size(inner * 2, inner * 2), style = Stroke(1.dp.toPx()))
+            val len = inner + (outer - inner) * max(0.04f, frac) * grow
+            val col = if (h in 6..17) day else night
+            val path = Path().apply {
+                moveTo(c.x + cos(Math.toRadians(start.toDouble())).toFloat() * inner, c.y + sin(Math.toRadians(start.toDouble())).toFloat() * inner)
+                arcTo(Rect(c, len), start, sweep, false)
+                arcTo(Rect(c, inner), start + sweep, -sweep, false)
+                close()
+            }
+            drawPath(path, if (h == peak) col else col.copy(alpha = 0.32f + 0.5f * frac))
+        }
+        listOf(0, 6, 12, 18).forEach { h ->
+            val ang = (h / 24f) * 2 * PI - PI / 2
+            val t = measurer.measure("%02d".format(h), EchoType.label.copy(fontSize = 9.sp, color = track.copy(alpha = 1f)))
+            val pt = c + Offset(cos(ang).toFloat(), sin(ang).toFloat()) * (inner * 0.7f)
+            drawText(t, topLeft = Offset(pt.x - t.size.width / 2, pt.y - t.size.height / 2))
+        }
+        drawCircle(ink, inner * 0.18f, c)
+    }
+}
+
+@Composable
+fun RidgeChart(points: List<TrendPoint>, line: Color, fill: Color, label: Color, ink: Color, modifier: Modifier = Modifier) {
     val grow = rememberGrow(points)
     val measurer = rememberTextMeasurer()
-    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val track = MaterialTheme.colorScheme.surfaceContainerHighest
-    val onSurface = MaterialTheme.colorScheme.onSurface
     var selected by remember(points) { mutableIntStateOf(points.indices.maxByOrNull { points[it].ms } ?: -1) }
     val maxV = max(1L, points.maxOfOrNull { it.ms } ?: 1L)
     Canvas(
-        modifier.fillMaxWidth().height(190.dp).pointerInput(points) {
+        modifier.fillMaxWidth().height(180.dp).pointerInput(points) {
             detectTapGestures { o ->
-                val slot = size.width / points.size.coerceAtLeast(1)
-                selected = (o.x / slot).toInt().coerceIn(0, points.lastIndex)
+                if (points.isEmpty()) return@detectTapGestures
+                val step = size.width / max(1, points.size - 1).toFloat()
+                selected = ((o.x + step / 2) / step).toInt().coerceIn(0, points.lastIndex)
             }
         },
     ) {
         if (points.isEmpty()) return@Canvas
-        val top = 30.dp.toPx()
-        val bottom = 22.dp.toPx()
+        val top = 34.dp.toPx()
+        val bottom = 20.dp.toPx()
         val h = size.height - top - bottom
-        val slot = size.width / points.size
-        val barW = min(slot * 0.62f, 22.dp.toPx())
-        val step = when { points.size > 20 -> 5; points.size > 12 -> 2; else -> 1 }
-        points.forEachIndexed { i, p ->
-            val cx = slot * i + slot / 2
-            val frac = p.ms.toFloat() / maxV
-            val bh = max(3.dp.toPx(), h * frac * grow)
-            drawRoundRect(track, Offset(cx - barW / 2, top), Size(barW, h), CornerRadius(barW / 2))
-            val c = if (i == selected) color else color.copy(alpha = 0.55f)
-            drawRoundRect(
-                Brush.verticalGradient(listOf(c, c.copy(alpha = c.alpha * 0.6f)), startY = top + h - bh, endY = top + h),
-                Offset(cx - barW / 2, top + h - bh), Size(barW, bh), CornerRadius(barW / 2),
-            )
-            if (i % step == 0 || i == points.lastIndex) {
-                val t = measurer.measure(p.label, TextStyle(fontSize = 10.sp, color = labelColor))
-                if (i % step == 0) drawText(t, topLeft = Offset(cx - t.size.width / 2f, size.height - t.size.height))
+        val n = points.size
+        val step = if (n > 1) size.width / (n - 1) else size.width
+        fun xy(i: Int) = Offset(if (n > 1) i * step else size.width / 2, top + h - h * (points[i].ms.toFloat() / maxV) * grow)
+        val stripes = 7
+        for (s in 0..stripes) {
+            val y = top + h * s / stripes
+            drawLine(label.copy(alpha = 0.12f), Offset(0f, y), Offset(size.width, y), 1f)
+        }
+        val area = Path().apply {
+            moveTo(0f, top + h)
+            for (i in 0 until n) {
+                val p = xy(i)
+                if (i == 0) lineTo(p.x, p.y) else {
+                    val prev = xy(i - 1)
+                    val mx = (prev.x + p.x) / 2
+                    cubicTo(mx, prev.y, mx, p.y, p.x, p.y)
+                }
+            }
+            lineTo(size.width, top + h)
+            close()
+        }
+        drawPath(area, Brush.verticalGradient(listOf(fill.copy(alpha = 0.85f), fill.copy(alpha = 0.15f)), startY = top, endY = top + h))
+        val ridge = Path().apply {
+            for (i in 0 until n) {
+                val p = xy(i)
+                if (i == 0) moveTo(p.x, p.y) else {
+                    val prev = xy(i - 1)
+                    val mx = (prev.x + p.x) / 2
+                    cubicTo(mx, prev.y, mx, p.y, p.x, p.y)
+                }
             }
         }
+        drawPath(ridge, line, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        val labelEvery = when { n > 20 -> 7; n > 12 -> 3; else -> 1 }
+        for (i in 0 until n) {
+            if (i % labelEvery != 0 && i != n - 1) continue
+            if (i == n - 1 && n > 12 && (n - 1) % labelEvery != 0 && (n - 1) % labelEvery < labelEvery / 2 + 1) continue
+            val t = measurer.measure(points[i].label, EchoType.label.copy(fontSize = 9.sp, letterSpacing = 0.5.sp, color = label))
+            val x = (xy(i).x - t.size.width / 2f).coerceIn(0f, size.width - t.size.width)
+            drawText(t, topLeft = Offset(x, size.height - t.size.height))
+        }
         if (selected in points.indices) {
-            val cx = slot * selected + slot / 2
-            val t = measurer.measure(shortDuration(points[selected].ms), TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = onSurface))
-            val x = (cx - t.size.width / 2f).coerceIn(0f, size.width - t.size.width)
+            val p = xy(selected)
+            drawLine(ink.copy(alpha = 0.6f), Offset(p.x, top - 4.dp.toPx()), Offset(p.x, top + h), 1.dp.toPx())
+            val sq = 9.dp.toPx()
+            drawRect(ink, Offset(p.x - sq / 2, p.y - sq / 2), Size(sq, sq))
+            drawRect(line, Offset(p.x - sq / 2 + 2.dp.toPx(), p.y - sq / 2 + 2.dp.toPx()), Size(sq - 4.dp.toPx(), sq - 4.dp.toPx()))
+            val t = measurer.measure(shortDuration(points[selected].ms), EchoType.numeral(13.sp).copy(color = ink))
+            val x = (p.x - t.size.width / 2f).coerceIn(0f, size.width - t.size.width)
             drawText(t, topLeft = Offset(x, 4.dp.toPx()))
         }
     }
 }
 
 @Composable
-fun RadialClock(hourly: List<Long>, color: Color, modifier: Modifier = Modifier) {
-    val grow = rememberGrow(hourly)
+fun TallyWeek(values: List<Long>, labels: List<String>, color: Color, track: Color, label: Color, modifier: Modifier = Modifier, cells: Int = 9) {
+    val grow = rememberGrow(values, 150)
     val measurer = rememberTextMeasurer()
-    val track = MaterialTheme.colorScheme.surfaceContainerHighest
-    val label = MaterialTheme.colorScheme.onSurfaceVariant
-    val maxV = max(1L, hourly.maxOrNull() ?: 1L)
-    val peak = hourly.indices.maxByOrNull { hourly[it] } ?: 0
-    Canvas(modifier) {
-        val r = min(size.width, size.height) / 2
-        val center = Offset(size.width / 2, size.height / 2)
-        val inner = r * 0.36f
-        val outer = r * 0.86f
-        val stroke = (2 * PI * inner / 24 * 0.55).toFloat()
-        drawCircle(track, inner - stroke, center, style = Stroke(1.dp.toPx()))
-        for (h in 0 until 24) {
-            val ang = (h / 24f) * 2 * PI - PI / 2
-            val dir = Offset(cos(ang).toFloat(), sin(ang).toFloat())
-            val len = (outer - inner) * (hourly[h].toFloat() / maxV) * grow
-            drawLine(track, center + dir * inner, center + dir * outer, stroke, StrokeCap.Round)
-            if (hourly[h] > 0) drawLine(
-                if (h == peak) color else color.copy(alpha = 0.55f),
-                center + dir * inner, center + dir * (inner + max(len, 1f)), stroke, StrokeCap.Round,
-            )
-        }
-        listOf(0, 6, 12, 18).forEach { h ->
-            val ang = (h / 24f) * 2 * PI - PI / 2
-            val t = measurer.measure("$h", TextStyle(fontSize = 10.sp, color = label))
-            val p = center + Offset(cos(ang).toFloat(), sin(ang).toFloat()) * (r * 0.97f)
-            drawText(t, topLeft = Offset(p.x - t.size.width / 2, p.y - t.size.height / 2))
-        }
-        val pt = measurer.measure("$peak:00", TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Black, color = color))
-        drawText(pt, topLeft = Offset(center.x - pt.size.width / 2, center.y - pt.size.height / 2))
-    }
-}
-
-@Composable
-fun WeekdayChart(values: List<Long>, labels: List<String>, color: Color, modifier: Modifier = Modifier) {
-    val grow = rememberGrow(values)
-    val measurer = rememberTextMeasurer()
-    val track = MaterialTheme.colorScheme.surfaceContainerHighest
-    val label = MaterialTheme.colorScheme.onSurfaceVariant
     val maxV = max(1L, values.maxOrNull() ?: 1L)
     val peak = values.indices.maxByOrNull { values[it] } ?: 0
-    Canvas(modifier.fillMaxWidth().height(130.dp)) {
-        val slot = size.width / 7
+    Canvas(modifier.fillMaxWidth().height(170.dp)) {
         val bottom = 20.dp.toPx()
         val h = size.height - bottom
-        val d = min(slot * 0.5f, 26.dp.toPx())
+        val slot = size.width / 7
+        val gap = 4.dp.toPx()
+        val cell = min(slot - gap * 2, (h - gap * (cells - 1)) / cells)
         values.forEachIndexed { i, v ->
-            val cx = slot * i + slot / 2
-            drawRoundRect(track, Offset(cx - d / 2, 0f), Size(d, h), CornerRadius(d / 2))
-            val bh = max(d, h * (v.toFloat() / maxV) * grow)
-            drawRoundRect(if (i == peak) color else color.copy(alpha = 0.45f), Offset(cx - d / 2, h - bh), Size(d, bh), CornerRadius(d / 2))
-            val t = measurer.measure(labels[i], TextStyle(fontSize = 11.sp, color = label))
-            drawText(t, topLeft = Offset(cx - t.size.width / 2, size.height - t.size.height))
+            val lit = if (v == 0L) 0 else max(1, (cells * v.toFloat() / maxV * grow + 0.5f).toInt())
+            val x = slot * i + (slot - cell) / 2
+            for (k in 0 until cells) {
+                val y = h - (k + 1) * cell - k * gap
+                val on = k < lit
+                drawRoundRect(
+                    if (on) (if (i == peak) color else color.copy(alpha = 0.5f)) else track,
+                    Offset(x, y), Size(cell, cell), CornerRadius(2.dp.toPx()),
+                )
+            }
+            val t = measurer.measure(labels[i], TextStyle(fontSize = 11.sp, color = if (i == peak) color else label))
+            drawText(t, topLeft = Offset(slot * i + slot / 2 - t.size.width / 2, size.height - t.size.height))
         }
     }
 }
 
 @Composable
-fun Donut(values: List<Long>, colors: List<Color>, modifier: Modifier = Modifier) {
-    val grow = rememberGrow(values)
-    val track = MaterialTheme.colorScheme.surfaceContainerHighest
+fun GenreBand(values: List<Long>, colors: List<Color>, gapColor: Color, modifier: Modifier = Modifier, height: Dp = 46.dp) {
+    val grow = rememberGrow(values, 200)
     val total = values.sum().coerceAtLeast(1L).toFloat()
-    Canvas(modifier) {
-        val w = size.minDimension * 0.16f
-        val d = size.minDimension - w
-        val tl = Offset((size.width - d) / 2, (size.height - d) / 2)
-        drawArc(track, 0f, 360f, false, tl, Size(d, d), style = Stroke(w))
-        var start = -90f
+    Canvas(modifier.fillMaxWidth().height(height)) {
+        var x = 0f
+        val gap = 3.dp.toPx()
         values.forEachIndexed { i, v ->
-            val sweep = 360f * v / total * grow
-            if (sweep > 0.5f) drawArc(colors[i % colors.size], start + 1f, max(0.1f, sweep - 2f), false, tl, Size(d, d), style = Stroke(w, cap = StrokeCap.Butt))
-            start += sweep
+            val w = size.width * v / total * grow
+            if (w > gap) drawRect(colors[i % colors.size], Offset(x, 0f), Size(w - gap, size.height))
+            x += w
         }
+        if (grow < 1f) drawRect(gapColor, Offset(x, 0f), Size(size.width - x, size.height))
     }
 }
 
 @Composable
-fun HeatStrip(days: List<Long>, color: Color, modifier: Modifier = Modifier) {
-    val empty = MaterialTheme.colorScheme.surfaceContainerHighest
+fun SquareGauge(fraction: Float, color: Color, track: Color, modifier: Modifier = Modifier) {
+    val grow = rememberGrow(fraction, 250)
+    Canvas(modifier) {
+        val stroke = size.minDimension * 0.1f
+        val inset = stroke / 2
+        val rr = RoundRect(inset, inset, size.width - inset, size.height - inset, CornerRadius(size.minDimension * 0.16f))
+        val full = Path().apply { addRoundRect(rr) }
+        drawPath(full, track, style = Stroke(stroke))
+        val measure = PathMeasure().apply { setPath(full, false) }
+        val seg = Path()
+        val len = measure.length
+        val start = len * 0.0f
+        measure.getSegment(start, start + len * fraction.coerceIn(0f, 1f) * grow, seg, true)
+        drawPath(seg, color, style = Stroke(stroke, cap = StrokeCap.Butt))
+    }
+}
+
+@Composable
+fun DayStrip(days: List<Long>, color: Color, empty: Color, modifier: Modifier = Modifier) {
     val maxV = max(1L, days.maxOrNull() ?: 1L)
-    val grow = rememberGrow(days)
-    Canvas(modifier.fillMaxWidth().height(34.dp)) {
+    val grow = rememberGrow(days, 300)
+    Canvas(modifier.fillMaxWidth().height(22.dp)) {
         val n = days.size
         val gap = 3.dp.toPx()
-        val cell = (size.width - gap * (n - 1)) / n
+        val cell = min((size.width - gap * (n - 1)) / n, size.height)
+        val y = (size.height - cell) / 2
         days.forEachIndexed { i, v ->
-            val a = if (v == 0L) 0f else (0.25f + 0.75f * v / maxV) * grow
-            drawRoundRect(empty, Offset(i * (cell + gap), 0f), Size(cell, size.height), CornerRadius(4.dp.toPx()))
-            if (a > 0) drawRoundRect(color.copy(alpha = a), Offset(i * (cell + gap), 0f), Size(cell, size.height), CornerRadius(4.dp.toPx()))
+            val x = i * (cell + gap)
+            drawRect(empty, Offset(x, y), Size(cell, cell))
+            if (v > 0) {
+                val a = (0.3f + 0.7f * v / maxV) * grow
+                drawRect(color.copy(alpha = a), Offset(x, y), Size(cell, cell))
+            }
         }
     }
 }

@@ -12,6 +12,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "play_event", indices = [Index("startedAt"), Index("songId")])
@@ -49,6 +51,15 @@ data class Favorite(@PrimaryKey val songId: Long, val addedAt: Long)
 
 @Entity(tableName = "artist_image")
 data class ArtistImage(@PrimaryKey val artist: String, val path: String, val updatedAt: Long)
+
+@Entity(tableName = "artist_logo")
+data class ArtistLogo(
+    @PrimaryKey val artist: String,
+    val path: String,
+    val aspect: Float,
+    val luma: Float,
+    val updatedAt: Long,
+)
 
 data class PlaylistWithCount(val id: Long, val name: String, val createdAt: Long, val count: Int, val firstSongId: Long?)
 
@@ -145,9 +156,21 @@ interface ArtistImageDao {
     suspend fun remove(artist: String)
 }
 
+@Dao
+interface ArtistLogoDao {
+    @Query("SELECT * FROM artist_logo")
+    fun all(): Flow<List<ArtistLogo>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(a: ArtistLogo)
+
+    @Query("DELETE FROM artist_logo WHERE artist = :artist")
+    suspend fun remove(artist: String)
+}
+
 @Database(
-    entities = [PlayEvent::class, Playlist::class, PlaylistEntry::class, Favorite::class, ArtistImage::class],
-    version = 1,
+    entities = [PlayEvent::class, Playlist::class, PlaylistEntry::class, Favorite::class, ArtistImage::class, ArtistLogo::class],
+    version = 2,
     exportSchema = true,
 )
 abstract class EchoDatabase : RoomDatabase() {
@@ -155,9 +178,19 @@ abstract class EchoDatabase : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
     abstract fun favorites(): FavoriteDao
     abstract fun artistImages(): ArtistImageDao
+    abstract fun artistLogos(): ArtistLogoDao
 
     companion object {
-        fun create(context: Context) =
-            Room.databaseBuilder(context, EchoDatabase::class.java, "echo.db").build()
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `artist_logo` (`artist` TEXT NOT NULL, `path` TEXT NOT NULL, " +
+                        "`aspect` REAL NOT NULL, `luma` REAL NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`artist`))",
+                )
+            }
+        }
+
+        fun create(context: Context, name: String = "echo.db") =
+            Room.databaseBuilder(context, EchoDatabase::class.java, name).addMigrations(MIGRATION_1_2).build()
     }
 }

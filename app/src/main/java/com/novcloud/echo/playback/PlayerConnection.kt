@@ -92,6 +92,11 @@ class PlayerConnection(
 
     fun refresh() = sync()
 
+    internal fun preview(state: PlayerState, positionMs: Long) {
+        _state.value = state
+        _position.value = positionMs
+    }
+
     private fun sync() {
         val c = controller ?: return
         val lib = library.value

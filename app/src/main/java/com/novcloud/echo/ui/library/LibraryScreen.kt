@@ -70,39 +70,62 @@ import com.novcloud.echo.ui.components.SongRow
 import com.novcloud.echo.ui.components.artistModel
 import com.novcloud.echo.ui.components.bouncyClick
 import com.novcloud.echo.ui.theme.seededGradient
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.novcloud.echo.ui.components.ArtistCard
+import com.novcloud.echo.ui.components.Eyebrow
+import com.novcloud.echo.ui.components.echoClick
+import com.novcloud.echo.ui.components.reveal
+import com.novcloud.echo.ui.theme.EchoShape
+import com.novcloud.echo.ui.theme.EchoType
+import com.novcloud.echo.ui.theme.Ink
+import com.novcloud.echo.ui.theme.Paper
+import com.novcloud.echo.ui.theme.palette
+import com.novcloud.echo.ui.theme.seededColor
 import kotlinx.coroutines.launch
 
 private val tabs = listOf("歌曲", "专辑", "歌手", "流派", "文件夹", "歌单")
 
 @Composable
 fun LibraryScreen() {
+    val container = (LocalContext.current.applicationContext as EchoApp).container
+    val lib by container.library.library.collectAsState()
     val pager = rememberPagerState { tabs.size }
     val scope = rememberCoroutineScope()
+    val p = palette
     Column(Modifier.fillMaxSize()) {
-        Text(
-            "曲库", style = MaterialTheme.typography.headlineLarge,
-            modifier = Modifier.statusBarsPadding().padding(start = 20.dp, top = 14.dp, bottom = 10.dp),
-        )
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            tabs.forEachIndexed { i, t ->
-                val selected = pager.currentPage == i
-                Box(
-                    Modifier.clip(CircleShape)
-                        .background(if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .clickable { scope.launch { pager.animateScrollToPage(i) } }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    Text(
-                        t, style = MaterialTheme.typography.labelLarge,
-                        color = if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface,
-                    )
+        Column(Modifier.statusBarsPadding().padding(start = 20.dp, top = 16.dp, bottom = 10.dp).reveal(0)) {
+            Eyebrow("${lib.songs.size} 首 · ${lib.albums.size} 张专辑 · ${lib.artists.size} 位歌手")
+            Spacer(Modifier.height(4.dp))
+            Text("曲库", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp))
+        }
+        val tabScroll = rememberScrollState()
+        Box(Modifier.fillMaxWidth()) {
+            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(p.rule))
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(tabScroll).padding(horizontal = 12.dp),
+            ) {
+                tabs.forEachIndexed { i, t ->
+                    val selected = pager.currentPage == i
+                    val c by androidx.compose.animation.animateColorAsState(if (selected) MaterialTheme.colorScheme.onSurface else p.faint, label = "lt")
+                    val bar by androidx.compose.animation.core.animateFloatAsState(if (selected) 1f else 0f, androidx.compose.animation.core.spring(dampingRatio = 0.6f, stiffness = 500f), label = "lb")
+                    Column(
+                        Modifier.clickable(remember { MutableInteractionSource() }, null) { scope.launch { pager.animateScrollToPage(i) } }
+                            .padding(horizontal = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            t, Modifier.padding(vertical = 10.dp),
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (selected) FontWeight.Black else FontWeight.Medium), color = c,
+                        )
+                        Box(Modifier.width(28.dp * bar).height(3.dp).background(p.signal))
+                    }
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         HorizontalPager(pager, Modifier.weight(1f), beyondViewportPageCount = 1) { page ->
             when (page) {
                 0 -> SongsTab()
@@ -139,7 +162,7 @@ private fun SongsTab() {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp)) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f)) { actions.player.play(songs) }
+                PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f), primary = true) { actions.player.play(songs) }
                 Spacer(Modifier.width(10.dp))
                 PillButton(Icons.Rounded.Shuffle, "随机", Modifier.weight(1f)) { actions.player.play(songs, shuffle = true) }
                 Box {
@@ -162,16 +185,18 @@ private fun SongsTab() {
 }
 
 @Composable
-fun PillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun PillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
+    val p = palette
+    val bg = if (primary) p.signal else MaterialTheme.colorScheme.surfaceContainerHigh
+    val fg = if (primary) p.onSignal else MaterialTheme.colorScheme.onSurface
     Row(
-        modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .bouncyClick(onClick = onClick).padding(vertical = 12.dp),
+        modifier.echoClick(corner = 6.dp, color = if (primary) p.signal else p.muted, onClick = onClick).clip(EchoShape.card).background(bg).padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+        Icon(icon, null, Modifier.size(20.dp), tint = fg)
         Spacer(Modifier.width(6.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black), color = fg)
     }
 }
 
@@ -188,11 +213,11 @@ private fun AlbumsTab() {
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         items(lib.albums, key = { it.id }) { a ->
-            Column(Modifier.bouncyClick { actions.openAlbum(a.id) }) {
-                Artwork(a.art, Modifier.fillMaxWidth().aspectRatio(1f), RoundedCornerShape(12.dp), a.title)
+            Column(Modifier.echoClick(corner = 4.dp) { actions.openAlbum(a.id) }) {
+                Artwork(a.art, Modifier.fillMaxWidth().aspectRatio(1f), EchoShape.cover, a.title)
                 Spacer(Modifier.height(8.dp))
                 Text(displayAlbum(a.title), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(displayArtist(a.artist), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(displayArtist(a.artist), style = MaterialTheme.typography.bodySmall, color = palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -203,21 +228,15 @@ private fun ArtistsTab() {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
-    val custom by container.library.artistImages.collectAsState()
-    val home by container.home.collectAsState()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp)) {
+    LazyVerticalGrid(
+        GridCells.Adaptive(150.dp),
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         items(lib.artists, key = { it.name }) { a ->
-            Row(
-                Modifier.fillMaxWidth().clickable { actions.openArtist(a.name) }.padding(horizontal = 20.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ArtistAvatar(artistModel(a.name, lib, custom, home.playCounts), a.name, Modifier.size(56.dp))
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(displayArtist(a.name), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${a.albums.size} 张专辑 · ${a.songs.size} 首", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            ArtistCard(a.name, Modifier.fillMaxWidth().aspectRatio(0.78f)) { actions.openArtist(a.name) }
         }
     }
 }
@@ -238,18 +257,17 @@ private fun GenresTab() {
 
 @Composable
 fun GenreTile(name: String, art: Any?, onClick: () -> Unit) {
-    val c = remember(name) { seededGradient(name) }
+    val c = remember(name) { seededColor(name) }
     Box(
-        Modifier.fillMaxWidth().height(100.dp).bouncyClick(onClick = onClick).clip(RoundedCornerShape(14.dp))
-            .background(Brush.linearGradient(c)),
+        Modifier.fillMaxWidth().height(96.dp).echoClick(corner = 6.dp, color = c, onClick = onClick).clip(EchoShape.card)
+            .background(lerp(c, Ink, 0.35f)),
     ) {
-        Artwork(
-            art,
-            Modifier.align(Alignment.BottomEnd).offset(x = 18.dp, y = 10.dp).size(78.dp)
-                .then(Modifier.clip(RoundedCornerShape(8.dp))),
-            RoundedCornerShape(8.dp), name,
+        Artwork(art, Modifier.align(Alignment.BottomEnd).offset(x = 14.dp, y = 14.dp).size(74.dp), EchoShape.cover, name)
+        Box(Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 14.dp).size(14.dp, 3.dp).background(c))
+        Text(
+            name, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black), color = Paper,
+            modifier = Modifier.padding(start = 14.dp, top = 24.dp, end = 70.dp), maxLines = 2, overflow = TextOverflow.Ellipsis,
         )
-        Text(name, style = MaterialTheme.typography.titleLarge, color = Color.White, modifier = Modifier.padding(14.dp), maxLines = 2)
     }
 }
 
@@ -264,15 +282,15 @@ private fun FoldersTab() {
                 Modifier.fillMaxWidth().clickable { actions.openFolder(f.path) }.padding(horizontal = 20.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.primary)
+                Box(Modifier.size(48.dp).clip(EchoShape.card).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Folder, null, tint = palette.signal)
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(f.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(f.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text("${f.songs.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${f.songs.size}", style = EchoType.numeral(14.sp), color = palette.muted)
             }
         }
     }
@@ -294,9 +312,9 @@ private fun PlaylistsTab() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
-                    Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Color(0xFFFF4F6D), Color(0xFF8E2DE2)))),
+                    Modifier.size(64.dp).clip(EchoShape.cover).background(palette.signal),
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Rounded.Favorite, null, tint = Color.White, modifier = Modifier.size(30.dp)) }
+                ) { Icon(Icons.Rounded.Favorite, null, tint = Ink, modifier = Modifier.size(30.dp)) }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text("我喜欢的音乐", style = MaterialTheme.typography.titleMedium)
@@ -309,11 +327,11 @@ private fun PlaylistsTab() {
                 Modifier.fillMaxWidth().clickable { creating = true }.padding(horizontal = 20.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.Add, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
+                Box(Modifier.size(64.dp).clip(EchoShape.cover).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Add, null, tint = palette.signal, modifier = Modifier.size(30.dp))
                 }
                 Spacer(Modifier.width(14.dp))
-                Text("新建歌单", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text("新建歌单", style = MaterialTheme.typography.titleMedium, color = palette.signal)
             }
         }
         items(playlists, key = { it.id }) { p ->
@@ -322,7 +340,7 @@ private fun PlaylistsTab() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val first = p.firstSongId?.let { lib.songById[it] }
-                Collage(listOfNotNull(first?.art), Modifier.size(64.dp), RoundedCornerShape(12.dp), p.name)
+                Collage(listOfNotNull(first?.art), Modifier.size(64.dp), EchoShape.cover, p.name)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)

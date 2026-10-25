@@ -5,13 +5,14 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.roborazzi)
 }
 
 val appId = "com.novcloud.echo"
 
 val refName: String? = System.getenv("GITHUB_REF_NAME")
 val tagVersion: String? = refName?.takeIf { System.getenv("GITHUB_REF_TYPE") == "tag" && it.startsWith("v") }?.removePrefix("v")
-val appVersionName: String = tagVersion ?: "0.1.0"
+val appVersionName: String = tagVersion ?: "0.2.0"
 val appVersionCode: Int = run {
     val parts = appVersionName.substringBefore('-').split('.').mapNotNull { it.toIntOrNull() }
     val (ma, mi, pa) = Triple(parts.getOrElse(0) { 0 }, parts.getOrElse(1) { 1 }, parts.getOrElse(2) { 0 })
@@ -67,6 +68,12 @@ android {
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all { test -> test.maxHeapSize = "3g" }
+        }
+    }
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
@@ -82,6 +89,7 @@ kotlin {
             "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi",
             "-opt-in=androidx.compose.animation.ExperimentalSharedTransitionApi",
             "-opt-in=androidx.compose.animation.ExperimentalAnimationApi",
+            "-opt-in=androidx.compose.ui.text.ExperimentalTextApi",
         )
     }
 }
@@ -123,4 +131,12 @@ dependencies {
     implementation(libs.androidx.documentfile)
 
     testImplementation(libs.junit)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.junit.rule)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

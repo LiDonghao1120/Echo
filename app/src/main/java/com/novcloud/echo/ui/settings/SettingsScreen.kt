@@ -44,6 +44,10 @@ import com.novcloud.echo.data.ThemeMode
 import com.novcloud.echo.ui.components.ConfirmDialog
 import com.novcloud.echo.ui.components.LocalBottomInset
 import com.novcloud.echo.ui.detail.CollapsingTopBar
+import androidx.compose.ui.unit.sp
+import com.novcloud.echo.ui.theme.EchoShape
+import com.novcloud.echo.ui.theme.EchoType
+import com.novcloud.echo.ui.theme.palette
 import kotlinx.coroutines.launch
 
 @Composable
@@ -58,6 +62,8 @@ fun SettingsScreen() {
     val lib by container.library.library.collectAsState()
     val scanning by container.library.scanning.collectAsState()
     var clearing by remember { mutableStateOf(false) }
+    var licenses by remember { mutableStateOf(false) }
+    val importFolder = com.novcloud.echo.ui.detail.rememberFolderImport()
     val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -67,7 +73,7 @@ fun SettingsScreen() {
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(top = 56.dp, bottom = LocalBottomInset.current + 24.dp)) {
-            Text("设置", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
+            Text("设置", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp), modifier = Modifier.padding(start = 20.dp, bottom = 8.dp))
             Group("外观") {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(ThemeMode.System to "跟随系统", ThemeMode.Dark to "深色", ThemeMode.Light to "浅色").forEach { (m, l) ->
@@ -78,7 +84,7 @@ fun SettingsScreen() {
             Group("曲库") {
                 Item("歌曲", "${lib.songs.size} 首 · ${lib.albums.size} 张专辑 · ${lib.artists.size} 位歌手")
                 Row(Modifier.fillMaxWidth().clickable(enabled = !scanning) { container.library.refresh() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("重新扫描", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+                    Text("重新扫描", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = palette.signal)
                     if (scanning) CircularProgressIndicator(Modifier.padding(start = 8.dp).width(18.dp).height(18.dp), strokeWidth = 2.dp)
                 }
                 Text("忽略短于", Modifier.padding(start = 16.dp, top = 6.dp), style = MaterialTheme.typography.bodyLarge)
@@ -87,6 +93,14 @@ fun SettingsScreen() {
                         Chip(if (s == 0) "不限" else "$s 秒", minDur == s, Modifier.weight(1f)) {
                             scope.launch { container.prefs.setMinDuration(s); container.library.rescan() }
                         }
+                    }
+                }
+            }
+            Group("歌手形象") {
+                Row(Modifier.fillMaxWidth().clickable { importFolder() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("从文件夹批量导入", style = MaterialTheme.typography.bodyLarge)
+                        Text("Artist_Name.png · Artist_Name_poster.jpg", style = EchoType.label.copy(letterSpacing = 0.4.sp), color = palette.muted)
                     }
                 }
             }
@@ -111,6 +125,11 @@ fun SettingsScreen() {
                     Text("清除收听记录", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
                 }
             }
+            Group("关于") {
+                Row(Modifier.fillMaxWidth().clickable { licenses = true }.padding(16.dp)) {
+                    Text("开源许可", style = MaterialTheme.typography.bodyLarge)
+                }
+            }
             Text(
                 "${context.getString(R.string.app_name)} ${BuildConfig.VERSION_NAME}",
                 Modifier.fillMaxWidth().padding(24.dp), style = MaterialTheme.typography.bodySmall,
@@ -119,6 +138,7 @@ fun SettingsScreen() {
         }
         CollapsingTopBar("设置", 0f)
     }
+    if (licenses) LicensesDialog { licenses = false }
     if (clearing) ConfirmDialog("清除全部收听记录？", "清除") { ok ->
         clearing = false
         if (ok) scope.launch { container.db.events().clear() }
@@ -127,8 +147,8 @@ fun SettingsScreen() {
 
 @Composable
 private fun Group(title: String, content: @Composable () -> Unit) {
-    Text(title, Modifier.padding(start = 20.dp, top = 18.dp, bottom = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-    Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceContainer)) {
+    Text(title, Modifier.padding(start = 20.dp, top = 22.dp, bottom = 8.dp), style = EchoType.labelBold, color = palette.signal)
+    Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(EchoShape.card).background(MaterialTheme.colorScheme.surfaceContainer)) {
         content()
     }
 }
@@ -138,18 +158,40 @@ private fun Item(title: String, value: String) {
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
         Text(title, style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(2.dp))
-        Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodySmall, color = palette.muted)
     }
 }
 
 @Composable
 private fun Chip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val p = palette
     Box(
-        modifier.clip(CircleShape)
-            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
+        modifier.clip(EchoShape.chip)
+            .background(if (selected) p.signal else MaterialTheme.colorScheme.surfaceContainerHighest)
             .clickable(onClick = onClick).padding(vertical = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.labelLarge, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+        Text(label, style = MaterialTheme.typography.labelLarge, color = if (selected) p.onSignal else MaterialTheme.colorScheme.onSurface)
     }
+}
+
+@Composable
+private fun LicensesDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val text = remember {
+        listOf("Anton" to "licenses/Anton-OFL.txt", "Space Grotesk" to "licenses/SpaceGrotesk-OFL.txt").joinToString("\n\n") { (n, f) ->
+            "$n\n" + runCatching { context.assets.open(f).bufferedReader().use { it.readText() } }.getOrDefault("")
+        }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("好") } },
+        title = { Text("开源许可") },
+        text = {
+            Text(
+                text, Modifier.height(360.dp).verticalScroll(rememberScrollState()),
+                style = MaterialTheme.typography.bodySmall, color = palette.muted,
+            )
+        },
+    )
 }

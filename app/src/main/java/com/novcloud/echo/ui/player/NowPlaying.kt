@@ -90,7 +90,22 @@ import com.novcloud.echo.ui.components.Artwork
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.SongMenuContext
 import com.novcloud.echo.ui.components.formatTime
-import com.novcloud.echo.ui.components.pressScale
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.novcloud.echo.ui.components.echoAura
+import com.novcloud.echo.ui.components.echoClick
+import com.novcloud.echo.ui.theme.EchoShape
+import com.novcloud.echo.ui.theme.EchoType
+import com.novcloud.echo.ui.theme.Ink
+import com.novcloud.echo.ui.theme.Paper
+import com.novcloud.echo.ui.theme.Vermilion
+import com.novcloud.echo.ui.theme.displayStyle
+import com.novcloud.echo.ui.theme.isCjk
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -128,127 +143,164 @@ fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onColla
         Modifier
             .fillMaxSize()
             .offset { IntOffset(0, dragY.value.roundToInt()) }
-            .sharedBounds(rememberSharedContentState("player_bg"), avs, clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(16.dp)))
-            .clip(RoundedCornerShape(if (dragY.value > 0) 28.dp else 0.dp))
-            .background(Brush.verticalGradient(listOf(colors.top, colors.bottom)))
+            .sharedBounds(rememberSharedContentState("player_bg"), avs, clipInOverlayDuringTransition = OverlayClip(EchoShape.card))
+            .clip(RoundedCornerShape(if (dragY.value > 0) 18.dp else 0.dp))
+            .background(Ink)
+            .background(Brush.verticalGradient(0f to colors.top, 0.62f to lerp(colors.bottom, Ink, 0.35f), 1f to Ink))
             .clickable(remember { MutableInteractionSource() }, null) {},
     ) {
         if (song != null && Build.VERSION.SDK_INT >= 31) {
             AsyncImage(
                 song.art, null, contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.28f; scaleX = 1.4f; scaleY = 1.4f }.blur(90.dp),
+                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.22f; scaleX = 1.5f; scaleY = 1.5f }.blur(100.dp),
             )
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, colors.bottom.copy(alpha = 0.85f)))))
         }
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Ink.copy(alpha = 0.92f))))
         if (song == null) return@Box
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Box(Modifier.fillMaxWidth().height(48.dp).then(dismissDrag), contentAlignment = Alignment.Center) {
-                IconButton(onClick = onCollapse, modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp)) {
-                    Icon(Icons.Rounded.KeyboardArrowDown, null, Modifier.size(30.dp), tint = Color.White.copy(alpha = 0.85f))
+            Row(Modifier.fillMaxWidth().height(52.dp).then(dismissDrag).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onCollapse) {
+                    Icon(Icons.Rounded.KeyboardArrowDown, null, Modifier.size(30.dp), tint = Paper.copy(alpha = 0.85f))
                 }
-                Box(Modifier.size(38.dp, 5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.35f)))
-                IconButton(onClick = { actions.openSongMenu(song, SongMenuContext()) }, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) {
-                    Icon(Icons.Rounded.MoreHoriz, null, tint = Color.White.copy(alpha = 0.85f))
+                Spacer(Modifier.weight(1f))
+                QueuePosition(state.currentIndex, state.queue.size)
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { actions.openSongMenu(song, SongMenuContext()) }) {
+                    Icon(Icons.Rounded.MoreHoriz, null, tint = Paper.copy(alpha = 0.85f))
                 }
             }
             AnimatedContent(
                 targetState = pane,
-                transitionSpec = { fadeIn(tween(260)) + scaleIn(initialScale = 0.97f) togetherWith fadeOut(tween(160)) },
+                transitionSpec = {
+                    (fadeIn(tween(280, 60)) + slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it / 14 }) togetherWith fadeOut(tween(160))
+                },
                 modifier = Modifier.weight(1f),
                 label = "pane",
             ) { p ->
                 when (p) {
-                    PlayerPane.Art -> ArtPane(song, state.isPlaying, avs, dismissDrag)
+                    PlayerPane.Art -> ArtPane(song, state.isPlaying, colors.accent, avs, dismissDrag)
                     PlayerPane.Lyrics -> Column {
-                        CompactHeader(song, avs) { pane = PlayerPane.Art }
+                        CompactHeader(song) { pane = PlayerPane.Art }
                         LyricsView(song, colors.accent, Modifier.weight(1f))
                     }
                     PlayerPane.Queue -> Column {
-                        CompactHeader(song, avs) { pane = PlayerPane.Art }
+                        CompactHeader(song) { pane = PlayerPane.Art }
                         QueueView(Modifier.weight(1f))
                     }
                 }
             }
-            if (pane == PlayerPane.Art) TitleRow(song, song.id in favorites, avs) { actions.repo.toggleFavorite(song.id) }
-            SeekSection(state.durationMs, colors.accent)
+            if (pane == PlayerPane.Art) TitleBlock(song, song.id in favorites, avs) { actions.repo.toggleFavorite(song.id) }
+            SeekRuler(state.durationMs, colors.accent, song.id)
             Transport(state.isPlaying, state.shuffle, state.repeat, colors.accent)
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 6.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                PaneButton(Icons.Rounded.Lyrics, pane == PlayerPane.Lyrics) {
+                PaneButton(Icons.Rounded.Lyrics, pane == PlayerPane.Lyrics, colors.accent) {
                     pane = if (pane == PlayerPane.Lyrics) PlayerPane.Art else PlayerPane.Lyrics
                 }
-                PaneButton(Icons.AutoMirrored.Rounded.QueueMusic, pane == PlayerPane.Queue) {
+                PaneButton(Icons.AutoMirrored.Rounded.QueueMusic, pane == PlayerPane.Queue, colors.accent) {
                     pane = if (pane == PlayerPane.Queue) PlayerPane.Art else PlayerPane.Queue
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
         }
     }
 }
 
 @Composable
-private fun SharedTransitionScope.ArtPane(song: Song, playing: Boolean, avs: AnimatedVisibilityScope, dismissDrag: Modifier) {
-    val actions = LocalActions.current
-    val scale by animateFloatAsState(if (playing) 1f else 0.84f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessLow), label = "art")
-    val elevation by animateDpAsState(if (playing) 30.dp else 10.dp, label = "elev")
-    var swipe by remember { mutableFloatStateOf(0f) }
-    BoxWithConstraints(Modifier.fillMaxSize().then(dismissDrag), contentAlignment = Alignment.Center) {
-        val side = minOf(maxWidth - 56.dp, maxHeight - 24.dp)
-        Artwork(
-            song.art,
-            Modifier
-                .size(side)
-                .graphicsLayer { scaleX = scale; scaleY = scale; translationX = swipe * 0.4f }
-                .sharedElement(rememberSharedContentState("art"), avs)
-                .shadow(elevation, RoundedCornerShape(14.dp), spotColor = Color.Black)
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (swipe < -180) actions.player.next() else if (swipe > 180) actions.player.previous()
-                            swipe = 0f
-                        },
-                        onDragCancel = { swipe = 0f },
-                        onHorizontalDrag = { _, d -> swipe += d },
-                    )
-                },
-            RoundedCornerShape(14.dp), song.album, 72.dp,
-        )
+private fun QueuePosition(index: Int, size: Int) {
+    if (size <= 1 || index < 0) return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("%02d".format(index + 1), style = EchoType.labelBold, color = Paper)
+        Box(Modifier.padding(horizontal = 8.dp).size(14.dp, 1.dp).background(Paper.copy(alpha = 0.4f)))
+        Text("%02d".format(size), style = EchoType.label, color = Paper.copy(alpha = 0.5f))
     }
 }
 
 @Composable
-private fun SharedTransitionScope.CompactHeader(song: Song, avs: AnimatedVisibilityScope, onClick: () -> Unit) {
+private fun SharedTransitionScope.ArtPane(song: Song, playing: Boolean, accent: Color, avs: AnimatedVisibilityScope, dismissDrag: Modifier) {
+    val actions = LocalActions.current
+    val scale by animateFloatAsState(if (playing) 1f else 0.88f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessLow), label = "art")
+    val swipe = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    BoxWithConstraints(Modifier.fillMaxSize().then(dismissDrag), contentAlignment = Alignment.Center) {
+        val side = minOf(maxWidth - 64.dp, maxHeight - 48.dp)
+        Box(
+            Modifier
+                .size(side)
+                .graphicsLayer {
+                    scaleX = scale; scaleY = scale
+                    translationX = swipe.value * 0.45f
+                    rotationZ = swipe.value / 90f
+                }
+                .echoAura(playing, accent, corner = 4.dp, reach = 30.dp),
+        ) {
+            Artwork(
+                song.art,
+                Modifier
+                    .fillMaxSize()
+                    .sharedElement(rememberSharedContentState("art"), avs)
+                    .shadow(if (playing) 28.dp else 8.dp, EchoShape.cover, spotColor = Color.Black)
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                val v = swipe.value
+                                if (v < -180) actions.player.next() else if (v > 180) actions.player.previous()
+                                scope.launch { swipe.animateTo(0f, spring(dampingRatio = 0.6f)) }
+                            },
+                            onDragCancel = { scope.launch { swipe.animateTo(0f) } },
+                            onHorizontalDrag = { _, d -> scope.launch { swipe.snapTo(swipe.value + d) } },
+                        )
+                    },
+                EchoShape.cover, song.album, 72.dp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactHeader(song: Song, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Artwork(song.art, Modifier.size(60.dp), RoundedCornerShape(8.dp), song.album, 24.dp)
+        Artwork(song.art, Modifier.size(56.dp), EchoShape.cover, song.album, 24.dp)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                song.title, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1,
+                song.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Paper, maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(displayArtist(song.artist), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.65f), maxLines = 1)
+            Text(displayArtist(song.artist), style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.6f), maxLines = 1)
         }
     }
 }
 
 @Composable
-private fun SharedTransitionScope.TitleRow(song: Song, liked: Boolean, avs: AnimatedVisibilityScope, onLike: () -> Unit) {
+private fun SharedTransitionScope.TitleBlock(song: Song, liked: Boolean, avs: AnimatedVisibilityScope, onLike: () -> Unit) {
     val actions = LocalActions.current
-    Row(Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(start = 28.dp, end = 14.dp, top = 6.dp), verticalAlignment = Alignment.Bottom) {
         Column(Modifier.weight(1f)) {
+            AnimatedContent(
+                song.id,
+                transitionSpec = {
+                    (slideInVertically(tween(420, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(300))) togetherWith
+                        (slideOutVertically(tween(300)) { -it } + fadeOut(tween(200)))
+                },
+                label = "title",
+            ) { _ ->
+                val text = markTitle(song.title)
+                Text(
+                    text,
+                    style = displayStyle(text, 34.sp), color = Paper, maxLines = 1,
+                    modifier = Modifier.sharedBounds(rememberSharedContentState("title"), avs).basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2200),
+                )
+            }
+            Spacer(Modifier.height(6.dp))
             Text(
-                song.title,
-                style = MaterialTheme.typography.headlineSmall, color = Color.White, maxLines = 1,
-                modifier = Modifier.sharedBounds(rememberSharedContentState("title"), avs).basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2000),
-            )
-            Text(
-                "${displayArtist(song.artist)} — ${displayAlbum(song.album)}",
-                style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.65f), maxLines = 1,
+                "${displayArtist(song.artist)}  /  ${displayAlbum(song.album)}",
+                style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.62f), maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.clickable { actions.openArtist(song.artists.first()) },
             )
@@ -257,28 +309,34 @@ private fun SharedTransitionScope.TitleRow(song: Song, liked: Boolean, avs: Anim
         val scope = rememberCoroutineScope()
         IconButton(onClick = {
             onLike()
-            scope.launch { likeScale.snapTo(0.6f); likeScale.animateTo(1f, spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessMedium)) }
+            scope.launch { likeScale.snapTo(0.55f); likeScale.animateTo(1f, spring(dampingRatio = 0.32f, stiffness = Spring.StiffnessMedium)) }
         }) {
             Icon(
                 if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null,
                 Modifier.size(28.dp).graphicsLayer { scaleX = likeScale.value; scaleY = likeScale.value },
-                tint = if (liked) Color(0xFFFF4F6D) else Color.White.copy(alpha = 0.85f),
+                tint = if (liked) Vermilion else Paper.copy(alpha = 0.8f),
             )
         }
     }
 }
 
+private fun markTitle(t: String) = if (isCjk(t)) t else t.uppercase()
+
 @Composable
-private fun SeekSection(durationMs: Long, accent: Color) {
+private fun SeekRuler(durationMs: Long, accent: Color, seed: Long) {
     val actions = LocalActions.current
     val position by actions.player.position.collectAsState()
     var dragging by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(0f) }
     val fraction = if (dragging) dragFraction else if (durationMs > 0) (position.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
-    val thickness by animateDpAsState(if (dragging) 10.dp else 5.dp, label = "thick")
-    Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 10.dp)) {
-        BoxWithConstraints(
-            Modifier.fillMaxWidth().height(28.dp)
+    val lift by animateFloatAsState(if (dragging) 1f else 0f, spring(dampingRatio = 0.6f), label = "lift")
+    val heights = remember(seed) {
+        val r = java.util.Random(seed)
+        FloatArray(64) { 0.32f + 0.68f * (0.5f + 0.5f * kotlin.math.sin(it * 0.37f + r.nextFloat() * 2.4f)) * (0.55f + 0.45f * r.nextFloat()) }
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 8.dp)) {
+        Canvas(
+            Modifier.fillMaxWidth().height(34.dp)
                 .pointerInput(durationMs) {
                     detectTapGestures { o -> if (durationMs > 0) actions.player.seekTo((o.x / size.width * durationMs).toLong()) }
                 }
@@ -290,17 +348,29 @@ private fun SeekSection(durationMs: Long, accent: Color) {
                         onHorizontalDrag = { c, _ -> dragFraction = (c.position.x / size.width).coerceIn(0f, 1f) },
                     )
                 },
-            contentAlignment = Alignment.CenterStart,
         ) {
-            Box(Modifier.fillMaxWidth().height(thickness).clip(CircleShape).background(Color.White.copy(alpha = 0.2f))) {
-                Box(Modifier.fillMaxWidth(fraction).height(thickness).background(if (dragging) Color.White else Color.White.copy(alpha = 0.85f)))
+            val n = heights.size
+            val gap = size.width / n
+            val w = gap * 0.42f
+            val head = fraction * size.width
+            for (i in 0 until n) {
+                val x = i * gap + gap / 2
+                val near = (1f - (kotlin.math.abs(x - head) / (gap * 5f))).coerceIn(0f, 1f) * lift
+                val h = size.height * (heights[i] * (0.55f + 0.25f * lift) + near * 0.3f).coerceAtMost(1f)
+                val played = x <= head
+                drawRect(
+                    if (played) accent else Paper.copy(alpha = 0.22f),
+                    androidx.compose.ui.geometry.Offset(x - w / 2, (size.height - h) / 2),
+                    androidx.compose.ui.geometry.Size(w, h),
+                )
             }
+            drawRect(Paper, androidx.compose.ui.geometry.Offset(head - 1.dp.toPx(), 0f), androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height))
         }
-        Row(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
             val shown = if (dragging) (dragFraction * durationMs).toLong() else position
-            Text(formatTime(shown), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+            Text(formatTime(shown), style = EchoType.numeral(12.sp), color = Paper.copy(alpha = 0.75f))
             Spacer(Modifier.weight(1f))
-            Text("-" + formatTime((durationMs - shown).coerceAtLeast(0)), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+            Text("-" + formatTime((durationMs - shown).coerceAtLeast(0)), style = EchoType.numeral(12.sp), color = Paper.copy(alpha = 0.45f))
         }
     }
 }
@@ -309,23 +379,22 @@ private fun SeekSection(durationMs: Long, accent: Color) {
 private fun Transport(playing: Boolean, shuffle: Boolean, repeat: Int, accent: Color) {
     val actions = LocalActions.current
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ToggleIcon(Icons.Rounded.Shuffle, shuffle, accent) { actions.player.toggleShuffle() }
-        BigButton(Icons.Rounded.SkipPrevious, 46.dp) { actions.player.previous() }
-        val interaction = remember { MutableInteractionSource() }
+        BigButton(Icons.Rounded.SkipPrevious) { actions.player.previous() }
         Box(
-            Modifier.size(78.dp).pressScale(interaction, 0.88f).clip(CircleShape).background(Color.White)
-                .clickable(interaction, null) { actions.player.toggle() },
+            Modifier.size(80.dp).echoClick(corner = 18.dp, reach = 22.dp, color = accent, pressedScale = 0.88f) { actions.player.toggle() }
+                .clip(RoundedCornerShape(18.dp)).background(Paper),
             contentAlignment = Alignment.Center,
         ) {
-            AnimatedContent(playing, transitionSpec = { scaleIn(spring(dampingRatio = 0.5f)) + fadeIn() togetherWith scaleOut() + fadeOut() }, label = "play") { p ->
-                Icon(if (p) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(44.dp), tint = Color.Black)
+            AnimatedContent(playing, transitionSpec = { scaleIn(spring(dampingRatio = 0.45f)) + fadeIn() togetherWith scaleOut() + fadeOut() }, label = "play") { p ->
+                Icon(if (p) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(44.dp), tint = Ink)
             }
         }
-        BigButton(Icons.Rounded.SkipNext, 46.dp) { actions.player.next() }
+        BigButton(Icons.Rounded.SkipNext) { actions.player.next() }
         ToggleIcon(if (repeat == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, repeat != Player.REPEAT_MODE_OFF, accent) {
             actions.player.cycleRepeat()
         }
@@ -333,31 +402,33 @@ private fun Transport(playing: Boolean, shuffle: Boolean, repeat: Int, accent: C
 }
 
 @Composable
-private fun BigButton(icon: androidx.compose.ui.graphics.vector.ImageVector, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
+private fun BigButton(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Box(
-        Modifier.size(64.dp).pressScale(interaction, 0.8f).clip(CircleShape).clickable(interaction, null, onClick = onClick),
+        Modifier.size(62.dp).echoClick(corner = 12.dp, color = Paper.copy(alpha = 0.6f), pressedScale = 0.82f, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, null, Modifier.size(size), tint = Color.White) }
+    ) { Icon(icon, null, Modifier.size(42.dp), tint = Paper) }
 }
 
 @Composable
 private fun ToggleIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, accent: Color, onClick: () -> Unit) {
-    val bg by animateFloatAsState(if (on) 1f else 0f, label = "tog")
-    Box(
-        Modifier.size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f * bg)).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Icon(icon, null, Modifier.size(24.dp), tint = if (on) Color.White else Color.White.copy(alpha = 0.55f)) }
-}
-
-@Composable
-private fun PaneButton(icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, onClick: () -> Unit) {
-    val bg by animateFloatAsState(if (on) 1f else 0f, label = "pane")
-    Box(
-        Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.9f * bg)).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+    Column(
+        Modifier.size(44.dp).clip(EchoShape.card).clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, null, Modifier.size(24.dp), tint = if (on) Color.Black else Color.White.copy(alpha = 0.75f))
+        Icon(icon, null, Modifier.size(23.dp), tint = if (on) Paper else Paper.copy(alpha = 0.45f))
+        Spacer(Modifier.height(4.dp))
+        val dot by animateFloatAsState(if (on) 1f else 0f, spring(dampingRatio = 0.5f), label = "dot")
+        Box(Modifier.size((5 * dot).dp).background(accent))
     }
 }
 
+@Composable
+private fun PaneButton(icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, accent: Color, onClick: () -> Unit) {
+    val bg by animateFloatAsState(if (on) 1f else 0f, label = "pane")
+    Box(
+        Modifier.size(44.dp).echoClick(corner = 8.dp, color = accent, onClick = onClick).clip(EchoShape.card).background(Paper.copy(alpha = 0.92f * bg)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, null, Modifier.size(23.dp), tint = if (on) Ink else Paper.copy(alpha = 0.7f))
+    }
+}

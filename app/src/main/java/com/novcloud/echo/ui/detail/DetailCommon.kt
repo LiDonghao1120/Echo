@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.novcloud.echo.ui.components.LocalActions
+import com.novcloud.echo.ui.theme.EchoShape
 
 @Composable
 fun CollapsingTopBar(
@@ -43,7 +44,7 @@ fun CollapsingTopBar(
     Box(Modifier.fillMaxWidth().background(bg.copy(alpha = progress * 0.97f))) {
         Row(Modifier.statusBarsPadding().height(56.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(40.dp).clip(CircleShape)
+                Modifier.size(40.dp).clip(EchoShape.card)
                     .background(if (overImage) Color.Black.copy(alpha = 0.25f * (1 - progress)) else Color.Transparent),
                 contentAlignment = Alignment.Center,
             ) {
@@ -52,15 +53,15 @@ fun CollapsingTopBar(
             Text(
                 title,
                 Modifier.weight(1f).padding(horizontal = 8.dp).graphicsLayer { alpha = progress; translationY = (1 - progress) * 16f },
-                style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Black), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
             )
             Box(
-                Modifier.clip(CircleShape).background(if (overImage) Color.Black.copy(alpha = 0.25f * (1 - progress)) else Color.Transparent),
+                Modifier.clip(EchoShape.card).background(if (overImage) Color.Black.copy(alpha = 0.25f * (1 - progress)) else Color.Transparent),
             ) {
                 androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides iconTint) { actions() }
             }
             Spacer(Modifier.width(2.dp))
         }
-        if (progress > 0.95f) HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = MaterialTheme.colorScheme.outlineVariant)
+        if (progress > 0.95f) HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = com.novcloud.echo.ui.theme.LocalPalette.current.rule)
     }
 }

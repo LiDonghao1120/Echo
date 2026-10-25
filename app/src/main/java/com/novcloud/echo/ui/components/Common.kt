@@ -3,20 +3,11 @@ package com.novcloud.echo.ui.components
 import android.net.Uri
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,12 +19,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
@@ -41,35 +29,44 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.novcloud.echo.data.ArtistImages
+import com.novcloud.echo.data.ArtistLogoInfo
 import com.novcloud.echo.data.Library
 import com.novcloud.echo.data.LibraryRepository
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
+import com.novcloud.echo.domain.HomeData
 import com.novcloud.echo.playback.PlayerConnection
-import com.novcloud.echo.ui.theme.seededGradient
+import com.novcloud.echo.ui.theme.EchoShape
+import com.novcloud.echo.ui.theme.EchoType
+import com.novcloud.echo.ui.theme.Ink
+import com.novcloud.echo.ui.theme.LocalPalette
+import com.novcloud.echo.ui.theme.displayStyle
+import com.novcloud.echo.ui.theme.seededColor
+import kotlinx.coroutines.flow.StateFlow
 
 data class SongMenuContext(val playlistId: Long? = null)
 
@@ -77,6 +74,7 @@ class AppActions(
     val nav: NavController,
     val player: PlayerConnection,
     val repo: LibraryRepository,
+    val home: StateFlow<HomeData>,
     val openSongMenu: (Song, SongMenuContext) -> Unit,
     val expandPlayer: () -> Unit,
     val collapsePlayer: () -> Unit,
@@ -100,25 +98,33 @@ val LocalActions = staticCompositionLocalOf<AppActions> { error("no actions") }
 val LocalBottomInset = staticCompositionLocalOf { 0.dp }
 
 @Composable
+fun EchoMark(modifier: Modifier = Modifier, color: Color = LocalContentColor.current, core: Color = color) {
+    Canvas(modifier) {
+        val s = size.minDimension
+        val c = Offset(size.width / 2, size.height / 2)
+        fun sq(side: Float) = Offset(c.x - side / 2, c.y - side / 2)
+        val outer = s * 0.92f
+        val mid = s * 0.62f
+        val inner = s * 0.28f
+        drawRoundRect(color.copy(alpha = color.alpha * 0.45f), sq(outer), Size(outer, outer), androidx.compose.ui.geometry.CornerRadius(s * 0.1f), style = Stroke(s * 0.055f))
+        drawRoundRect(color, sq(mid), Size(mid, mid), androidx.compose.ui.geometry.CornerRadius(s * 0.07f), style = Stroke(s * 0.085f))
+        drawRoundRect(core, sq(inner), Size(inner, inner), androidx.compose.ui.geometry.CornerRadius(s * 0.035f))
+    }
+}
+
+@Composable
 fun Artwork(
     model: Any?,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(8.dp),
+    shape: Shape = EchoShape.cover,
     seed: String = "",
     iconSize: Dp = 28.dp,
     contentScale: ContentScale = ContentScale.Crop,
 ) {
-    val colors = remember(seed) { seededGradient(seed) }
-    Box(
-        modifier
-            .clip(shape)
-            .background(Brush.linearGradient(listOf(colors[0].copy(alpha = 0.55f), colors[1].copy(alpha = 0.35f)))),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(Icons.Rounded.MusicNote, null, Modifier.size(iconSize), tint = Color.White.copy(alpha = 0.7f))
-        if (model != null) {
-            AsyncImage(model = model, contentDescription = null, contentScale = contentScale, modifier = Modifier.fillMaxSize())
-        }
+    val base = remember(seed) { seededColor(seed) }
+    Box(modifier.clip(shape).background(lerp(base, Ink, 0.62f)), contentAlignment = Alignment.Center) {
+        EchoMark(Modifier.size(iconSize), color = base.copy(alpha = 0.75f), core = base)
+        if (model != null) AsyncImage(model = model, contentDescription = null, contentScale = contentScale, modifier = Modifier.fillMaxSize())
     }
 }
 
@@ -129,75 +135,80 @@ fun artistModel(name: String, lib: Library, custom: Map<String, String>, playCou
 }
 
 @Composable
-fun ArtistAvatar(model: Any?, name: String, modifier: Modifier = Modifier) {
-    val colors = remember(name) { seededGradient(name) }
-    Box(modifier.clip(CircleShape).background(Brush.linearGradient(colors)), contentAlignment = Alignment.Center) {
-        Text(
-            name.trim().take(1).uppercase(),
-            style = MaterialTheme.typography.headlineSmall,
-            color = Color.White,
-        )
+fun rememberArtistPoster(name: String): Any? {
+    val a = LocalActions.current
+    val lib by a.repo.library.collectAsState()
+    val custom by a.repo.artistImages.collectAsState()
+    val home by a.home.collectAsState()
+    return artistModel(name, lib, custom, home.playCounts)
+}
+
+@Composable
+fun rememberArtistLogo(name: String): ArtistLogoInfo? {
+    val logos by LocalActions.current.repo.artistLogos.collectAsState()
+    return logos[name]
+}
+
+@Composable
+fun ArtistThumb(model: Any?, name: String, modifier: Modifier = Modifier, shape: Shape = EchoShape.cover) {
+    val base = remember(name) { seededColor(name) }
+    Box(modifier.clip(shape).background(lerp(base, Ink, 0.5f)), contentAlignment = Alignment.Center) {
+        val initial = displayArtist(name).trim().take(1).uppercase()
+        Text(initial, style = displayStyle(initial, 26.sp), color = base)
         if (model != null) AsyncImage(model, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
     }
 }
 
 @Composable
-fun Collage(models: List<Any?>, modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(12.dp), seed: String = "") {
+fun ArtistAvatar(model: Any?, name: String, modifier: Modifier = Modifier) = ArtistThumb(model, name, modifier)
+
+@Composable
+fun Collage(models: List<Any?>, modifier: Modifier = Modifier, shape: Shape = EchoShape.cover, seed: String = "") {
     Box(modifier.clip(shape)) {
-        if (models.size < 4) Artwork(models.firstOrNull(), Modifier.fillMaxSize(), RoundedCornerShape(0.dp), seed)
+        if (models.size < 4) Artwork(models.firstOrNull(), Modifier.fillMaxSize(), androidx.compose.ui.graphics.RectangleShape, seed)
         else Column(Modifier.fillMaxSize()) {
             for (r in 0..1) Row(Modifier.weight(1f)) {
-                for (c in 0..1) Artwork(models[r * 2 + c], Modifier.weight(1f).fillMaxSize(), RoundedCornerShape(0.dp), seed)
+                for (c in 0..1) Artwork(models[r * 2 + c], Modifier.weight(1f).fillMaxSize(), androidx.compose.ui.graphics.RectangleShape, seed)
             }
         }
     }
 }
 
-fun Modifier.pressScale(interaction: MutableInteractionSource, pressed: Float = 0.96f): Modifier = composed {
-    val isPressed by interaction.collectIsPressedAsState()
-    val s by animateFloatAsState(if (isPressed) pressed else 1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow), label = "press")
-    graphicsLayer { scaleX = s; scaleY = s }
-}
+fun Modifier.bouncyClick(onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier =
+    echoClick(onLongClick = onLongClick, onClick = onClick)
 
-fun Modifier.bouncyClick(onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier = composed {
-    val interaction = remember { MutableInteractionSource() }
-    pressScale(interaction).combinedClickable(interaction, indication = null, onLongClick = onLongClick, onClick = onClick)
+@Composable
+fun Eyebrow(text: String, modifier: Modifier = Modifier, color: Color = LocalPalette.current.signal) {
+    Text(text.uppercase(), modifier, style = EchoType.labelBold, color = color, maxLines = 1)
 }
 
 @Composable
-fun SectionHeader(title: String, modifier: Modifier = Modifier, onMore: (() -> Unit)? = null) {
+fun SectionHeader(title: String, modifier: Modifier = Modifier, index: Int? = null, onMore: (() -> Unit)? = null) {
+    val p = LocalPalette.current
     Row(
         modifier
             .fillMaxWidth()
             .then(if (onMore != null) Modifier.clickable(onClick = onMore) else Modifier)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .padding(start = 20.dp, end = 16.dp, top = 22.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-        if (onMore != null) Icon(
-            Icons.AutoMirrored.Rounded.KeyboardArrowRight, null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (index != null) {
+            Text("%02d".format(index), style = EchoType.labelBold, color = p.signal)
+            Spacer(Modifier.width(10.dp))
+        }
+        Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black), maxLines = 1)
+        Spacer(Modifier.width(12.dp))
+        Box(Modifier.weight(1f).height(1.dp).background(p.rule))
+        if (onMore != null) {
+            Spacer(Modifier.width(10.dp))
+            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, Modifier.size(18.dp), tint = p.muted)
+        }
     }
 }
 
 @Composable
-fun PlayingBars(modifier: Modifier = Modifier, playing: Boolean, color: Color = MaterialTheme.colorScheme.primary) {
-    val t = rememberInfiniteTransition(label = "bars")
-    val phases = listOf(0, 180, 360).map { delay ->
-        t.animateFloat(
-            0.25f, 1f,
-            infiniteRepeatable(tween(520, delay, FastOutSlowInEasing), RepeatMode.Reverse), label = "b$delay",
-        )
-    }
-    Canvas(modifier.size(16.dp)) {
-        val w = size.width / 5
-        phases.forEachIndexed { i, p ->
-            val h = size.height * (if (playing) p.value else 0.3f + 0.2f * i % 2)
-            drawRoundRect(color, Offset(i * w * 2f, size.height - h), Size(w, h), CornerRadius(w / 2))
-        }
-    }
-}
+fun PlayingBars(modifier: Modifier = Modifier, playing: Boolean, color: Color = LocalPalette.current.signal) =
+    EchoMeter(playing, modifier, color)
 
 @Composable
 fun SongRow(
@@ -212,66 +223,85 @@ fun SongRow(
     menuContext: SongMenuContext = SongMenuContext(),
 ) {
     val actions = LocalActions.current
+    val p = LocalPalette.current
     Row(
         modifier
             .fillMaxWidth()
             .combinedClickable(onLongClick = { actions.openSongMenu(song, menuContext) }, onClick = onClick)
-            .padding(start = 20.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+            .padding(start = 20.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (index != null) {
-            Box(Modifier.width(28.dp), contentAlignment = Alignment.CenterStart) {
-                if (current) PlayingBars(playing = playing)
-                else Text(
-                    "$index", style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Box(Modifier.width(34.dp), contentAlignment = Alignment.CenterStart) {
+                if (current) EchoMeter(playing)
+                else Text("%02d".format(index), style = EchoType.numeral(13.sp), color = p.faint)
             }
         }
         if (showArt) {
             Box {
-                Artwork(song.art, Modifier.size(48.dp), RoundedCornerShape(6.dp), seed = song.album, iconSize = 20.dp)
+                Artwork(song.art, Modifier.size(46.dp), EchoShape.cover, seed = song.album, iconSize = 20.dp)
                 if (current && index == null) Box(
-                    Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.45f)),
+                    Modifier.size(46.dp).clip(EchoShape.cover).background(Ink.copy(alpha = 0.55f)),
                     contentAlignment = Alignment.Center,
-                ) { PlayingBars(playing = playing, color = Color.White) }
+                ) { EchoMeter(playing, color = p.signal) }
             }
             Spacer(Modifier.width(14.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(
                 song.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Medium,
+                color = if (current) p.signal else MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 subtitle ?: "${displayArtist(song.artist)} · ${displayAlbum(song.album)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
         IconButton(onClick = { actions.openSongMenu(song, menuContext) }) {
-            Icon(Icons.Rounded.MoreVert, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Rounded.MoreVert, null, tint = p.faint)
         }
     }
 }
 
 @Composable
-fun AnimatedNumber(value: Long, modifier: Modifier = Modifier, format: (Long) -> String = { it.toString() }, style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.headlineMedium, color: Color = LocalContentColor.current) {
-    val anim = remember { Animatable(0f) }
-    LaunchedEffect(value) { anim.animateTo(value.toFloat(), tween(900, easing = FastOutSlowInEasing)) }
-    Text(format(anim.value.toLong()), modifier, style = style, color = color)
+fun AnimatedNumber(
+    value: Long,
+    modifier: Modifier = Modifier,
+    format: (Long) -> String = { it.toString() },
+    style: TextStyle = MaterialTheme.typography.headlineMedium,
+    color: Color = LocalContentColor.current,
+) {
+    val motion = com.novcloud.echo.ui.theme.LocalMotion.current
+    val anim = remember { Animatable(if (motion) 0f else value.toFloat()) }
+    LaunchedEffect(value) { if (motion) anim.animateTo(value.toFloat(), tween(1100, easing = FastOutSlowInEasing)) else anim.snapTo(value.toFloat()) }
+    Text(format(anim.value.toLong()), modifier, style = style, color = color, maxLines = 1)
 }
 
 @Composable
-fun EmptyState(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
+fun EmptyState(icon: androidx.compose.ui.graphics.vector.ImageVector?, text: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
+    val p = LocalPalette.current
     Column(modifier.fillMaxWidth().padding(48.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Box(Modifier.size(84.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
-            Icon(icon, null, Modifier.size(38.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Spacer(Modifier.height(18.dp))
-        Text(text, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        EchoMark(Modifier.size(72.dp), color = p.faint, core = p.signal)
+        Spacer(Modifier.height(20.dp))
+        Text(text, style = MaterialTheme.typography.titleMedium, color = p.muted)
         if (action != null) { Spacer(Modifier.height(18.dp)); action() }
+    }
+}
+
+@Composable
+fun SolidButton(label: String, modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, primary: Boolean = true, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    val bg = if (primary) p.signal else MaterialTheme.colorScheme.surfaceContainerHigh
+    val fg = if (primary) p.onSignal else MaterialTheme.colorScheme.onSurface
+    Row(
+        modifier.echoClick(corner = 8.dp, onClick = onClick).clip(EchoShape.card).background(bg).padding(horizontal = 18.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) { Icon(icon, null, Modifier.size(20.dp), tint = fg); Spacer(Modifier.width(6.dp)) }
+        Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = fg)
     }
 }
 

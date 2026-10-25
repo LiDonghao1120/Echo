@@ -65,6 +65,11 @@ import com.novcloud.echo.ui.components.SongRow
 import com.novcloud.echo.ui.components.formatLong
 import com.novcloud.echo.ui.library.PillButton
 import com.novcloud.echo.ui.player.rememberArtColors
+import com.novcloud.echo.ui.theme.EchoShape
+import com.novcloud.echo.ui.theme.EchoType
+import com.novcloud.echo.ui.theme.Ink
+import com.novcloud.echo.ui.theme.Paper
+import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.seededGradient
 
 sealed interface ListSource {
@@ -140,37 +145,37 @@ fun SongListScreen(source: ListSource) {
                         Box(Modifier.size(220.dp).graphicsLayer {
                             val p = (list.firstVisibleItemScrollOffset / 900f).coerceIn(0f, 0.25f)
                             scaleX = 1 - p; scaleY = 1 - p
-                        }.shadow(24.dp, RoundedCornerShape(16.dp), spotColor = colors.top)) {
+                        }.shadow(24.dp, EchoShape.cover, spotColor = colors.top)) {
                             when {
-                                isFav -> Box(Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(listOf(Color(0xFFFF4F6D), Color(0xFF8E2DE2)))), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Rounded.Favorite, null, tint = Color.White, modifier = Modifier.size(84.dp))
+                                isFav -> Box(Modifier.fillMaxSize().clip(EchoShape.cover).background(palette.signal), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Rounded.Favorite, null, tint = Ink, modifier = Modifier.size(84.dp))
                                 }
-                                else -> Collage(cover, Modifier.fillMaxSize(), RoundedCornerShape(16.dp), title)
+                                else -> Collage(cover, Modifier.fillMaxSize(), EchoShape.cover, title)
                             }
                             if (isDaily) Box(
-                                Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp))
-                                    .background(Brush.verticalGradient(0.3f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f))),
+                                Modifier.fillMaxSize().clip(EchoShape.cover)
+                                    .background(Brush.verticalGradient(0.3f to Color.Transparent, 1f to Ink.copy(alpha = 0.75f))),
                             ) {
                                 Text(
-                                    "${home.day.dayOfMonth}", Modifier.align(Alignment.BottomStart).padding(14.dp),
-                                    fontSize = 64.sp, fontWeight = FontWeight.Black, color = Color.White,
+                                    "%02d".format(home.day.dayOfMonth), Modifier.align(Alignment.BottomStart).padding(14.dp),
+                                    style = EchoType.poster(84.sp), color = Paper,
                                 )
                             }
                             if (!isFav && !isDaily && source is ListSource.MixSrc) {
                                 val g = remember(title) { seededGradient(title) }
-                                Box(Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)).background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to g[1].copy(alpha = 0.8f))))
+                                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(6.dp).background(g[0]))
                             }
                         }
                         Spacer(Modifier.height(18.dp))
-                        if (eyebrow.isNotEmpty()) Text(eyebrow, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        Text(title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp))
+                        if (eyebrow.isNotEmpty()) com.novcloud.echo.ui.components.Eyebrow(eyebrow)
+                        Text(title, style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black), textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp))
                         if (songs.isNotEmpty()) Text(
                             "${songs.size} 首 · ${formatLong(songs.sumOf { it.durationMs })}",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp),
+                            style = EchoType.label, color = palette.muted,
+                            modifier = Modifier.padding(top = 6.dp),
                         )
                         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp)) {
-                            PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f)) { actions.player.play(songs) }
+                            PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f), primary = true) { actions.player.play(songs) }
                             Spacer(Modifier.width(12.dp))
                             PillButton(Icons.Rounded.Shuffle, "随机", Modifier.weight(1f)) { actions.player.play(songs, shuffle = true) }
                         }

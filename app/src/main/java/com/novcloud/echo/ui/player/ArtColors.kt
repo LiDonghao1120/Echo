@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
 @Immutable
 data class ArtColors(val top: Color, val bottom: Color, val accent: Color)
 
-val DefaultArtColors = ArtColors(Color(0xFF2A2A33), Color(0xFF0E0E12), Color(0xFFFF4F6D))
+val DefaultArtColors = ArtColors(Color(0xFF2B2722), Color(0xFF11100E), Color(0xFFFF5A28))
 
 private val cache = HashMap<Any, ArtColors>()
 

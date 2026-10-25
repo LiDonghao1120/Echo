@@ -52,6 +52,15 @@ import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.Artwork
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.bouncyClick
+import com.novcloud.echo.ui.components.echoClick
+import com.novcloud.echo.ui.theme.EchoShape
+import com.novcloud.echo.ui.theme.Ink
+import com.novcloud.echo.ui.theme.Paper
+import com.novcloud.echo.ui.theme.palette
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -71,11 +80,11 @@ fun SharedTransitionScope.MiniPlayer(avs: AnimatedVisibilityScope, onExpand: () 
         modifier
             .padding(horizontal = 10.dp)
             .fillMaxWidth()
-            .height(62.dp)
-            .sharedBounds(rememberSharedContentState("player_bg"), avs, clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(16.dp)))
-            .shadow(16.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black, spotColor = Color.Black)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Brush.horizontalGradient(listOf(colors.top, lerpDark(colors.top))))
+            .height(60.dp)
+            .sharedBounds(rememberSharedContentState("player_bg"), avs, clipInOverlayDuringTransition = OverlayClip(EchoShape.card))
+            .shadow(14.dp, EchoShape.card, ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(EchoShape.card)
+            .background(Ink)
             .bouncyClick(onClick = onExpand)
             .pointerInput(song.id) {
                 detectHorizontalDragGestures(
@@ -92,52 +101,52 @@ fun SharedTransitionScope.MiniPlayer(avs: AnimatedVisibilityScope, onExpand: () 
                 )
             },
     ) {
+        Box(Modifier.fillMaxWidth().height(2.dp).background(Paper.copy(alpha = 0.08f)))
+        Box(Modifier.fillMaxWidth(progress).height(2.dp).background(colors.accent))
         Row(
-            Modifier.fillMaxHeight().padding(start = 8.dp, end = 4.dp).offset { IntOffset(dragX.value.roundToInt(), 0) },
+            Modifier.fillMaxHeight().padding(start = 8.dp, end = 6.dp).offset { IntOffset(dragX.value.roundToInt(), 0) },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Artwork(
                 song.art,
                 Modifier
                     .sharedElement(rememberSharedContentState("art"), avs)
-                    .size(46.dp),
-                RoundedCornerShape(10.dp), song.album, 18.dp,
+                    .size(44.dp),
+                EchoShape.cover, song.album, 18.dp,
             )
             Spacer(Modifier.width(12.dp))
             AnimatedContent(
                 targetState = song,
-                transitionSpec = { (fadeIn() + scaleIn(initialScale = 0.96f)) togetherWith fadeOut() },
+                transitionSpec = {
+                    (slideInVertically(tween(320)) { it / 2 } + fadeIn(tween(240))) togetherWith (slideOutVertically(tween(240)) { -it / 2 } + fadeOut(tween(160)))
+                },
                 modifier = Modifier.weight(1f).graphicsLayer { alpha = 1f - (abs(dragX.value) / 400f).coerceIn(0f, 0.7f) },
                 label = "mini_title",
             ) { s ->
                 Column {
                     Text(
-                        s.title, style = MaterialTheme.typography.titleSmall, color = Color.White, maxLines = 1,
+                        s.title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Paper, maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.sharedBounds(rememberSharedContentState("title"), avs),
                     )
                     Text(
                         displayArtist(s.artist), style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = Paper.copy(alpha = 0.55f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-            IconButton(onClick = { actions.player.toggle() }) {
+            Box(
+                Modifier.size(40.dp).echoClick(corner = 8.dp, color = colors.accent) { actions.player.toggle() }
+                    .clip(EchoShape.card).background(colors.accent),
+                contentAlignment = Alignment.Center,
+            ) {
                 AnimatedContent(state.isPlaying, transitionSpec = { scaleIn() + fadeIn() togetherWith scaleOut() + fadeOut() }, label = "pp") { p ->
-                    Icon(if (p) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(30.dp), tint = Color.White)
+                    Icon(if (p) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(26.dp), tint = Ink)
                 }
             }
             IconButton(onClick = { actions.player.next() }) {
-                Icon(Icons.Rounded.SkipNext, null, Modifier.size(28.dp), tint = Color.White)
+                Icon(Icons.Rounded.SkipNext, null, Modifier.size(26.dp), tint = Paper.copy(alpha = 0.85f))
             }
-        }
-        Box(
-            Modifier.align(Alignment.BottomStart).padding(horizontal = 14.dp).fillMaxWidth().height(2.dp)
-                .clip(RoundedCornerShape(1.dp)).background(Color.White.copy(alpha = 0.15f)),
-        ) {
-            Box(Modifier.fillMaxWidth(progress).height(2.dp).background(Color.White.copy(alpha = 0.85f)))
         }
     }
 }
-
-private fun lerpDark(c: Color) = androidx.compose.ui.graphics.lerp(c, Color.Black, 0.35f)

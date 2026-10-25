@@ -42,6 +42,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.novcloud.echo.data.ThemeMode
 import com.novcloud.echo.ui.AppRoot
 import com.novcloud.echo.ui.theme.EchoTheme
+import com.novcloud.echo.ui.components.echoAura
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
@@ -122,15 +123,18 @@ private fun PermissionGate(onResult: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Image(painterResource(R.drawable.ic_logo), null, Modifier.size(120.dp).clip(RoundedCornerShape(28.dp)))
-        Spacer(Modifier.height(20.dp))
-        Text(androidx.compose.ui.res.stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+        com.novcloud.echo.ui.components.EchoMark(
+            Modifier.size(112.dp).echoAura(true, com.novcloud.echo.ui.theme.Vermilion, corner = 12.dp, reach = 40.dp),
+            color = MaterialTheme.colorScheme.onSurface, core = com.novcloud.echo.ui.theme.Vermilion,
+        )
+        Spacer(Modifier.height(36.dp))
+        Text(androidx.compose.ui.res.stringResource(R.string.app_name), style = MaterialTheme.typography.headlineLarge)
         Spacer(Modifier.height(28.dp))
-        Button(onClick = {
+        com.novcloud.echo.ui.components.SolidButton("允许访问音乐") {
             if (asked >= 2) context.startActivity(
                 Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)),
             ) else launcher.launch(perms)
-        }) { Text("允许访问音乐") }
+        }
     }
 }
 

@@ -58,6 +58,10 @@ import com.novcloud.echo.ui.components.formatLong
 import com.novcloud.echo.ui.home.AlbumTile
 import com.novcloud.echo.ui.library.PillButton
 import com.novcloud.echo.ui.player.rememberArtColors
+import com.novcloud.echo.ui.theme.EchoShape
+import com.novcloud.echo.ui.theme.EchoType
+import com.novcloud.echo.ui.theme.palette
+import androidx.compose.ui.text.font.FontWeight
 
 @Composable
 fun AlbumScreen(id: Long) {
@@ -89,19 +93,19 @@ fun AlbumScreen(id: Long) {
                             Modifier.size(250.dp).graphicsLayer {
                                 val p = (list.firstVisibleItemScrollOffset / 900f).coerceIn(0f, 0.25f)
                                 scaleX = 1 - p; scaleY = 1 - p; alpha = 1 - p * 2
-                            }.shadow(24.dp, RoundedCornerShape(14.dp), spotColor = colors.top),
-                            RoundedCornerShape(14.dp), album.title, 64.dp,
+                            }.shadow(24.dp, EchoShape.cover, spotColor = colors.top),
+                            EchoShape.cover, album.title, 64.dp,
                         )
                         Spacer(Modifier.height(20.dp))
-                        Text(displayAlbum(album.title), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp))
+                        Text(displayAlbum(album.title), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black), textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp))
                         Text(
-                            displayArtist(album.artist), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
+                            displayArtist(album.artist), style = MaterialTheme.typography.titleMedium, color = palette.signal,
                             modifier = Modifier.clickable { actions.openArtist(album.artist) }.padding(4.dp),
                         )
                         val meta = listOfNotNull(album.songs.firstOrNull()?.genre?.ifBlank { null }, album.year.takeIf { it > 0 }?.toString()).joinToString(" · ")
-                        if (meta.isNotEmpty()) Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (meta.isNotEmpty()) Text(meta.uppercase(), style = EchoType.label, color = palette.muted)
                         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                            PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f)) { actions.player.play(album.songs) }
+                            PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f), primary = true) { actions.player.play(album.songs) }
                             Spacer(Modifier.width(12.dp))
                             PillButton(Icons.Rounded.Shuffle, "随机", Modifier.weight(1f)) { actions.player.play(album.songs, shuffle = true) }
                         }
@@ -110,7 +114,7 @@ fun AlbumScreen(id: Long) {
             }
             album.songs.forEachIndexed { i, s ->
                 if (multiDisc && (i == 0 || album.songs[i - 1].disc != s.disc)) item(key = "disc_${s.disc}") {
-                    Text("碟 ${s.disc}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp))
+                    Text("DISC ${s.disc}", style = EchoType.labelBold, color = palette.signal, modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp))
                 }
                 item(key = s.id) {
                     SongRow(
@@ -123,7 +127,7 @@ fun AlbumScreen(id: Long) {
             item {
                 Text(
                     "${album.songs.size} 首歌曲 · ${formatLong(album.durationMs)}",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = EchoType.label, color = palette.muted,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
                 )
             }

@@ -22,7 +22,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.Icon
@@ -60,6 +60,10 @@ import com.novcloud.echo.ui.components.artistModel
 import com.novcloud.echo.ui.components.bouncyClick
 import com.novcloud.echo.ui.home.AlbumTile
 import com.novcloud.echo.ui.library.GenreTile
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.novcloud.echo.ui.components.reveal
+import com.novcloud.echo.ui.theme.palette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -94,36 +98,41 @@ fun SearchScreen() {
     }
 
     Column(Modifier.fillMaxSize()) {
-        Text("搜索", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.statusBarsPadding().padding(start = 20.dp, top = 14.dp, bottom = 10.dp))
+        val p = palette
+        Text(
+            "搜索", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp),
+            modifier = Modifier.statusBarsPadding().padding(start = 20.dp, top = 16.dp, bottom = 12.dp).reveal(0),
+        )
         Row(
-            Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 14.dp, vertical = 12.dp),
+            Modifier.padding(horizontal = 20.dp).fillMaxWidth().reveal(1),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(10.dp))
-            Box(Modifier.weight(1f)) {
-                if (query.isEmpty()) Text("歌曲、专辑、歌手", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+            Icon(Icons.Rounded.Search, null, Modifier.size(26.dp), tint = if (query.isEmpty()) p.faint else p.signal)
+            Spacer(Modifier.width(12.dp))
+            Box(Modifier.weight(1f).padding(vertical = 10.dp)) {
+                if (query.isEmpty()) Text("歌曲、专辑、歌手", color = p.faint, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium))
                 BasicTextField(
                     query, { query = it }, singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    textStyle = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold),
+                    cursorBrush = SolidColor(p.signal),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
             if (query.isNotEmpty()) Icon(
-                Icons.Rounded.Cancel, null, Modifier.size(20.dp).bouncyClick { query = "" },
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                Icons.Rounded.Close, null, Modifier.size(22.dp).bouncyClick { query = "" },
+                tint = p.muted,
             )
         }
+        val line by androidx.compose.animation.animateColorAsState(if (query.isEmpty()) p.rule else MaterialTheme.colorScheme.onSurface, label = "line")
+        Box(Modifier.padding(horizontal = 20.dp).fillMaxWidth().height(2.dp).background(line))
         Spacer(Modifier.height(8.dp))
         val r = results
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 16.dp)) {
             if (r == null) {
                 if (lib.genres.isNotEmpty()) {
-                    item { SectionHeader("浏览流派") }
+                    item { SectionHeader("流派") }
                     val rows = lib.genres.take(12).chunked(2)
                     items(rows) { row ->
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -141,13 +150,9 @@ fun SearchScreen() {
             if (r.artists.isNotEmpty()) {
                 item { SectionHeader("歌手") }
                 item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(r.artists, key = { it.name }) { a ->
-                            Column(Modifier.width(84.dp).bouncyClick { actions.openArtist(a.name) }, horizontalAlignment = Alignment.CenterHorizontally) {
-                                ArtistAvatar(artistModel(a.name, lib, custom, home.playCounts), a.name, Modifier.size(84.dp))
-                                Spacer(Modifier.height(6.dp))
-                                Text(displayArtist(a.name), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
+                            com.novcloud.echo.ui.components.ArtistCard(a.name, 112.dp, 148.dp) { actions.openArtist(a.name) }
                         }
                     }
                 }
