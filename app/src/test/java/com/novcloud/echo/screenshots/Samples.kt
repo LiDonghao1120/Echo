@@ -25,17 +25,18 @@ import kotlin.random.Random
 object Samples {
     private data class AlbumSpec(val id: Long, val title: String, val artist: String, val year: Int, val genre: String, val tracks: List<String>)
 
+    // Fictional artists, albums and tracks. Sample art is self-made (see resources/samples).
     private val albums = listOf(
-        AlbumSpec(1, "Midnights", "Taylor Swift", 2022, "Pop", listOf("Lavender Haze", "Maroon", "Anti-Hero", "Snow On The Beach", "Midnight Rain", "Karma")),
-        AlbumSpec(2, "folklore", "Taylor Swift", 2020, "Indie Folk", listOf("cardigan", "exile", "august", "betty", "invisible string")),
-        AlbumSpec(3, "After Laughter", "Paramore", 2017, "Rock", listOf("Hard Times", "Rose-Colored Boy", "Told You So", "Fake Happy")),
-        AlbumSpec(4, "Riot!", "Paramore", 2007, "Rock", listOf("Misery Business", "crushcrushcrush", "That's What You Get")),
-        AlbumSpec(5, "Planet Her", "Doja Cat", 2021, "R&B", listOf("Woman", "Kiss Me More", "Need To Know", "Streets")),
-        AlbumSpec(6, "如也", "陈粒", 2015, "民谣", listOf("奇妙能力歌", "易燃易爆炸", "历历万乡", "走马")),
-        AlbumSpec(7, "Carrie & Lowell", "Sufjan Stevens", 2015, "Indie Folk", listOf("Death With Dignity", "Should Have Known Better", "Fourth of July")),
-        AlbumSpec(8, "Being Funny in a Foreign Language", "The 1975", 2022, "Pop", listOf("Happiness", "I'm In Love With You", "About You")),
-        AlbumSpec(9, "城市", "陈粒", 2018, "民谣", listOf("小半", "光")),
-        AlbumSpec(10, "Scarlet", "Doja Cat", 2023, "Hip-Hop", listOf("Paint The Town Red", "Agora Hills")),
+        AlbumSpec(1, "Paper Satellites", "Ivy Calder", 2024, "Pop", listOf("Glasshouse", "Neon Saints", "Paper Satellites", "Low Tide", "Midnight Mile", "Afterglow")),
+        AlbumSpec(2, "Wildflower Static", "Ivy Calder", 2021, "Indie Folk", listOf("Linen", "Hollow Pines", "August Rain", "Driftwood", "Little Lanterns")),
+        AlbumSpec(3, "Loud Little Rooms", "The Velvet Static", 2023, "Rock", listOf("Overdrive Heart", "Bad Reception", "Paper Cuts", "Fake Smile Parade")),
+        AlbumSpec(4, "Garage Saints", "The Velvet Static", 2019, "Rock", listOf("Feedback Loop", "Basement Lights", "Static Bloom")),
+        AlbumSpec(5, "Velvet Orbit", "Kira Nox", 2022, "R&B", listOf("Satellite Love", "Honey Drip", "Afterparty", "Moonlit")),
+        AlbumSpec(6, "北岸", "温屿", 2020, "民谣", listOf("晚风邮局", "旧城南", "白鸟", "渡口")),
+        AlbumSpec(7, "Small Hours", "Otis Fenwick", 2018, "Indie Folk", listOf("Kitchen Light", "Quiet Harbor", "Ninth of June")),
+        AlbumSpec(8, "Neon Orchard", "Neon Orchard", 2023, "Pop", listOf("Sugar Rush", "Lemonade Sky", "Daydream Arcade")),
+        AlbumSpec(9, "潮汐", "温屿", 2023, "民谣", listOf("小满", "灯塔")),
+        AlbumSpec(10, "Red Signal", "Kira Nox", 2024, "Hip-Hop", listOf("Paint It Loud", "Gold Hills")),
     )
 
     val songs: List<Song> by lazy {
@@ -55,7 +56,7 @@ object Samples {
 
     val library: Library by lazy { Library.build(songs) }
 
-    private val weights = mapOf("Taylor Swift" to 9, "Paramore" to 5, "Doja Cat" to 4, "陈粒" to 4, "Sufjan Stevens" to 2, "The 1975" to 2)
+    private val weights = mapOf("Ivy Calder" to 9, "The Velvet Static" to 5, "Kira Nox" to 4, "温屿" to 4, "Otis Fenwick" to 2, "Neon Orchard" to 2)
 
     fun events(now: Long = System.currentTimeMillis()): List<PlayEvent> {
         val r = Random(42)
@@ -114,9 +115,9 @@ object Samples {
             events().forEach { c.db.events().insert(it) }
             if (withArt) {
                 listOf(
-                    Triple("Taylor Swift", "poster_field.jpg", "logo_taylor.png"),
-                    Triple("Paramore", "poster_garage.jpg", "logo_paramore.png"),
-                    Triple("Doja Cat", "poster_stage.jpg", "logo_doja.png"),
+                    Triple("Ivy Calder", "poster_field.jpg", "logo_ivy.png"),
+                    Triple("The Velvet Static", "poster_garage.jpg", "logo_velvet.png"),
+                    Triple("Kira Nox", "poster_stage.jpg", "logo_kira.png"),
                 ).forEach { (artist, poster, logo) ->
                     val p = ArtistArtStore.savePoster(context, artist, Uri.fromFile(extract(context, poster)))!!
                     c.db.artistImages().put(ArtistImage(artist, p.absolutePath, 1))
@@ -128,7 +129,7 @@ object Samples {
         c.library.publish(library)
     }
 
-    fun playing(context: Context, songTitle: String = "Anti-Hero") {
+    fun playing(context: Context, songTitle: String = "Paper Satellites") {
         val s = songs.first { it.title == songTitle }
         val queue = songs.take(12).mapIndexed { i, x -> QueueEntry(i, x) }
         app(context).player.preview(

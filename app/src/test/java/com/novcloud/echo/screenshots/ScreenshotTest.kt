@@ -109,19 +109,19 @@ class ScreenshotTest {
     @Test fun home_dark_tall() = app("home_dark_tall", tall = 1900)
     @Test fun home_light() = app("home_light", dark = false)
 
-    @Test fun artist_taylor_dark() = app("artist_taylor_dark", route = "artist/Taylor%20Swift")
-    @Test fun artist_doja_dark() = app("artist_doja_dark", route = "artist/Doja%20Cat")
-    @Test fun artist_paramore_light() = app("artist_paramore_light", dark = false, route = "artist/Paramore")
-    @Test fun artist_text_dark() = app("artist_text_dark", route = "artist/%E9%99%88%E7%B2%92")
-    @Test fun artist_latin_text_dark() = app("artist_latin_text_dark", route = "artist/Sufjan%20Stevens")
-    @Test fun artist_taylor_tall() = app("artist_taylor_tall", route = "artist/Taylor%20Swift", tall = 1700)
+    @Test fun artist_ivy_dark() = app("artist_ivy_dark", route = "artist/Ivy%20Calder")
+    @Test fun artist_kira_dark() = app("artist_kira_dark", route = "artist/Kira%20Nox")
+    @Test fun artist_velvet_light() = app("artist_velvet_light", dark = false, route = "artist/The%20Velvet%20Static")
+    @Test fun artist_text_dark() = app("artist_text_dark", route = "artist/%E6%B8%A9%E5%B1%BF")
+    @Test fun artist_latin_text_dark() = app("artist_latin_text_dark", route = "artist/Otis%20Fenwick")
+    @Test fun artist_ivy_tall() = app("artist_ivy_tall", route = "artist/Ivy%20Calder", tall = 1700)
 
-    @Test fun artist_taylor_collapsed() = app("artist_taylor_collapsed", route = "artist/Taylor%20Swift") {
+    @Test fun artist_ivy_collapsed() = app("artist_ivy_collapsed", route = "artist/Ivy%20Calder") {
         compose.onRoot().performTouchInput { swipeUp(startY = bottom * 0.8f, endY = bottom * 0.25f, durationMillis = 400) }
         compose.mainClock.advanceTimeBy(2_000)
     }
 
-    @Test fun artist_paramore_mid() = app("artist_paramore_mid", route = "artist/Paramore") {
+    @Test fun artist_velvet_mid() = app("artist_velvet_mid", route = "artist/The%20Velvet%20Static") {
         compose.onRoot().performTouchInput { swipeUp(startY = bottom * 0.8f, endY = bottom * 0.55f, durationMillis = 600) }
         compose.mainClock.advanceTimeBy(2_000)
     }
@@ -156,7 +156,7 @@ class ScreenshotTest {
                         Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = EchoShape.card) {
                             Box(Modifier.padding(top = 20.dp)) {
                                 ArtistArtSheetContent(
-                                    "Taylor Swift", true, c.library.artistLogos.value["Taylor Swift"],
+                                    "Ivy Calder", true, c.library.artistLogos.value["Ivy Calder"],
                                     ArtistArtActions({}, {}, {}, {}, {}, {}),
                                 )
                             }

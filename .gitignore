@@ -1,13 +1,35 @@
+# Gradle / Kotlin
 .gradle/
 build/
+.kotlin/
+/captures/
+*.hprof
+
+# Local config
 /local.properties
+.env
+*.env
+
+# IDE / OS
 .idea/
 *.iml
+.vscode/
 .DS_Store
-captures/
-.kotlin/
+Thumbs.db
 
-# signing (never commit)
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+/release/
+
+# Signing (never commit)
 keystore/
 *.jks
 *.keystore
+*.p12
+signing.properties
+
+# Local-only working files (notes, private samples)
+/.local/
