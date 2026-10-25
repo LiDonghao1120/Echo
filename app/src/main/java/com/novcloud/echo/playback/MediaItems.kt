@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import com.novcloud.echo.data.Song
+import com.novcloud.echo.data.UNKNOWN
 import com.novcloud.echo.data.albumArtUri
 import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
@@ -32,3 +33,17 @@ fun Song.toMediaItem(): MediaItem = MediaItem.Builder()
     .build()
 
 fun MediaItem.songId(): Long? = mediaId.toLongOrNull()
+
+fun MediaItem.trackInfo(): TrackInfo? {
+    val id = songId() ?: return null
+    val m = mediaMetadata
+    return TrackInfo(
+        id = id,
+        title = m.title?.toString().orEmpty(),
+        artist = m.artist?.toString()?.takeUnless { it == displayArtist(UNKNOWN) } ?: UNKNOWN,
+        album = m.albumTitle?.toString()?.takeUnless { it == displayAlbum(UNKNOWN) } ?: UNKNOWN,
+        albumId = m.extras?.getLong(EXTRA_ALBUM_ID, -1) ?: -1,
+        genre = m.genre?.toString().orEmpty(),
+        durationMs = m.durationMs ?: 0,
+    )
+}

@@ -12,6 +12,7 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
@@ -66,7 +67,10 @@ data class PlaylistWithCount(val id: Long, val name: String, val createdAt: Long
 @Dao
 interface PlayEventDao {
     @Insert
-    suspend fun insert(e: PlayEvent)
+    suspend fun insert(e: PlayEvent): Long
+
+    @Update
+    suspend fun update(e: PlayEvent)
 
     @Query("SELECT * FROM play_event WHERE startedAt >= :from ORDER BY startedAt ASC")
     fun since(from: Long): Flow<List<PlayEvent>>

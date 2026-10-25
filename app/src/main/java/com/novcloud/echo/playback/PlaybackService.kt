@@ -47,13 +47,14 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
-        tracker = PlayTracker(c.db.events(), { c.library.library.value }, c.appScope)
+        val writer = PlayEventWriter(c.db.events(), c.appScope)
+        tracker = PlayTracker(writer::write, { c.library.library.value.songById[it] })
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                val id = mediaItem?.songId()
+                val track = mediaItem?.trackInfo()
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT)
-                    tracker.onCompleted(id, player.isPlaying)
-                else tracker.onTrack(id, player.isPlaying)
+                    tracker.onCompleted(track, player.isPlaying)
+                else tracker.onTrack(track, player.isPlaying)
                 saveQueue()
             }
 
@@ -63,7 +64,7 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) tracker.onCompleted(null, false)
+                if (state == Player.STATE_ENDED) tracker.onEnded()
             }
 
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
@@ -103,6 +104,7 @@ class PlaybackService : MediaSessionService() {
         scope.launch {
             while (isActive) {
                 delay(15_000)
+                tracker.checkpoint()
                 if (player.isPlaying) saveQueue()
             }
         }
