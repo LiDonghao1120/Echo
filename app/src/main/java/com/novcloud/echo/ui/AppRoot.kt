@@ -179,10 +179,12 @@ fun AppRoot(
                             Modifier.fillMaxWidth().drawBehind {
                                 if (veil > 0f) {
                                     val top = 30.dp.toPx()
+                                    val solid = (30.dp.toPx() / (size.height - top)).coerceIn(0f, 1f)
                                     drawRect(
                                         Brush.verticalGradient(
                                             0f to surface.copy(alpha = 0f),
-                                            0.45f to surface.copy(alpha = 0.55f * veil),
+                                            solid * 0.55f to surface.copy(alpha = 0.6f * veil),
+                                            solid to surface.copy(alpha = veil),
                                             1f to surface.copy(alpha = veil),
                                             startY = top, endY = size.height,
                                         ),
