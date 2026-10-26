@@ -28,7 +28,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.EchoTheme
@@ -171,11 +173,25 @@ fun AppRoot(
                         enter = fadeIn(tween(EchoMotion.Standard)) + slideInVertically { it / 2 },
                         exit = fadeOut(tween(EchoMotion.Standard)),
                     ) {
-                        val dock by animateColorAsState(
-                            if (barVisible) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surface.copy(alpha = 0f),
-                            tween(EchoMotion.Medium), label = "dock",
-                        )
-                        Box(Modifier.fillMaxWidth().drawBehind { drawRect(dock) }) {
+                        val surface = MaterialTheme.colorScheme.surface
+                        val veil by animateFloatAsState(if (barVisible) 1f else 0f, tween(EchoMotion.Medium), label = "veil")
+                        Box(
+                            Modifier.fillMaxWidth().drawBehind {
+                                if (veil > 0f) {
+                                    val top = 30.dp.toPx()
+                                    drawRect(
+                                        Brush.verticalGradient(
+                                            0f to surface.copy(alpha = 0f),
+                                            0.45f to surface.copy(alpha = 0.55f * veil),
+                                            1f to surface.copy(alpha = veil),
+                                            startY = top, endY = size.height,
+                                        ),
+                                        topLeft = Offset(0f, top),
+                                        size = Size(size.width, size.height - top),
+                                    )
+                                }
+                            },
+                        ) {
                             MiniPlayer(this@AnimatedVisibility, onExpand = { expanded = true }, modifier = Modifier.padding(bottom = 6.dp))
                         }
                     }
