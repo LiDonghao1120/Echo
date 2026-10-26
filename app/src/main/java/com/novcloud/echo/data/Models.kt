@@ -27,7 +27,7 @@ data class Song(
 ) {
     val uri: Uri get() = if (docUri.isNotEmpty()) Uri.parse(docUri) else ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
     val art: ArtRef get() = ArtRef(albumId, id, docUri)
-    val artists: List<String> get() = splitArtists(artist)
+    val artists: List<String> by lazy(LazyThreadSafetyMode.PUBLICATION) { splitArtists(artist) }
 }
 
 @Immutable
@@ -113,8 +113,10 @@ data class Library(
 
 const val UNKNOWN = "<unknown>"
 
+private val ARTIST_SEPARATORS = Regex("\\s*(?:/|、|;|；|&|＆| feat\\. | ft\\. | x )\\s*", RegexOption.IGNORE_CASE)
+
 fun splitArtists(raw: String): List<String> {
-    val parts = raw.split(Regex("\\s*(?:/|、|;|；|&|＆| feat\\. | ft\\. | x )\\s*", RegexOption.IGNORE_CASE))
+    val parts = raw.split(ARTIST_SEPARATORS)
         .map { it.trim() }.filter { it.isNotEmpty() }
     return parts.ifEmpty { listOf(raw) }.distinct()
 }

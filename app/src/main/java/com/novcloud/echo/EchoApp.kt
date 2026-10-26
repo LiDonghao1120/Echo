@@ -11,6 +11,7 @@ import com.novcloud.echo.data.LibraryRepository
 import com.novcloud.echo.data.Prefs
 import com.novcloud.echo.data.db.EchoDatabase
 import com.novcloud.echo.data.lyrics.LyricsLoader
+import com.novcloud.echo.domain.DailyPin
 import com.novcloud.echo.domain.HomeData
 import com.novcloud.echo.domain.Recommender
 import com.novcloud.echo.playback.PlayerConnection
@@ -27,9 +28,14 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.File
 import java.time.LocalDate
 
 class AppContainer(app: Application) {
@@ -41,15 +47,24 @@ class AppContainer(app: Application) {
     val player = PlayerConnection(app, library.library, appScope)
     val lyricsTree: StateFlow<String?> = prefs.lyricsTree.stateIn(appScope, SharingStarted.Eagerly, null)
 
-    val allEvents = db.events().since(0).stateIn(appScope, SharingStarted.Eagerly, emptyList())
+    private val events = db.events().since(0).shareIn(appScope, SharingStarted.Eagerly, replay = 1)
+    val allEvents = events.stateIn(appScope, SharingStarted.Eagerly, emptyList())
 
     private val today = MutableStateFlow(LocalDate.now())
+    private val dailyPin = DailyPin(File(app.filesDir, "daily_pin"))
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
-    val home: StateFlow<HomeData> = combine(library.library, allEvents.debounce(800), today) { lib, ev, _ -> lib to ev }
-        .map { (lib, ev) -> Recommender.build(lib, ev) }
+    val home: StateFlow<HomeData> = combine(library.library, merge(events.take(1), events.drop(1).debounce(800)), today) { lib, ev, _ -> lib to ev }
+        .map { (lib, ev) ->
+            val data = Recommender.build(lib, ev, pinned = dailyPin.read(LocalDate.now()))
+            if (lib.songs.isNotEmpty()) data.daily?.let { dailyPin.write(data.day, it.songs) }
+            data
+        }
         .flowOn(Dispatchers.Default)
         .stateIn(appScope, SharingStarted.Eagerly, HomeData())
+
+    /** Home has content to show: the library (saved or scanned) and its recommendations are both in. */
+    fun homeReady(): Boolean = library.library.value.loaded && home.value.ready
 
     init {
         appScope.launch {

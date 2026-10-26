@@ -77,6 +77,7 @@ class PlaybackService : MediaSessionService() {
                     error.errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ||
                     error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
                     error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
+                if (error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) app.container.library.onMissingFile()
                 val action = watchdog.onError(SystemClock.elapsedRealtime(), player.currentMediaItem?.mediaId, player.hasNextMediaItem(), fatal)
                 scope.launch { recover(action, resume = true) }
             }

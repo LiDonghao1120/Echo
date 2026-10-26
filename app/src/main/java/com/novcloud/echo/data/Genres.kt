@@ -19,8 +19,8 @@ class GenreResolver(private val context: Context) {
 
     fun apply(songs: List<Song>): List<Song> {
         if (songs.none { it.genre.isBlank() }) return songs
-        val members = if (songs.any { it.genre.isBlank() && it.docUri.isEmpty() }) storeGenres() else emptyMap()
         val map = load()
+        val members = if (songs.any { it.genre.isBlank() && it.docUri.isEmpty() && map[key(it)]?.size != it.size }) storeGenres() else emptyMap()
         return songs.map { s ->
             if (s.genre.isNotBlank()) s
             else members[s.id]?.let { s.copy(genre = it) }

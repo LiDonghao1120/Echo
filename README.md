@@ -69,6 +69,7 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 - Songs (sort by title, artist, album, date added or duration), albums, artists, genres, folders, playlists and favourites, plus search.
 - Tracks with several artists (`/`, `、`, `;`, `&`, `feat.`) show up under each of them.
 - If Android doesn't report genres, Echo reads them from the file tags.
+- Opens straight to your library: the last scan is kept on the device and new or removed files are picked up in the background.
 - **Scan folders**: add folders with the system picker, including ones Android's media index skips, and include or exclude any folder on the device. Ignore tracks shorter than a set length. Duplicates are removed.
 
 ### Playback

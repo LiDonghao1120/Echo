@@ -7,6 +7,7 @@ import com.novcloud.echo.data.Library
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.UNKNOWN
 import com.novcloud.echo.data.db.PlayEvent
+import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -31,6 +32,7 @@ data class HomeData(
     val artists: List<Artist> = emptyList(),
     val hasHistory: Boolean = false,
     val playCounts: Map<Long, Int> = emptyMap(),
+    val ready: Boolean = false,
 ) {
     fun mix(id: String): Mix? = if (daily?.id == id) daily else mixes.firstOrNull { it.id == id }
 }
@@ -69,10 +71,11 @@ class Affinity(events: List<PlayEvent>, now: Long, genreOf: (PlayEvent) -> Strin
 
 object Recommender {
 
-    fun build(lib: Library, events: List<PlayEvent>, now: Long = System.currentTimeMillis()): HomeData {
+    /** [pinned] is today's daily mix as first shown; it is kept while most of its songs are still in the library. */
+    fun build(lib: Library, events: List<PlayEvent>, now: Long = System.currentTimeMillis(), pinned: List<Long>? = null): HomeData {
         val zone = ZoneId.systemDefault()
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-        if (lib.songs.isEmpty()) return HomeData(day = today)
+        if (lib.songs.isEmpty()) return HomeData(day = today, ready = lib.loaded)
         val dayStart = today.atStartOfDay(zone).toInstant().toEpochMilli()
         val past = events.filter { it.startedAt < dayStart }
         val genreOf: (PlayEvent) -> String = { e -> lib.songById[e.songId]?.genre?.ifBlank { null } ?: e.genre }
@@ -81,15 +84,15 @@ object Recommender {
         val seed = today.toEpochDay()
         val hasHistory = events.isNotEmpty()
 
-        val daily = Mix("daily", "每日推荐", "", MixKind.Daily, daily(lib, aff, dayStart, Random(seed)))
+        val kept = pinned?.mapNotNull { lib.songById[it] }?.takeIf { it.size * 2 > pinned.size }
+        val daily = Mix("daily", "每日推荐", "", MixKind.Daily, kept ?: daily(lib, aff, dayStart, seed))
 
         val mixes = ArrayList<Mix>()
         val genres = if (aff.genre.isNotEmpty()) aff.genre.entries.sortedByDescending { it.value }.map { it.key }
         else lib.genres.map { it.name }
         genres.take(3).forEachIndexed { i, g ->
             val pool = lib.genres.firstOrNull { it.name == g }?.songs.orEmpty()
-            val r = Random(seed * 31 + i)
-            val picked = diverse(pool.sortedByDescending { scoreOf(it, aff, dayStart, r, 0.6) }, 25, 3)
+            val picked = diverse(pool.sortedByDescending { scoreOf(it, aff, dayStart, seed * 31 + i + 1, 0.6) }, 25, 3)
             if (picked.size >= 5) mixes += Mix("genre:$g", g, "精选", MixKind.Genre, picked)
         }
         val topArtists = if (aff.artist.isNotEmpty()) aff.artist.entries.sortedByDescending { it.value }.map { it.key }
@@ -139,15 +142,24 @@ object Recommender {
         val artistOrder = if (live.artist.isNotEmpty()) live.artist.entries.sortedByDescending { it.value }.map { it.key } else topArtists
         val artists = artistOrder.mapNotNull { lib.artistByName[it] }.filter { it.name != UNKNOWN }.take(12)
 
-        return HomeData(today, daily, mixes, recent, most, added, artists, hasHistory, live.plays)
+        return HomeData(today, daily, mixes, recent, most, added, artists, hasHistory, live.plays, ready = true)
     }
 
-    private fun daily(lib: Library, aff: Affinity, now: Long, r: Random): List<Song> {
-        val ranked = lib.songs.map { it to scoreOf(it, aff, now, r, 0.45) }.sortedByDescending { it.second }.map { it.first }
+    private fun daily(lib: Library, aff: Affinity, now: Long, seed: Long): List<Song> {
+        val ranked = lib.songs.map { it to scoreOf(it, aff, now, seed, 0.45) }.sortedByDescending { it.second }.map { it.first }
         return diverse(ranked, 30, 3, albumCap = 2)
     }
 
-    private fun scoreOf(s: Song, aff: Affinity, now: Long, r: Random, noise: Double): Double {
+    /** Per-song noise keyed by (salt, id), so adding or removing other songs leaves a song's score unchanged. */
+    private fun jitter(salt: Long, id: Long): Double {
+        var z = salt * -0x61c8864680b583ebL + id
+        z = (z xor (z ushr 30)) * -0x40a7b892e31b1a47L
+        z = (z xor (z ushr 27)) * -0x6b2fb644ecceee15L
+        z = z xor (z ushr 31)
+        return (z ushr 11) * (1.0 / (1L shl 53))
+    }
+
+    private fun scoreOf(s: Song, aff: Affinity, now: Long, salt: Long, noise: Double): Double {
         val a = s.artists.maxOf { aff.artist[it] ?: 0.0 }
         val g = aff.genre[s.genre] ?: 0.0
         val al = aff.album[s.albumId] ?: 0.0
@@ -155,7 +167,7 @@ object Recommender {
         val recentPenalty = if (last != null && now - last < 36 * 3_600_000L) 0.5 else 0.0
         val overplay = min(0.3, (aff.song[s.id] ?: 0.0) * 0.3)
         val explore = if (last == null) 0.15 else 0.0
-        return 0.4 * a + 0.25 * g + 0.15 * al + explore + r.nextDouble() * noise - recentPenalty - overplay
+        return 0.4 * a + 0.25 * g + 0.15 * al + explore + jitter(salt, s.id) * noise - recentPenalty - overplay
     }
 
     private fun diverse(songs: List<Song>, limit: Int, artistCap: Int, albumCap: Int = Int.MAX_VALUE): List<Song> {
@@ -193,5 +205,33 @@ object Recommender {
         in 14..17 -> "午后"
         in 18..22 -> "夜晚"
         else -> "深夜"
+    }
+}
+
+class DailyPin(private val file: File) {
+    private var day: LocalDate? = null
+    private var ids: List<Long> = emptyList()
+    private var loaded = false
+
+    @Synchronized
+    fun read(today: LocalDate): List<Long>? {
+        if (!loaded) {
+            loaded = true
+            runCatching {
+                val lines = file.readLines()
+                day = LocalDate.parse(lines[0])
+                ids = lines.getOrNull(1).orEmpty().split(',').mapNotNull { it.toLongOrNull() }
+            }
+        }
+        return ids.takeIf { day == today && it.isNotEmpty() }
+    }
+
+    @Synchronized
+    fun write(today: LocalDate, songs: List<Song>) {
+        val next = songs.map { it.id }
+        if (day == today && next == ids) return
+        day = today
+        ids = next
+        runCatching { file.writeText("$today\n${next.joinToString(",")}") }
     }
 }

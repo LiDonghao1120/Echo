@@ -1,6 +1,10 @@
 package com.novcloud.echo.data
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import android.content.Intent
 import android.database.ContentObserver
 import android.net.Uri
@@ -15,7 +19,9 @@ import com.novcloud.echo.data.db.Favorite
 import com.novcloud.echo.data.db.Playlist
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -34,6 +40,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
 class LibraryRepository(
     private val context: Context,
@@ -81,35 +88,89 @@ class LibraryRepository(
         _library.value = lib
     }
 
-    fun refresh(full: Boolean = true) {
-        scope.launch { rescan(full) }
+    private val snapshots = SnapshotStore(context.filesDir)
+    private var treeStamps: Map<String, Long> = emptyMap()
+    private val probed = HashMap<String, Long>()
+    private val restored: Deferred<Unit> = scope.async(Dispatchers.IO) {
+        val snap = runCatching { snapshots.load() }.getOrNull() ?: return@async
+        treeSongs = snap.treeSongs
+        treeStamps = snap.trees
+        probed.putAll(snap.probed)
+        val lib = Library.build(snap.songs)
+        if (!_library.value.loaded) _library.value = lib
+    }
+    private val started = AtomicBoolean(false)
+    private var missingJob: Job? = null
+
+    enum class Walk { Never, IfChanged, Always }
+
+    /** Startup scan, once per process. Needs the audio permission; returns false without it. */
+    fun start(): Boolean {
+        if (!hasAudioPermission()) return false
+        if (started.compareAndSet(false, true)) scope.launch { rescan(Walk.IfChanged) }
+        return true
     }
 
-    suspend fun rescan(full: Boolean = true) = mutex.withLock {
+    fun refresh(full: Boolean = true) {
+        scope.launch { rescan(if (full) Walk.Always else Walk.Never) }
+    }
+
+    /** A queued file could not be opened; rescan so it drops out. */
+    fun onMissingFile() {
+        missingJob?.cancel()
+        missingJob = scope.launch {
+            delay(2000)
+            rescan(Walk.Always)
+        }
+    }
+
+    suspend fun rescan(full: Boolean) = rescan(if (full) Walk.Always else Walk.Never)
+
+    suspend fun rescan(walk: Walk) {
+        restored.await()
+        mutex.withLock { scan(walk) }
+        registerObserver()
+    }
+
+    private suspend fun scan(walk: Walk) {
         _scanning.value = true
         genreJob?.cancel()
         try {
             val min = prefs.minDurationSec.first() * 1000L
             val rules = FolderRules(prefs.scanIncluded.first(), prefs.scanExcluded.first())
             val trees = prefs.scanTrees.first().filter(::hasPermission)
+            val loaded = _library.value.loaded
             val songs = withContext(Dispatchers.IO) {
-                val store = runCatching { scanner.scan(rules, min) }.getOrNull()
-                    ?: MediaScanner.Result(emptyList(), emptySet())
-                if (full || treeSongs.isEmpty() && trees.isNotEmpty()) {
-                    treeSongs = runCatching {
-                        treeScanner.scan(trees, rules, store.knownPaths) { _progress.value = it }
-                    }.getOrDefault(treeSongs)
+                val store = runCatching { scanner.scan(rules, min, probed) }.getOrNull()
+                    ?: if (loaded) return@withContext null else MediaScanner.Result(emptyList(), emptySet())
+                if (trees.isEmpty()) {
+                    treeSongs = emptyList()
+                    treeStamps = emptyMap()
+                } else {
+                    val stamps = if (walk == Walk.Never && treeStamps.keys == trees.toSet()) treeStamps
+                    else trees.associateWith { treeScanner.signature(it) ?: 0L }
+                    if (walk == Walk.Always || stamps != treeStamps) {
+                        runCatching { treeScanner.scan(trees, rules, store.knownPaths) { _progress.value = it } }
+                            .onSuccess { treeSongs = it; treeStamps = stamps }
+                    }
                 }
                 val extra = treeSongs.filter { it.durationMs >= min && rules.accepts(it.folder, true) && it.path.lowercase() !in store.knownPaths }
                 genres.apply(Dedupe.merge(store.songs, extra))
+            } ?: return
+            if (LibrarySnapshot.changed(_library.value, songs)) {
+                _library.value = withContext(Dispatchers.Default) { Library.build(songs) }
             }
-            _library.value = withContext(Dispatchers.Default) { Library.build(songs) }
+            saveSnapshot()
             fillGenres(songs)
         } finally {
             _scanning.value = false
             _progress.value = null
         }
-        registerObserver()
+    }
+
+    private suspend fun saveSnapshot() {
+        val snap = LibrarySnapshot(_library.value.songs, treeSongs, treeStamps, HashMap(probed))
+        withContext(Dispatchers.IO) { snapshots.save(snap) }
     }
 
     private fun fillGenres(songs: List<Song>) {
@@ -117,6 +178,7 @@ class LibraryRepository(
             val todo = genres.unresolved(songs)
             if (todo.isEmpty()) return@launch
             _genreProbing.value = true
+            var changed = false
             try {
                 var found = 0
                 for ((i, s) in todo.withIndex()) {
@@ -127,7 +189,10 @@ class LibraryRepository(
                         if (found > 0) {
                             found = 0
                             val lib = Library.build(genres.apply(_library.value.songs))
-                            if (isActive) _library.value = lib
+                            if (isActive) {
+                                _library.value = lib
+                                changed = true
+                            }
                         }
                     }
                 }
@@ -135,7 +200,13 @@ class LibraryRepository(
                 genres.save()
                 _genreProbing.value = false
             }
+            if (changed && isActive) saveSnapshot()
         }
+    }
+
+    private fun hasAudioPermission(): Boolean {
+        val perm = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        return ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun hasPermission(tree: String) = context.contentResolver.persistedUriPermissions.any { it.uri.toString() == tree && it.isReadPermission }
@@ -161,8 +232,10 @@ class LibraryRepository(
         rescan(prefs.scanTrees.first().isNotEmpty())
     }
 
+    /** The saved library when there is one, otherwise the result of the startup scan. */
     suspend fun awaitLoaded(): Library {
-        if (!_library.value.loaded) rescan()
+        restored.await()
+        if (_library.value.loaded || !start()) return _library.value
         return _library.first { it.loaded }
     }
 
@@ -174,7 +247,7 @@ class LibraryRepository(
                 pending?.cancel()
                 pending = scope.launch {
                     delay(1500)
-                    rescan(false)
+                    rescan(Walk.Never)
                 }
             }
         }

@@ -148,6 +148,43 @@ class TreeScanner(private val context: Context) {
         return out
     }
 
+    /**
+     * Cheap change check: hashes every entry (id, mtime, size) listed in the tree root and its first-level folders.
+     * A file added, removed or replaced up to three levels deep changes the mtime of a folder seen here.
+     */
+    fun signature(tree: String): Long? {
+        val uri = Uri.parse(tree)
+        val rootId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return null
+        val root = list(uri, rootId) ?: return null
+        var sum = root.size.toLong()
+        for (e in root) {
+            sum += e.hash
+            if (e.dir) list(uri, e.id)?.forEach { sum += it.hash * 31 + 1 }
+        }
+        return sum
+    }
+
+    private class Entry(val id: String, val dir: Boolean, val hash: Long)
+
+    private fun list(tree: Uri, docId: String): List<Entry>? = runCatching {
+        val cols = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+        )
+        context.contentResolver.query(DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId), cols, null, null, null)?.use { c ->
+            val out = ArrayList<Entry>(c.count)
+            while (c.moveToNext()) {
+                val id = c.getString(0) ?: continue
+                val size = if (c.isNull(2)) 0 else c.getLong(2)
+                val modified = if (c.isNull(3)) 0 else c.getLong(3)
+                out += Entry(id, c.getString(1) == DocumentsContract.Document.MIME_TYPE_DIR, SafPaths.stableId("$id|$modified|$size"))
+            }
+            out
+        }
+    }.getOrNull()
+
     private fun walk(tree: Uri, docId: String, folderLabel: String, rules: FolderRules, out: MutableList<Doc>, depth: Int) {
         if (depth > 14) return
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId)

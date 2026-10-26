@@ -31,22 +31,26 @@ class MediaScanner(private val context: Context) {
 
     class Result(val songs: List<Song>, val knownPaths: Set<String>)
 
-    fun scan(rules: FolderRules, minDurationMs: Long): Result {
+    /** [probed] carries durations read with MMR across scans (path|size → ms, 0 = unreadable); it is pruned to the current files. */
+    fun scan(rules: FolderRules, minDurationMs: Long, probed: MutableMap<String, Long>): Result {
         val rows = query()
         val known = rows.mapTo(HashSet(rows.size)) { it.song.path.lowercase() }
         val out = ArrayList<Song>(rows.size)
+        val seen = HashSet<String>()
         var probes = 0
         for (r in rows) {
             if (!rules.accepts(r.song.folder, r.isMusic)) continue
             var s = r.song
-            if (s.durationMs <= 0 && probes < 400) {
-                probes++
-                val d = TagProbe.duration(context, s.uri)
+            if (s.durationMs <= 0) {
+                val key = "${s.path}|${s.size}"
+                seen += key
+                val d = probed[key] ?: if (probes++ < 400) TagProbe.duration(context, s.uri).also { probed[key] = it } else 0
                 if (d > 0) s = s.copy(durationMs = d)
             }
             if (s.durationMs < minDurationMs || s.durationMs <= 0) continue
             out += s
         }
+        probed.keys.retainAll(seen)
         return Result(out, known)
     }
 

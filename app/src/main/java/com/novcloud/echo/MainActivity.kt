@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -50,9 +51,13 @@ class MainActivity : ComponentActivity() {
     private val openPlayer = MutableStateFlow(0L)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         val container = (application as EchoApp).container
+        val shown = SystemClock.uptimeMillis()
+        if (container.library.start()) splash.setKeepOnScreenCondition {
+            !container.homeReady() && SystemClock.uptimeMillis() - shown < SPLASH_HOLD_MS
+        }
         handle(intent)
         setContent {
             val mode by container.prefs.theme.collectAsState(initial = ThemeMode.System)
@@ -70,13 +75,10 @@ class MainActivity : ComponentActivity() {
                 Surface(color = MaterialTheme.colorScheme.surface) {
                     var granted by remember { mutableStateOf(hasAudioPermission()) }
                     if (granted) {
-                        LaunchedEffect(Unit) {
-                            container.library.refresh()
-                            container.player.connect()
-                        }
+                        LaunchedEffect(Unit) { container.player.connect() }
                         AppRoot(openPlayer)
                     } else {
-                        PermissionGate { granted = hasAudioPermission() }
+                        PermissionGate { granted = container.library.start() }
                     }
                 }
             }
@@ -101,6 +103,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val SPLASH_HOLD_MS = 700L
         const val ACTION_OPEN_PLAYER = "com.novcloud.echo.OPEN_PLAYER"
         val audioPermission: String =
             if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE

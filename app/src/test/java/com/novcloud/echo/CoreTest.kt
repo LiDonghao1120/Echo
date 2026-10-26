@@ -83,6 +83,22 @@ class CoreTest {
     }
 
     @Test
+    fun dailyKeepsItsPinAndIgnoresUnrelatedLibraryChanges() {
+        val zone = ZoneId.systemDefault()
+        val day = LocalDate.of(2026, 10, 24).atStartOfDay(zone).toInstant().toEpochMilli()
+        val now = day + 9 * 3_600_000L
+        val a = Recommender.build(lib, emptyList(), now).daily!!.songs.map { it.id }
+        val grown = Library.build(lib.songs + (1000L..1003L).map { song(it, "新歌手", 99, "Folk") })
+        val pinned = Recommender.build(grown, emptyList(), now, pinned = a).daily!!.songs.map { it.id }
+        assertEquals(a, pinned)
+        val shrunk = Library.build(lib.songs.filter { it.id !in a.drop(5) })
+        val rebuilt = Recommender.build(shrunk, emptyList(), now, pinned = a).daily!!.songs.map { it.id }
+        assertTrue(rebuilt.none { it in a.drop(5) } && rebuilt.size == 30)
+        val reordered = Library.build(lib.songs.reversed())
+        assertEquals(a, Recommender.build(reordered, emptyList(), now).daily!!.songs.map { it.id })
+    }
+
+    @Test
     fun statsStreaksAndTotals() {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.of(2026, 10, 24)
