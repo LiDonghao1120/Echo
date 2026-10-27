@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -262,11 +263,13 @@ private fun Equalizer(caps: EqCaps, s: AudioSettings, update: ((AudioSettings) -
                 )
             }
         }
+        val ids = EqPresets.all.map { it.first } + if (s.preset == EqPresets.CUSTOM || s.custom.isNotEmpty()) listOf(EqPresets.CUSTOM) else emptyList()
+        val row = rememberLazyListState(initialFirstVisibleItemIndex = (ids.indexOf(s.preset) - 1).coerceAtLeast(0))
         LazyRow(
+            state = row,
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val ids = EqPresets.all.map { it.first } + if (s.preset == EqPresets.CUSTOM || s.custom.isNotEmpty()) listOf(EqPresets.CUSTOM) else emptyList()
             items(ids) { id ->
                 Chip(EqPresets.label(id), s.preset == id, Modifier.width(72.dp)) {
                     update { it.copy(eqEnabled = true, preset = id) }

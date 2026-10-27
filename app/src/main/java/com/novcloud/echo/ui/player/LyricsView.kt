@@ -185,7 +185,7 @@ fun LyricsTools(
         ) {
             Column(
                 Modifier.padding(bottom = 8.dp).fillMaxWidth()
-                    .background(com.novcloud.echo.ui.theme.Ink.copy(alpha = 0.78f), com.novcloud.echo.ui.theme.EchoShape.card)
+                    .background(com.novcloud.echo.ui.theme.Ink.copy(alpha = 0.94f), com.novcloud.echo.ui.theme.EchoShape.card)
                     .border(1.dp, Color.White.copy(alpha = 0.10f), com.novcloud.echo.ui.theme.EchoShape.card)
                     .padding(horizontal = 14.dp, vertical = 6.dp),
             ) {
