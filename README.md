@@ -63,6 +63,9 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 - **Synced LRC lyrics** that scroll with the song. Tap a line to jump to it.
 - Echo looks for a `.lrc` file next to the song, then in a lyrics folder you choose, then for lyrics embedded in the file (ID3 USLT, FLAC `LYRICS`).
 - **Bilingual lyrics**: the translation sits under the original line. Lines with the same timestamp, `/`-separated pairs and "original translation" lines (English, Japanese, Korean, mixed Japanese and English, German…, followed by the Chinese) are all recognised.
+- "Title - Artist" credit lines at the top of a file stay as one line instead of being split as a translation.
+- **Timing offset per song**: nudge lyrics earlier or later in 0.1-second steps from the lyrics view. The offset is saved for that song.
+- **Pick a lyric file** (`.lrc` or `.txt`) for any song. It is kept with the song, follows it if the file moves, and is included in backups.
 - Handles multiple timestamps, offsets and word-timing tags, and detects UTF-8 and GB18030 encodings.
 - Optionally keeps the screen on while lyrics are showing.
 
@@ -72,13 +75,25 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 - An **A–Z index** on the song and artist lists, sorted by pinyin with Latin names alongside. Drag along it to jump between letters.
 - Tracks with several artists (`/`, `、`, `;`, `&`, `feat.`) show up under each of them.
 - If Android doesn't report genres, Echo reads them from the file tags.
+- Reads tags Android leaves out: **APEv2** (Monkey's Audio, and MP3 files tagged that way) and **WMA/ASF** metadata, including cover art.
 - Opens straight to your library: the last scan is kept on the device and new or removed files are picked up in the background.
 - **Scan folders**: add folders with the system picker, including ones Android's media index skips, and include or exclude any folder on the device. Ignore tracks shorter than a set length. Duplicates are removed.
 - Favourites, playlists and listening history follow your files: they are tied to each file's path, and a song that was moved or renamed is found again by its tags.
 
 ### Backup and diagnostics
-- **Backup**: export favourites, playlists, listening history, settings, scan folder rules and artist posters and wordmarks to one file you save wherever you like. When importing, choose to merge with what's on the phone or replace it.
+- **Backup**: export favourites, playlists, listening history, settings, scan folder rules, lyric offsets and picked lyric files, and artist posters and wordmarks to one file you save wherever you like. When importing, choose to merge with what's on the phone or replace it.
 - **Diagnostic log**: Echo keeps a small log on the device (playback recovery, scan times, errors and crashes) that you can save from Settings and attach to a bug report. It is never sent anywhere.
+
+### Sound
+- **Equalizer** with ten presets and a custom curve you drag by hand. Presets are defined on octave bands and fitted to however many bands the phone offers.
+- **Bass boost** on phones that support it.
+- **ReplayGain**: even out loudness by track or by album from `REPLAYGAIN_*` tags (ID3, Vorbis comments, MP4, Opus R128), with a preamp and clipping prevention. Gapless albums stay gapless.
+- **Fades**: a short fade in and out on play, pause and skip, which you can turn off.
+- Settings → 音效, or from the menu in Now Playing.
+
+### Home screen widget
+- Cover, title, artist and previous / play / next, in the same ink, paper and vermilion. Resizes from a single row to a two-row card and follows light and dark mode.
+- Keeps showing the last song after the app is closed or the phone restarts; tap play to pick the queue up where it stopped.
 
 ### Playback
 - Media3 ExoPlayer in a background service, with controls in the notification, on the lock screen and on Bluetooth or wired headsets.

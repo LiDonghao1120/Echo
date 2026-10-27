@@ -37,6 +37,10 @@ class BackupTest {
         aliases = listOf(SongAlias("id:42", k1)),
         settings = BackupSettings("Dark", 15, "artist", false, setOf("/storage/emulated/0/Music"), setOf("/storage/emulated/0/Ringtones"), setOf("content://tree/1"), "content://tree/2"),
         artists = listOf(BackupArtist("Ivy Calder", "poster_0.jpg", "logo_0.png"), BackupArtist("温屿", null, "logo_1.png")),
+        lyrics = listOf(
+            com.novcloud.echo.data.db.LyricOverride(k1, offsetMs = 300, updatedAt = 11),
+            com.novcloud.echo.data.db.LyricOverride(k2, offsetMs = -200, fileName = "白鸟.lrc", text = "[00:01.00]白鸟飞过\n[00:03.00]北岸", updatedAt = 12),
+        ),
     )
 
     private fun roundTrip(data: BackupData, art: Map<String, File>): Pair<BackupData, File> {
@@ -111,8 +115,11 @@ class BackupTest {
             refs = listOf(SongRef(k1, "Glasshouse", "Ivy Calder", "Paper Satellites", 201_000, 50)),
             settings = BackupSettings("Light", 30, "title", true, setOf("/storage/emulated/0/Ringtones"), emptySet(), emptySet(), null),
             artists = listOf(BackupArtist("Ivy Calder", "mine.jpg", null)),
+            lyrics = listOf(com.novcloud.echo.data.db.LyricOverride(k1, offsetMs = -500, updatedAt = 1)),
         )
         val m = BackupMerge.combine(here, sample, ImportMode.Merge)
+        assertEquals(-500L, m.lyrics.single { it.songKey == k1 }.offsetMs)
+        assertEquals("白鸟.lrc", m.lyrics.single { it.songKey == k2 }.fileName)
         assertEquals(listOf(Favorite(k1, 99), Favorite(k2, 20)), m.favorites)
         val night = m.playlists.single { it.name == "夜路" }
         assertEquals(listOf(k1, k3, k2), night.entries.map { it.key })

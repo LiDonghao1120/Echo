@@ -1,6 +1,16 @@
 package com.novcloud.echo.playback
 
 import android.app.PendingIntent
+import android.content.Context
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import com.novcloud.echo.playback.audio.AudioSettings
+import com.novcloud.echo.playback.audio.EffectChain
+import com.novcloud.echo.playback.audio.FadingPlayer
+import com.novcloud.echo.playback.audio.GainProcessor
+import com.novcloud.echo.playback.audio.ReplayGainSink
+import com.novcloud.echo.playback.audio.VolumeMix
+import com.novcloud.echo.widget.WidgetActions
 import android.content.Intent
 import android.os.SystemClock
 import android.os.Bundle
@@ -41,11 +51,27 @@ class PlaybackService : MediaSessionService() {
     private var sleepJob: kotlinx.coroutines.Job? = null
 
     private val app get() = application as EchoApp
+    private val gain = GainProcessor()
+    private var gainSink: ReplayGainSink? = null
+    private var effects: EffectChain? = null
+    private lateinit var mix: VolumeMix
+    private lateinit var fading: FadingPlayer
+    private lateinit var widget: WidgetSync
 
     override fun onCreate() {
         super.onCreate()
         val c = app.container
-        player = ExoPlayer.Builder(this, DefaultRenderersFactory(this).forceDisableMediaCodecAsynchronousQueueing())
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink {
+                val base = DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessors(arrayOf(gain))
+                    .build()
+                return ReplayGainSink(base, gain).also { gainSink = it }
+            }
+        }.forceDisableMediaCodecAsynchronousQueueing()
+        player = ExoPlayer.Builder(this, renderers)
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
                 true,
@@ -53,6 +79,9 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
+        mix = VolumeMix(player)
+        fading = FadingPlayer(player, mix, scope) { c.audioFx.settings.value.fade }
+        widget = WidgetSync(this, scope)
         val writer = PlayEventWriter(c.db.events(), c.appScope)
         tracker = PlayTracker(writer::write, { c.library.library.value.songById[it] })
         player.addListener(object : Player.Listener {
@@ -62,16 +91,21 @@ class PlaybackService : MediaSessionService() {
                     tracker.onCompleted(track, player.isPlaying)
                 else tracker.onTrack(track, player.isPlaying)
                 saveQueue()
+                syncWidget(trackChanged = true)
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 tracker.onPlaying(isPlaying)
                 if (!isPlaying) saveQueue()
+                syncWidget()
             }
 
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) tracker.onEnded()
+                syncWidget()
             }
+
+            override fun onAudioSessionIdChanged(audioSessionId: Int) = attachEffects(audioSessionId)
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && sleep.endOfItem) {
@@ -110,12 +144,18 @@ class PlaybackService : MediaSessionService() {
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaSession.Builder(this, player)
+        session = MediaSession.Builder(this, fading)
             .setSessionActivity(open)
             .setCallback(Callback())
             .build()
 
+        active = this
         DiagLog.i(TAG, "service created")
+        attachEffects(player.audioSessionId)
+        scope.launch {
+            c.audioFx.awaitLoaded()
+            c.audioFx.settings.collect { applyAudio(it) }
+        }
         scope.launch { restore() }
         scope.launch {
             while (isActive) {
@@ -187,6 +227,9 @@ class PlaybackService : MediaSessionService() {
             player.setMediaItems(items, idx.coerceAtLeast(0), if (idx >= 0) saved.positionMs else 0)
             player.shuffleModeEnabled = saved.shuffle
             player.repeatMode = saved.repeat
+            val skip = pendingSkip
+            pendingSkip = 0
+            if (skip != 0 && idx >= 0) player.seekTo((idx + skip).mod(items.size), 0)
             player.prepare()
         }
         if (items.size < saved.keys.size) DiagLog.i(TAG, "restored ${items.size} of ${saved.keys.size} queued songs")
@@ -229,7 +272,7 @@ class PlaybackService : MediaSessionService() {
                     break
                 }
                 val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0
-                player.volume = SleepTimer.volume(sleep.remaining(player.currentPosition, duration))
+                mix.sleep = SleepTimer.volume(sleep.remaining(player.currentPosition, duration))
                 delay(200)
             }
         }
@@ -240,12 +283,52 @@ class PlaybackService : MediaSessionService() {
         sleepJob?.cancel()
         sleepJob = null
         player.pauseAtEndOfMediaItems = false
-        player.volume = 1f
+        mix.sleep = 1f
         publishSleep()
     }
 
     private fun publishSleep() {
         session?.setSessionExtras(sleep.state().toBundle())
+    }
+
+    private fun attachEffects(sessionId: Int) {
+        if (sessionId == C.AUDIO_SESSION_ID_UNSET || effects?.session == sessionId) return
+        effects?.release()
+        val chain = EffectChain(sessionId)
+        effects = chain
+        app.container.audioFx.publishCaps(chain.caps)
+        chain.apply(app.container.audioFx.settings.value)
+        DiagLog.i(TAG, "audio effects on session $sessionId: eq=${chain.caps.available} bands=${chain.caps.centersHz.size} bass=${chain.caps.bassBoost}")
+    }
+
+    private fun applyAudio(s: AudioSettings) {
+        effects?.apply(s)
+        gainSink?.setSettings(s.gainMode, s.preampDb, s.clipPrevention)
+        if (!s.fade) mix.fade = 1f
+    }
+
+    private fun syncWidget(trackChanged: Boolean = false) {
+        val item = player.currentMediaItem
+        val song = item?.songId()?.let { app.container.library.library.value.songById[it] }
+        widget.update(item, song, player.playWhenReady && player.playbackState != Player.STATE_ENDED && player.playbackState != Player.STATE_IDLE, trackChanged)
+    }
+
+    /** Widget buttons while the service runs with a queue; false sends the press through the cold-start path. */
+    private fun handleWidget(action: String): Boolean {
+        if (player.mediaItemCount == 0) return false
+        when (action) {
+            WidgetActions.ACTION_TOGGLE -> {
+                if (player.playWhenReady && player.playbackState != Player.STATE_ENDED) fading.pause() else {
+                    if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                    if (player.playbackState == Player.STATE_ENDED) player.seekToDefaultPosition()
+                    fading.play()
+                }
+            }
+            WidgetActions.ACTION_NEXT -> fading.seekToNext()
+            WidgetActions.ACTION_PREV -> fading.seekToPrevious()
+            else -> return false
+        }
+        return true
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
@@ -259,8 +342,12 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         DiagLog.i(TAG, "service destroyed")
+        if (active === this) active = null
         saveQueue()
         tracker.flush()
+        widget.stopped()
+        effects?.release()
+        effects = null
         session?.run {
             player.release()
             release()
@@ -270,9 +357,17 @@ class PlaybackService : MediaSessionService() {
         super.onDestroy()
     }
 
-    private companion object {
-        const val TAG = "EchoPlayback"
-        val SLEEP_COMMAND = SessionCommand(SleepState.ACTION, Bundle.EMPTY)
+    companion object {
+        private const val TAG = "EchoPlayback"
+        private val SLEEP_COMMAND = SessionCommand(SleepState.ACTION, Bundle.EMPTY)
+
+        @Volatile private var active: PlaybackService? = null
+
+        /** Set by a widget prev/next press that has to start the service: applied to the resumed queue's start. */
+        @Volatile var pendingSkip = 0
+
+        /** Main thread only (broadcast receivers run there). */
+        fun onWidget(action: String): Boolean = active?.handleWidget(action) ?: false
     }
 
     private inner class Callback : MediaSession.Callback {
@@ -303,7 +398,13 @@ class PlaybackService : MediaSessionService() {
                 MediaSession.MediaItemsWithStartPosition(all, 0, 0)
             } else {
                 val (saved, items, idx) = q
-                MediaSession.MediaItemsWithStartPosition(items, idx.coerceAtLeast(0), if (idx >= 0) saved.positionMs else 0)
+                val skip = pendingSkip
+                pendingSkip = 0
+                if (skip != 0 && idx >= 0) {
+                    MediaSession.MediaItemsWithStartPosition(items, (idx + skip).mod(items.size), 0)
+                } else {
+                    MediaSession.MediaItemsWithStartPosition(items, idx.coerceAtLeast(0), if (idx >= 0) saved.positionMs else 0)
+                }
             }
         }
 

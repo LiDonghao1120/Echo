@@ -22,7 +22,7 @@ class PendingImport(val data: BackupData, internal val artDir: File) {
     val artists get() = data.artists.size
 }
 
-data class ImportResult(val favorites: Int, val playlists: Int, val events: Int, val artists: Int)
+data class ImportResult(val favorites: Int, val playlists: Int, val events: Int, val artists: Int, val lyrics: Int = 0)
 
 class BackupManager(
     private val context: Context,
@@ -45,6 +45,7 @@ class BackupManager(
             refs = db.identity().refs(),
             aliases = db.identity().aliases(),
             settings = prefs.backupSettings(),
+            lyrics = db.lyricOverrides().all(),
         )
     }
 
@@ -97,6 +98,8 @@ class BackupManager(
                 db.identity().clearRefs()
                 db.identity().putRefs(final.refs)
                 final.aliases.forEach { db.identity().putAlias(it) }
+                db.lyricOverrides().clear()
+                db.lyricOverrides().putAll(final.lyrics)
             }
             val granted = context.contentResolver.persistedUriPermissions.filter { it.isReadPermission }.map { it.uri.toString() }.toSet()
             prefs.restoreSettings(final.settings) { it in granted }
@@ -112,6 +115,7 @@ class BackupManager(
                 final.playlists.size - base.playlists.size,
                 final.events.size - base.events.size,
                 artists,
+                final.lyrics.size - base.lyrics.size,
             )
             DiagLog.i(TAG, "imported backup ($mode): $result")
             work.deleteRecursively()

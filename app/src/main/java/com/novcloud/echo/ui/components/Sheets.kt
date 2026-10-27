@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
 import androidx.compose.material3.AlertDialog
@@ -91,6 +92,7 @@ fun SongMenuSheet(song: Song, ctx: SongMenuContext, onDismiss: () -> Unit) {
                 MenuItem(Icons.Rounded.Person, displayArtist(a)) { close { actions.openArtist(a) } }
             }
             MenuItem(Icons.Rounded.Info, "歌曲信息") { info = true }
+            if (ctx.nowPlaying) MenuItem(Icons.Rounded.GraphicEq, "音效") { close { actions.openEffects() } }
         }
     }
     if (addTo) AddToPlaylistDialog(listOf(song)) { addTo = false; close() }

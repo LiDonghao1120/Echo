@@ -154,6 +154,7 @@ fun AppRoot(
                         screen("stats") { StatsScreen() }
                         screen("settings") { SettingsScreen() }
                         screen("settings/folders") { ScanFoldersScreen() }
+                        screen("settings/effects") { com.novcloud.echo.ui.settings.AudioEffectsScreen() }
                         screen("album/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
                             AlbumScreen(it.arguments?.getLong("id") ?: -1)
                         }

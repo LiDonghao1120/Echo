@@ -1,6 +1,7 @@
 package com.novcloud.echo.data
 
 import com.novcloud.echo.data.db.Favorite
+import com.novcloud.echo.data.db.LyricOverride
 import com.novcloud.echo.data.db.PlayEvent
 import com.novcloud.echo.data.db.SongAlias
 import com.novcloud.echo.data.db.SongRef
@@ -41,6 +42,7 @@ data class BackupData(
     val aliases: List<SongAlias> = emptyList(),
     val settings: BackupSettings = BackupSettings(),
     val artists: List<BackupArtist> = emptyList(),
+    val lyrics: List<LyricOverride> = emptyList(),
 )
 
 class BackupException(message: String) : Exception(message)
@@ -139,6 +141,14 @@ object BackupCodec {
         .put("artists", JSONArray().apply {
             b.artists.forEach { a -> put(JSONObject().put("name", a.artist).apply { a.poster?.let { put("poster", it) }; a.logo?.let { put("logo", it) } }) }
         })
+        .put("lyrics", JSONArray().apply {
+            b.lyrics.forEach { l ->
+                put(
+                    JSONObject().put("key", l.songKey).put("offsetMs", l.offsetMs).put("updatedAt", l.updatedAt)
+                        .apply { l.fileName?.let { put("file", it) }; l.text?.let { put("text", it) } },
+                )
+            }
+        })
 
     private fun event(e: PlayEvent) = JSONArray()
         .put(e.songKey).put(e.songId).put(e.title).put(e.artist).put(e.album).put(e.albumId).put(e.genre)
@@ -184,6 +194,9 @@ object BackupCodec {
                 lyricsTree = s.strOrNull("lyricsTree"),
             ),
             artists = d.optJSONArray("artists").objects().map { BackupArtist(it.getString("name"), it.strOrNull("poster"), it.strOrNull("logo")) },
+            lyrics = d.optJSONArray("lyrics").objects().map {
+                LyricOverride(it.getString("key"), it.optLong("offsetMs"), it.strOrNull("file"), it.strOrNull("text"), it.optLong("updatedAt"))
+            },
         )
     }
 }
@@ -194,7 +207,8 @@ enum class ImportMode { Merge, Replace }
  * How an imported backup combines with what is on the phone. Replace takes the backup as it is. Merge keeps
  * everything here and adds what is missing: favorites and song tags by key, listening history by (start time,
  * title, artist) so importing the same file twice adds nothing, playlists by name with new songs appended, folder
- * rules where they do not contradict a local rule, and artist images only for artists without one.
+ * rules where they do not contradict a local rule, artist images only for artists without one, and lyric
+ * offsets/picked lyric files only for songs without their own.
  */
 object BackupMerge {
     fun combine(current: BackupData, incoming: BackupData, mode: ImportMode): BackupData =
@@ -204,6 +218,7 @@ object BackupMerge {
         val favKeys = cur.favorites.mapTo(HashSet()) { it.songKey }
         val refKeys = cur.refs.mapTo(HashSet()) { it.key }
         val aliasKeys = cur.aliases.mapTo(HashSet()) { it.oldKey }
+        val lyricKeys = cur.lyrics.mapTo(HashSet()) { it.songKey }
         fun eventKey(e: PlayEvent) = "${e.startedAt}|${e.title}|${e.artist}"
         val seen = cur.events.mapTo(HashSet(), ::eventKey)
         val byName = cur.playlists.associateBy { it.name }
@@ -234,6 +249,7 @@ object BackupMerge {
                 lyricsTree = cs.lyricsTree ?: ins.lyricsTree,
             ),
             artists = artists.values.toList(),
+            lyrics = cur.lyrics + inc.lyrics.filter { lyricKeys.add(it.songKey) },
         )
     }
 }

@@ -36,7 +36,11 @@ class Prefs(private val context: Context) {
         val scanIncluded = stringSetPreferencesKey("scan_included")
         val scanExcluded = stringSetPreferencesKey("scan_excluded")
         val scanTrees = stringSetPreferencesKey("scan_trees")
+        val audioFx = stringPreferencesKey("audio_fx")
     }
+
+    suspend fun audioFx(): String? = ds.data.first()[K.audioFx]
+    suspend fun setAudioFx(json: String) = edit { it[K.audioFx] = json }
 
     val minDurationSec: Flow<Int> = ds.data.map { it[K.minDuration] ?: 30 }
     val lyricsTree: Flow<String?> = ds.data.map { it[K.lyricsTree] }

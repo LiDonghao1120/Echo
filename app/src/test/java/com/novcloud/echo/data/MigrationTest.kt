@@ -122,4 +122,54 @@ class MigrationTest {
         assertEquals(3.2f, db.artistLogos().all().first().single().aspect, 0.001f)
         db.close()
     }
+
+    /** Version 3 as Room created it, straight from the exported schema. */
+    private fun v3(): List<String> {
+        val json = org.json.JSONObject(java.io.File("schemas/com.novcloud.echo.data.db.EchoDatabase/3.json").readText()).getJSONObject("database")
+        val out = ArrayList<String>()
+        val entities = json.getJSONArray("entities")
+        for (i in 0 until entities.length()) {
+            val e = entities.getJSONObject(i)
+            val table = e.getString("tableName")
+            out += e.getString("createSql").replace("\${TABLE_NAME}", table)
+            val indices = e.optJSONArray("indices") ?: continue
+            for (j in 0 until indices.length()) out += indices.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}", table)
+        }
+        json.getJSONArray("setupQueries").let { q -> for (i in 0 until q.length()) out += q.getString(i) }
+        return out
+    }
+
+    @Test
+    fun v3ToV4AddsLyricOverridesThatFollowMovedFiles() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        context.deleteDatabase("migrate4.db")
+        val file = context.getDatabasePath("migrate4.db").apply { parentFile?.mkdirs() }
+        val old = song("/storage/emulated/0/Music/Low Tide.flac", "Low Tide", 9)
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            v3().forEach { db.execSQL(it) }
+            db.execSQL("INSERT INTO favorite (songKey,addedAt) VALUES ('${old.key}',9)")
+            db.version = 3
+        }
+        val db = EchoDatabase.create(context, "migrate4.db")
+        assertEquals(listOf(old.key), db.favorites().keys().first())
+        val lyrics = db.lyricOverrides()
+        lyrics.setOffset(old.key, 300)
+        lyrics.setFile(old.key, "Low Tide.lrc", "[00:01.00]low tide")
+        db.identity().putRefs(listOf(com.novcloud.echo.data.db.SongRef(old.key, "Low Tide", "Ivy Calder", "Paper Satellites", 201_000, 1)))
+        assertEquals(300L, lyrics.get(old.key)!!.offsetMs)
+
+        val moved = song("/storage/emulated/0/Music/Ivy/Low Tide.flac", "Low Tide", 300)
+        val dao = db.identity()
+        val plan = Rematch.plan(dao.referencedKeys(), dao.refs().associateBy { it.key }, Library.build(listOf(moved)))
+        plan.moves.forEach { (o, n) -> dao.move(o, n, SongKeys.id(n)) }
+        assertEquals(null, lyrics.get(old.key))
+        val now = lyrics.get(moved.key)!!
+        assertEquals(300L, now.offsetMs)
+        assertEquals("[00:01.00]low tide", now.text)
+
+        lyrics.setFile(moved.key, null, null)
+        lyrics.setOffset(moved.key, 0)
+        assertEquals(null, lyrics.get(moved.key))
+        db.close()
+    }
 }

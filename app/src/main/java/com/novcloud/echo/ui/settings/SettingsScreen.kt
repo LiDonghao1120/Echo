@@ -97,6 +97,17 @@ fun SettingsScreen() {
                     }
                 }
             }
+            Group("播放") {
+                val fx by container.audioFx.settings.collectAsState()
+                NavRow("音效", listOfNotNull(
+                    if (fx.eqEnabled) com.novcloud.echo.playback.audio.EqPresets.label(fx.preset) else null,
+                    when (fx.gainMode) {
+                        com.novcloud.echo.playback.audio.GainMode.Track -> "音量平衡 · 单曲"
+                        com.novcloud.echo.playback.audio.GainMode.Album -> "音量平衡 · 专辑"
+                        else -> null
+                    },
+                ).joinToString(" · ").ifEmpty { null }) { actions.openEffects() }
+            }
             Group("曲库") {
                 Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Count(lib.songs.size, "首歌曲")

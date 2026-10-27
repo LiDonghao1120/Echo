@@ -117,6 +117,7 @@ fun rememberDataTools(): DataTools {
             busy = "正在恢复…"
             scope.launch {
                 val r = container.backup.apply(p, mode)
+                container.lyrics.invalidate()
                 busy = null
                 toast(if (r.isSuccess) "已恢复备份" else "恢复失败")
             }

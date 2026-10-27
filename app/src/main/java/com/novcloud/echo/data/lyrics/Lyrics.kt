@@ -136,9 +136,18 @@ object Bilingual {
         return -1
     }
 
+    private const val DASHES = "-‐‑‒–—―－~～"
+
+    /**
+     * "Lemon - 米津玄師" or "春よ、来い — 松任谷由実" is a title/artist credit line, not a translated lyric:
+     * a dash between the parts rules out a translation cut on either side of it.
+     */
+    private fun isCredit(head: String, tail: String) = head.trimEnd().lastOrNull()?.let { it in DASHES } == true ||
+        tail.trimStart().firstOrNull()?.let { it in DASHES } == true
+
     private fun isTranslation(head: String, tail: String): Boolean {
         val h = head.trim()
-        if (h.isEmpty() || tail.isBlank() || tail.any(::isLatin)) return false
+        if (h.isEmpty() || tail.isBlank() || tail.any(::isLatin) || isCredit(head, tail)) return false
         val hKana = h.any(::isKana)
         val hHangul = h.any(::isHangul)
         val hHan = h.any(::isHan)
@@ -169,7 +178,7 @@ object Bilingual {
     private fun isHangul(c: Char) = c in '\uAC00'..'\uD7AF' || c in '\u1100'..'\u11FF' || c in '\u3130'..'\u318F'
 }
 
-class LyricsLoader(private val context: Context) {
+class LyricsLoader(private val context: Context, private val db: com.novcloud.echo.data.db.EchoDatabase? = null) {
     class Loaded(val lyrics: Lyrics?)
 
     private val cache = object : LinkedHashMap<String, Loaded>(32, 0.75f, true) {
@@ -185,7 +194,7 @@ class LyricsLoader(private val context: Context) {
 
     suspend fun load(song: Song, lyricsTree: String?): Lyrics? = withContext(Dispatchers.IO) {
         peek(song, lyricsTree)?.let { return@withContext it.lyrics }
-        val result = sidecar(song) ?: fromTree(song, lyricsTree) ?: embedded(song)
+        val result = picked(song) ?: sidecar(song) ?: fromTree(song, lyricsTree) ?: embedded(song)
         synchronized(cache) { cache[key(song, lyricsTree)] = Loaded(result) }
         result
     }
@@ -197,6 +206,59 @@ class LyricsLoader(private val context: Context) {
     fun invalidate() {
         synchronized(cache) { cache.clear() }
         treeIndex = null
+    }
+
+    private fun invalidate(song: Song) = synchronized(cache) { cache.keys.removeAll { it.startsWith("${song.id}|") } }
+
+    private suspend fun picked(song: Song): Lyrics? {
+        val text = db?.lyricOverrides()?.get(song.key)?.text ?: return null
+        return LrcParser.parse(text)
+    }
+
+    /** Reads a lyric file the user chose and keeps its text with the song; false when it is not readable lyrics. */
+    suspend fun pick(song: Song, uri: Uri): Boolean = withContext(Dispatchers.IO) {
+        val dao = db ?: return@withContext false
+        val bytes = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input -> input.readNBytesCompat(MAX_FILE) }
+        }.getOrNull() ?: return@withContext false
+        val text = TextDecoder.decode(bytes)
+        if (LrcParser.parse(text) == null) return@withContext false
+        val name = runCatching {
+            context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/')
+        db.identity().putRefs(listOf(com.novcloud.echo.data.db.SongRef(song.key, song.title, song.artist, song.album, song.durationMs, System.currentTimeMillis())))
+        dao.lyricOverrides().setFile(song.key, name, text)
+        invalidate(song)
+        true
+    }
+
+    suspend fun unpick(song: Song) = withContext(Dispatchers.IO) {
+        db?.lyricOverrides()?.setFile(song.key, null, null)
+        invalidate(song)
+    }
+
+    suspend fun setOffset(song: Song, offsetMs: Long) = withContext(Dispatchers.IO) {
+        val d = db ?: return@withContext
+        if (offsetMs != 0L) d.identity().putRefs(listOf(com.novcloud.echo.data.db.SongRef(song.key, song.title, song.artist, song.album, song.durationMs, System.currentTimeMillis())))
+        d.lyricOverrides().setOffset(song.key, offsetMs)
+    }
+
+    private fun java.io.InputStream.readNBytesCompat(max: Int): ByteArray? {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(16 * 1024)
+        while (true) {
+            val n = read(buf)
+            if (n < 0) break
+            out.write(buf, 0, n)
+            if (out.size() > max) return null
+        }
+        return out.toByteArray()
+    }
+
+    private companion object {
+        const val MAX_FILE = 1024 * 1024
     }
 
     private fun sidecar(song: Song): Lyrics? {

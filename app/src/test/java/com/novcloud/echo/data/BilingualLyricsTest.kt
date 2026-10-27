@@ -156,4 +156,49 @@ class BilingualLyricsTest {
         assertEquals("愛してる", l.lines[0].translation)
         assertEquals("ずっと", l.lines[2].translation)
     }
+
+    @Test
+    fun titleDashArtistLineIsNotATranslation() {
+        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("Lemon - 米津玄師"))
+        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("春よ、来い - 松任谷由実"))
+        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("Paper Satellites — 温屿"))
+        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("Paper Satellites － 温屿"))
+        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("Lemon -米津玄師"))
+        assertEquals("I love you ".length, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("I love you 我爱你"))
+    }
+
+    @Test
+    fun creditLineStaysWholeInsideABilingualSong() {
+        val l = LrcParser.parse(
+            """
+            [00:00.00]Paper Satellites - 温屿
+            [00:01.00]词：温屿
+            [00:10.00]Paper satellites over the bay 纸做的卫星飞过海湾
+            [00:12.00]We folded every letter into wings 我们把每封信折成翅膀
+            [00:15.00]Hold the signal, hold it close 抓住信号 紧紧抓住
+            [00:18.00]Paper satellites, come home 纸卫星啊 回家吧
+            """.trimIndent(),
+        )!!
+        assertEquals("Paper Satellites - 温屿", l.lines[0].text)
+        assertNull(l.lines[0].translation)
+        assertEquals("词：温屿", l.lines[1].text)
+        assertEquals("Paper satellites over the bay", l.lines[2].text)
+        assertEquals("纸做的卫星飞过海湾", l.lines[2].translation)
+        assertEquals("纸卫星啊 回家吧", l.lines[5].translation)
+    }
+
+    @Test
+    fun japaneseCreditLineWithChineseArtistStaysWhole() {
+        val l = LrcParser.parse(
+            """
+            [00:00.00]夜明けのうた - 温屿
+            [00:10.00]夜明けまで待ってるよ 我会等到天亮
+            [00:12.00]君の声が聞こえる 听见你的声音
+            [00:15.00]遠くへ 遠くへ 去远方 去远方
+            """.trimIndent(),
+        )!!
+        assertEquals("夜明けのうた - 温屿", l.lines[0].text)
+        assertNull(l.lines[0].translation)
+        assertEquals("我会等到天亮", l.lines[1].translation)
+    }
 }

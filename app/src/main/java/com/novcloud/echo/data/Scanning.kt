@@ -116,9 +116,11 @@ class TreeScanner(private val context: Context) {
     private class Tags(
         val modified: Long, val size: Long, val title: String, val artist: String, val album: String, val albumArtist: String,
         val genre: String, val duration: Long, val track: Int, val disc: Int, val year: Int, val mime: String,
+        val ownChecked: Boolean = false,
     )
 
     private val cacheFile get() = File(context.filesDir, "tree_tags.json")
+    private val extraTags = com.novcloud.echo.data.tags.ExtraTags(context)
     private var cache: HashMap<String, Tags>? = null
 
     fun scan(trees: Collection<String>, rules: FolderRules, known: Set<String>, onProgress: (ScanProgress) -> Unit): List<Song> {
@@ -138,6 +140,10 @@ class TreeScanner(private val context: Context) {
             var t = tags[key]
             if (t == null || t.modified != d.modified || t.size != d.size) {
                 t = read(d)
+                tags[key] = t
+                dirty = true
+            } else if (!t.ownChecked && wantsOwnTags(d.name)) {
+                t = withOwnTags(d, t)
                 tags[key] = t
                 dirty = true
             }
@@ -224,7 +230,9 @@ class TreeScanner(private val context: Context) {
         }
     }
 
-    private fun read(d: Doc): Tags {
+    private fun read(d: Doc): Tags = withOwnTags(d, readRetriever(d))
+
+    private fun readRetriever(d: Doc): Tags {
         val m = MediaMetadataRetriever()
         fun k(key: Int) = runCatching { m.extractMetadata(key) }.getOrNull()?.trim().orEmpty()
         return try {
@@ -249,6 +257,26 @@ class TreeScanner(private val context: Context) {
             runCatching { m.release() }
         }
     }
+
+    /** MMR reads no tags from APE/WMA and ignores APEv2 on MP3; the file's own tags fill in (duration stays MMR's: 0 means undecodable). */
+    private fun wantsOwnTags(name: String) = name.substringAfterLast('.', "").lowercase().let { it in com.novcloud.echo.data.tags.ExtraTags.OWN_FORMATS || it == "mp3" }
+
+    private fun withOwnTags(d: Doc, t: Tags): Tags {
+        val ext = d.name.substringAfterLast('.', "").lowercase()
+        val own = ext in com.novcloud.echo.data.tags.ExtraTags.OWN_FORMATS
+        if (!own && !(ext == "mp3" && (t.artist.isBlank() || t.album.isBlank()))) return t.checked()
+        val x = extraTags.open(d.uri, wantCover = false) ?: return t.checked()
+        fun pick(cur: String, new: String) = if (new.isNotBlank() && (own || cur.isBlank())) new else cur
+        return Tags(
+            t.modified, t.size, pick(t.title, x.title), pick(t.artist, x.artist), pick(t.album, x.album), pick(t.albumArtist, x.albumArtist),
+            pick(t.genre, MediaScanner.cleanGenre(x.genre)), t.duration,
+            if (x.track > 0 && (own || t.track <= 0)) x.track else t.track,
+            if (x.disc > 0 && (own || t.disc <= 1)) x.disc else t.disc,
+            if (x.year > 0 && (own || t.year <= 0)) x.year else t.year, t.mime, ownChecked = true,
+        )
+    }
+
+    private fun Tags.checked() = Tags(modified, size, title, artist, album, albumArtist, genre, duration, track, disc, year, mime, ownChecked = true)
 
     private fun toSong(d: Doc, t: Tags): Song {
         val artist = t.artist.ifBlank { UNKNOWN }
@@ -286,6 +314,7 @@ class TreeScanner(private val context: Context) {
                 map[o.getString("u")] = Tags(
                     o.getLong("m"), o.getLong("s"), o.optString("t"), o.optString("a"), o.optString("al"), o.optString("aa"),
                     o.optString("g"), o.optLong("d"), o.optInt("tr"), o.optInt("dc", 1), o.optInt("y"), o.optString("mi"),
+                    o.optBoolean("o"),
                 )
             }
         }
@@ -299,7 +328,7 @@ class TreeScanner(private val context: Context) {
             arr.put(
                 JSONObject().put("u", u).put("m", t.modified).put("s", t.size).put("t", t.title).put("a", t.artist)
                     .put("al", t.album).put("aa", t.albumArtist).put("g", t.genre).put("d", t.duration).put("tr", t.track)
-                    .put("dc", t.disc).put("y", t.year).put("mi", t.mime),
+                    .put("dc", t.disc).put("y", t.year).put("mi", t.mime).put("o", t.ownChecked),
             )
         }
         runCatching {

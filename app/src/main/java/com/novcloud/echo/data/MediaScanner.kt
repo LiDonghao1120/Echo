@@ -7,6 +7,7 @@ import android.provider.MediaStore
 data class AudioFolder(val path: String, val count: Int, val music: Int)
 
 class MediaScanner(private val context: Context) {
+    private val extra = com.novcloud.echo.data.tags.ExtraTags(context)
 
     private class Row(val song: Song, val isMusic: Boolean)
 
@@ -48,8 +49,9 @@ class MediaScanner(private val context: Context) {
                 if (d > 0) s = s.copy(durationMs = d)
             }
             if (s.durationMs < minDurationMs || s.durationMs <= 0) continue
-            out += s
+            out += extra.complete(s)
         }
+        extra.save()
         probed.keys.retainAll(seen)
         return Result(out, known)
     }

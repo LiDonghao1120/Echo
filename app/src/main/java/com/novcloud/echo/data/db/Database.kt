@@ -67,6 +67,16 @@ data class SongRef(
 @Entity(tableName = "song_alias")
 data class SongAlias(@PrimaryKey val oldKey: String, val newKey: String)
 
+/** Per-song lyric settings by song key: a timing offset (ms, positive shows lines earlier) and a lyric file the user picked, stored as text. */
+@Entity(tableName = "lyric_override")
+data class LyricOverride(
+    @PrimaryKey val songKey: String,
+    val offsetMs: Long = 0,
+    val fileName: String? = null,
+    val text: String? = null,
+    val updatedAt: Long = 0,
+)
+
 @Entity(tableName = "artist_image")
 data class ArtistImage(@PrimaryKey val artist: String, val path: String, val updatedAt: Long)
 
@@ -197,7 +207,7 @@ interface IdentityDao {
     @Query("SELECT * FROM song_ref")
     suspend fun refs(): List<SongRef>
 
-    @Query("SELECT songKey FROM favorite UNION SELECT songKey FROM playlist_entry UNION SELECT songKey FROM play_event WHERE songKey != ''")
+    @Query("SELECT songKey FROM favorite UNION SELECT songKey FROM playlist_entry UNION SELECT songKey FROM lyric_override UNION SELECT songKey FROM play_event WHERE songKey != ''")
     suspend fun referencedKeys(): List<String>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -224,6 +234,12 @@ interface IdentityDao {
     @Query("DELETE FROM playlist_entry WHERE songKey = :old")
     suspend fun dropEntries(old: String)
 
+    @Query("INSERT OR IGNORE INTO lyric_override (songKey, offsetMs, fileName, text, updatedAt) SELECT :new, offsetMs, fileName, text, updatedAt FROM lyric_override WHERE songKey = :old")
+    suspend fun copyLyrics(old: String, new: String)
+
+    @Query("DELETE FROM lyric_override WHERE songKey = :old")
+    suspend fun dropLyrics(old: String)
+
     @Query("UPDATE play_event SET songKey = :new, songId = :newId WHERE songKey = :old")
     suspend fun moveEvents(old: String, new: String, newId: Long)
 
@@ -243,10 +259,48 @@ interface IdentityDao {
         dropFavorite(old)
         copyEntries(old, new)
         dropEntries(old)
+        copyLyrics(old, new)
+        dropLyrics(old)
         moveEvents(old, new, newId)
         dropRef(old)
         forwardAliases(old, new)
         putAlias(SongAlias(old, new))
+    }
+}
+
+@Dao
+interface LyricOverrideDao {
+    @Query("SELECT * FROM lyric_override WHERE songKey = :key")
+    fun observe(key: String): Flow<LyricOverride?>
+
+    @Query("SELECT * FROM lyric_override WHERE songKey = :key")
+    suspend fun get(key: String): LyricOverride?
+
+    @Query("SELECT * FROM lyric_override")
+    suspend fun all(): List<LyricOverride>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(o: LyricOverride)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putAll(o: List<LyricOverride>)
+
+    @Query("DELETE FROM lyric_override WHERE songKey = :key")
+    suspend fun remove(key: String)
+
+    @Query("DELETE FROM lyric_override")
+    suspend fun clear()
+
+    @Transaction
+    suspend fun setOffset(key: String, offsetMs: Long) {
+        val o = (get(key) ?: LyricOverride(key)).copy(offsetMs = offsetMs, updatedAt = System.currentTimeMillis())
+        if (o.offsetMs == 0L && o.text == null) remove(key) else put(o)
+    }
+
+    @Transaction
+    suspend fun setFile(key: String, name: String?, text: String?) {
+        val o = (get(key) ?: LyricOverride(key)).copy(fileName = name, text = text, updatedAt = System.currentTimeMillis())
+        if (o.offsetMs == 0L && o.text == null) remove(key) else put(o)
     }
 }
 
@@ -287,8 +341,8 @@ interface ArtistLogoDao {
 }
 
 @Database(
-    entities = [PlayEvent::class, Playlist::class, PlaylistEntry::class, Favorite::class, ArtistImage::class, ArtistLogo::class, SongRef::class, SongAlias::class],
-    version = 3,
+    entities = [PlayEvent::class, Playlist::class, PlaylistEntry::class, Favorite::class, ArtistImage::class, ArtistLogo::class, SongRef::class, SongAlias::class, LyricOverride::class],
+    version = 4,
     exportSchema = true,
 )
 abstract class EchoDatabase : RoomDatabase() {
@@ -298,6 +352,7 @@ abstract class EchoDatabase : RoomDatabase() {
     abstract fun artistImages(): ArtistImageDao
     abstract fun artistLogos(): ArtistLogoDao
     abstract fun identity(): IdentityDao
+    abstract fun lyricOverrides(): LyricOverrideDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -353,7 +408,16 @@ abstract class EchoDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `lyric_override` (`songKey` TEXT NOT NULL, `offsetMs` INTEGER NOT NULL, " +
+                        "`fileName` TEXT, `text` TEXT, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`songKey`))",
+                )
+            }
+        }
+
         fun create(context: Context, name: String = "echo.db") =
-            Room.databaseBuilder(context, EchoDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+            Room.databaseBuilder(context, EchoDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
     }
 }

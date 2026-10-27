@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.requiredSize
@@ -180,6 +182,81 @@ class ScreenshotTest {
         settle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/sleep_sheet_dark.png")
     }
+    private fun primeEffects() {
+        val fx = Samples.app(ctx).audioFx
+        fx.publishCaps(com.novcloud.echo.playback.audio.EqCaps(true, listOf(60, 230, 910, 3600, 14000), -1500, 1500, bassBoost = true))
+        fx.update {
+            com.novcloud.echo.playback.audio.AudioSettings(
+                eqEnabled = true, preset = "rock", bassStrength = 400,
+                gainMode = com.novcloud.echo.playback.audio.GainMode.Track, preampDb = 2f,
+            )
+        }
+    }
+
+    @Test fun effects_dark() {
+        primeEffects()
+        app("effects_dark", route = "settings/effects", tall = 1400)
+    }
+
+    @Test fun effects_light() {
+        primeEffects()
+        app("effects_light", dark = false, route = "settings/effects", tall = 1400)
+    }
+
+    @Test fun effects_drag_dark() {
+        primeEffects()
+        app("effects_drag_dark", route = "settings/effects") {
+            compose.onRoot().performTouchInput { down(androidx.compose.ui.geometry.Offset(width * 0.62f, height * 0.36f)) }
+        }
+    }
+
+    @Test fun lyrics_offset_dark() {
+        Samples.primeLyrics(ctx)
+        val song = Samples.songs.first { it.title == "Paper Satellites" }
+        kotlinx.coroutines.runBlocking { Samples.app(ctx).db.lyricOverrides().setOffset(song.key, 500) }
+        app("lyrics_offset_dark", expanded = true, pane = com.novcloud.echo.ui.player.PlayerPane.Lyrics) {
+            compose.onNode(androidx.compose.ui.test.hasContentDescription("歌词调整")).performClick()
+        }
+    }
+
+    @Test fun widgets() {
+        compose.mainClock.autoAdvance = false
+        val cover = android.graphics.BitmapFactory.decodeStream(javaClass.getResourceAsStream("/samples/cover_3.jpg"))
+        val playing = com.novcloud.echo.widget.WidgetState("Paper Satellites", "Ivy Calder", playing = true)
+        val paused = com.novcloud.echo.widget.WidgetState("白鸟与北岸的长夜", "温屿", playing = false)
+        fun themed(dark: Boolean): android.content.Context {
+            val conf = android.content.res.Configuration(ctx.resources.configuration)
+            conf.uiMode = (conf.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                (if (dark) android.content.res.Configuration.UI_MODE_NIGHT_YES else android.content.res.Configuration.UI_MODE_NIGHT_NO)
+            return ctx.createConfigurationContext(conf)
+        }
+        @Composable
+        fun Widget(layout: Int, state: com.novcloud.echo.widget.WidgetState, dark: Boolean, height: Int, art: android.graphics.Bitmap?) {
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { c ->
+                    val host = android.widget.FrameLayout(themed(dark))
+                    val views = com.novcloud.echo.widget.Widgets.views(themed(dark), layout, state, art)
+                    host.addView(views.apply(themed(dark), host))
+                    host
+                },
+                modifier = Modifier.padding(horizontal = 24.dp).fillMaxWidth().height(height.dp),
+            )
+        }
+        compose.setContent {
+            Column(
+                Modifier.fillMaxSize().background(Color(0xFF5E6B73)).padding(vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                Widget(R.layout.widget_small, playing, false, 64, cover)
+                Widget(R.layout.widget_small, paused, true, 64, null)
+                Widget(R.layout.widget_large, playing, true, 150, cover)
+                Widget(R.layout.widget_large, paused, false, 150, cover)
+            }
+        }
+        settle(1)
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/widgets.png")
+    }
+
     @Test fun settings_dark() = app("settings_dark", route = "settings")
     @Test fun settings_light() = app("settings_light", dark = false, route = "settings")
     @Test fun folders_dark() = app("folders_dark", route = "settings/folders")

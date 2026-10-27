@@ -174,7 +174,7 @@ fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onColla
                 Spacer(Modifier.weight(1f))
                 QueuePosition(state.currentIndex, state.queue.size)
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = { actions.openSongMenu(song, SongMenuContext()) }) {
+                IconButton(onClick = { actions.openSongMenu(song, SongMenuContext(nowPlaying = true)) }) {
                     Icon(Icons.Rounded.MoreHoriz, null, tint = Paper.copy(alpha = 0.85f))
                 }
             }

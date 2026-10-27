@@ -54,14 +54,16 @@ class ArtFetcher(private val ref: ArtRef, private val options: Options) : Fetche
             else -> return null
         }
         val mmr = MediaMetadataRetriever()
-        return try {
+        val bytes = try {
             mmr.setDataSource(context, uri)
-            mmr.embeddedPicture?.let(::source)
+            mmr.embeddedPicture
         } catch (_: Exception) {
             null
         } finally {
             runCatching { mmr.release() }
         }
+        return (bytes ?: com.novcloud.echo.data.tags.ExtraTags(context).open(uri, wantCover = true)?.cover)
+            ?.takeIf { it.isNotEmpty() }?.let(::source)
     }
 
     private fun source(bytes: ByteArray) = SourceResult(

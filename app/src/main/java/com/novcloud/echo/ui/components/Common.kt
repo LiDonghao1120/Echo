@@ -76,7 +76,7 @@ import com.novcloud.echo.ui.theme.displayStyle
 import com.novcloud.echo.ui.theme.seededColor
 import kotlinx.coroutines.flow.StateFlow
 
-data class SongMenuContext(val playlistId: Long? = null)
+data class SongMenuContext(val playlistId: Long? = null, val nowPlaying: Boolean = false)
 
 enum class NavMotion { Push, Tab, Instant }
 
@@ -136,6 +136,7 @@ class AppActions(
     fun openList(kind: String) = go("list/${Uri.encode(kind)}")
     fun openSettings() = go("settings")
     fun openScanFolders() = go("settings/folders")
+    fun openEffects() = go("settings/effects")
     fun back() {
         val entry = nav.currentBackStackEntry ?: return
         if (nav.previousBackStackEntry == null) return

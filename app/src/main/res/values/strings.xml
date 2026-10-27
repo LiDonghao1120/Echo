@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">回响</string>
+    <string name="widget_description">封面、歌曲和播放控制</string>
+    <string name="widget_idle">轻触播放</string>
+    <string name="widget_playing">正在播放</string>
+    <string name="widget_paused">已暂停</string>
+    <string name="widget_prev">上一首</string>
+    <string name="widget_next">下一首</string>
+    <string name="widget_play">播放</string>
+    <string name="widget_pause">暂停</string>
 </resources>

@@ -46,10 +46,11 @@ class AppContainer(app: Application) {
     val db = EchoDatabase.create(app)
     val prefs = Prefs(app)
     val library = LibraryRepository(app, db, prefs, appScope)
-    val lyrics = LyricsLoader(app)
+    val lyrics = LyricsLoader(app, db)
     val backup = BackupManager(app, db, prefs, library)
     val player = PlayerConnection(app, library.library, appScope)
     val lyricsTree: StateFlow<String?> = prefs.lyricsTree.stateIn(appScope, SharingStarted.Eagerly, null)
+    val audioFx = com.novcloud.echo.playback.audio.AudioFx(app, prefs::audioFx, prefs::setAudioFx, appScope)
 
     private val events = db.events().since(0).shareIn(appScope, SharingStarted.Eagerly, replay = 1)
     val allEvents = events.stateIn(appScope, SharingStarted.Eagerly, emptyList())
