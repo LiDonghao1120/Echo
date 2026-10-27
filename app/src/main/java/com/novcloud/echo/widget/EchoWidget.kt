@@ -66,6 +66,9 @@ object Widgets {
     private const val PREFS = "widget"
     private const val COVER_PX = 256
 
+    /** Padding 12 + cover 80 + gap 6 + controls 44 + padding 12; below this the two-row card would clip its cover. */
+    private const val LARGE_MIN_HEIGHT = 154
+
     private fun coverFile(context: Context) = File(context.filesDir, "widget/cover.jpg")
 
     fun load(context: Context): WidgetState {
@@ -102,10 +105,10 @@ object Widgets {
         val cover = if (state.coverVersion > 0) runCatching { BitmapFactory.decodeFile(coverFile(context).path) }.getOrNull() else null
         for (id in all) {
             val views = if (Build.VERSION.SDK_INT >= 31) {
-                RemoteViews(mapOf(SizeF(180f, 40f) to views(context, R.layout.widget_small, state, cover), SizeF(180f, 104f) to views(context, R.layout.widget_large, state, cover)))
+                RemoteViews(mapOf(SizeF(180f, 40f) to views(context, R.layout.widget_small, state, cover), SizeF(180f, LARGE_MIN_HEIGHT.toFloat()) to views(context, R.layout.widget_large, state, cover)))
             } else {
-                val minHeight = manager.getAppWidgetOptions(id)?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) ?: 0
-                views(context, if (minHeight >= 104) R.layout.widget_large else R.layout.widget_small, state, cover)
+                val height = manager.getAppWidgetOptions(id)?.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT) ?: 0
+                views(context, if (height >= LARGE_MIN_HEIGHT) R.layout.widget_large else R.layout.widget_small, state, cover)
             }
             runCatching { manager.updateAppWidget(id, views) }.onFailure { DiagLog.w("EchoWidget", "update failed", it) }
         }

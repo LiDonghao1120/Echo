@@ -249,8 +249,8 @@ class ScreenshotTest {
             ) {
                 Widget(R.layout.widget_small, playing, false, 64, cover)
                 Widget(R.layout.widget_small, paused, true, 64, null)
-                Widget(R.layout.widget_large, playing, true, 150, cover)
-                Widget(R.layout.widget_large, paused, false, 150, cover)
+                Widget(R.layout.widget_large, playing, true, 158, cover)
+                Widget(R.layout.widget_large, paused, false, 190, cover)
             }
         }
         settle(1)
