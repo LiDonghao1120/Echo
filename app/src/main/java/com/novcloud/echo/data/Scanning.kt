@@ -253,8 +253,9 @@ class TreeScanner(private val context: Context) {
     private fun toSong(d: Doc, t: Tags): Song {
         val artist = t.artist.ifBlank { UNKNOWN }
         val album = t.album.ifBlank { UNKNOWN }
+        val key = d.path?.let(SongKeys::of) ?: SongKeys.ofDocument(d.docId)
         return Song(
-            id = SafPaths.stableId(d.path?.lowercase() ?: d.docId),
+            id = SongKeys.id(key),
             title = t.title.ifBlank { d.name.substringBeforeLast('.') },
             artist = artist,
             album = album,
@@ -271,6 +272,7 @@ class TreeScanner(private val context: Context) {
             mimeType = t.mime,
             size = d.size,
             docUri = d.uri.toString(),
+            key = key,
         )
     }
 

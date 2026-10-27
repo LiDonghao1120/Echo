@@ -3,7 +3,11 @@ package com.novcloud.echo.playback
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.SystemClock
-import android.util.Log
+import android.os.Bundle
+import com.google.common.util.concurrent.Futures
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.novcloud.echo.diag.DiagLog
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -33,6 +37,8 @@ class PlaybackService : MediaSessionService() {
     private lateinit var tracker: PlayTracker
     private var restored = false
     private val watchdog = PlaybackWatchdog()
+    private val sleep = SleepTimer(SystemClock::elapsedRealtime, System::currentTimeMillis)
+    private var sleepJob: kotlinx.coroutines.Job? = null
 
     private val app get() = application as EchoApp
 
@@ -67,18 +73,26 @@ class PlaybackService : MediaSessionService() {
                 if (state == Player.STATE_ENDED) tracker.onEnded()
             }
 
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && sleep.endOfItem) {
+                    DiagLog.i(TAG, "sleep timer: stopped at the end of ${player.currentMediaItem?.mediaId}")
+                    endSleep()
+                }
+            }
+
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
                 if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) saveQueue()
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                Log.w(TAG, "player error ${error.errorCodeName} on ${player.currentMediaItem?.mediaId}", error)
+                DiagLog.w(TAG, "player error ${error.errorCodeName} on ${player.currentMediaItem?.mediaId} at ${player.currentPosition} ms", error)
                 val fatal = error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
                     error.errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ||
                     error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
                     error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
                 if (error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) app.container.library.onMissingFile()
                 val action = watchdog.onError(SystemClock.elapsedRealtime(), player.currentMediaItem?.mediaId, player.hasNextMediaItem(), fatal)
+                DiagLog.w(TAG, "recovering from error: $action")
                 scope.launch { recover(action, resume = true) }
             }
 
@@ -101,6 +115,7 @@ class PlaybackService : MediaSessionService() {
             .setCallback(Callback())
             .build()
 
+        DiagLog.i(TAG, "service created")
         scope.launch { restore() }
         scope.launch {
             while (isActive) {
@@ -114,7 +129,7 @@ class PlaybackService : MediaSessionService() {
                 delay(1_000)
                 val action = watchdog.tick(SystemClock.elapsedRealtime(), snapshot())
                 if (action != PlaybackWatchdog.Action.None) {
-                    Log.w(TAG, "playback stalled at ${player.currentPosition} ms on ${player.currentMediaItem?.mediaId}: $action")
+                    DiagLog.w(TAG, "playback stalled at ${player.currentPosition} ms on ${player.currentMediaItem?.mediaId} (state ${player.playbackState}, buffered ${player.bufferedPosition} ms): $action")
                     recover(action, resume = true)
                 }
             }
@@ -154,28 +169,83 @@ class PlaybackService : MediaSessionService() {
         if (resume) player.playWhenReady = true
     }
 
+    /** The saved queue as library songs, with the index of the saved current item among them (-1 if it is gone). */
+    private suspend fun savedQueue(): Triple<SavedQueue, List<MediaItem>, Int>? {
+        val saved = app.container.prefs.loadQueue() ?: return null
+        val repo = app.container.library
+        val lib = repo.awaitLoaded()
+        val songs = saved.keys.map { repo.resolve(it, lib) }
+        val items = songs.mapNotNull { it?.toMediaItem() }
+        val current = songs.getOrNull(saved.index)?.id
+        return Triple(saved, items, items.indexOfFirst { it.songId() == current })
+    }
+
     private suspend fun restore() {
-        val saved = app.container.prefs.loadQueue() ?: run { restored = true; return }
-        val lib = app.container.library.awaitLoaded()
+        val (saved, items, idx) = savedQueue() ?: run { restored = true; return }
         if (player.mediaItemCount > 0) { restored = true; return }
-        val items = saved.ids.mapNotNull { lib.songById[it]?.toMediaItem() }
         if (items.isNotEmpty()) {
-            val currentId = saved.ids.getOrNull(saved.index)
-            val idx = items.indexOfFirst { it.songId() == currentId }.coerceAtLeast(0)
-            player.setMediaItems(items, idx, if (items[idx].songId() == currentId) saved.positionMs else 0)
+            player.setMediaItems(items, idx.coerceAtLeast(0), if (idx >= 0) saved.positionMs else 0)
             player.shuffleModeEnabled = saved.shuffle
             player.repeatMode = saved.repeat
             player.prepare()
         }
+        if (items.size < saved.keys.size) DiagLog.i(TAG, "restored ${items.size} of ${saved.keys.size} queued songs")
         restored = true
     }
 
     private fun saveQueue() {
         if (!restored) return
         val n = player.mediaItemCount
-        val ids = (0 until n).mapNotNull { player.getMediaItemAt(it).songId() }
-        val q = SavedQueue(ids, player.currentMediaItemIndex, player.currentPosition, player.shuffleModeEnabled, player.repeatMode)
+        val keys = (0 until n).mapNotNull { player.getMediaItemAt(it).songKey() }
+        val q = SavedQueue(keys, player.currentMediaItemIndex, player.currentPosition, player.shuffleModeEnabled, player.repeatMode)
         app.container.appScope.launch { app.container.prefs.saveQueue(q) }
+    }
+
+    private fun setSleep(minutes: Int) {
+        when {
+            minutes == SleepState.END_OF_ITEM -> {
+                sleep.startEndOfItem()
+                player.pauseAtEndOfMediaItems = true
+            }
+            minutes > 0 -> {
+                sleep.start(minutes)
+                player.pauseAtEndOfMediaItems = false
+            }
+            else -> {
+                DiagLog.i(TAG, "sleep timer cancelled")
+                endSleep()
+                return
+            }
+        }
+        DiagLog.i(TAG, "sleep timer set: ${if (minutes > 0) "$minutes min" else "end of current song"}")
+        publishSleep()
+        sleepJob?.cancel()
+        sleepJob = scope.launch {
+            while (isActive && sleep.active) {
+                if (sleep.expired()) {
+                    DiagLog.i(TAG, "sleep timer: paused at ${player.currentPosition} ms")
+                    player.pause()
+                    endSleep()
+                    break
+                }
+                val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0
+                player.volume = SleepTimer.volume(sleep.remaining(player.currentPosition, duration))
+                delay(200)
+            }
+        }
+    }
+
+    private fun endSleep() {
+        sleep.cancel()
+        sleepJob?.cancel()
+        sleepJob = null
+        player.pauseAtEndOfMediaItems = false
+        player.volume = 1f
+        publishSleep()
+    }
+
+    private fun publishSleep() {
+        session?.setSessionExtras(sleep.state().toBundle())
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
@@ -188,6 +258,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        DiagLog.i(TAG, "service destroyed")
         saveQueue()
         tracker.flush()
         session?.run {
@@ -201,6 +272,7 @@ class PlaybackService : MediaSessionService() {
 
     private companion object {
         const val TAG = "EchoPlayback"
+        val SLEEP_COMMAND = SessionCommand(SleepState.ACTION, Bundle.EMPTY)
     }
 
     private inner class Callback : MediaSession.Callback {
@@ -225,17 +297,35 @@ class PlaybackService : MediaSessionService() {
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
-            val saved = app.container.prefs.loadQueue()
-            val lib = app.container.library.awaitLoaded()
-            val items = saved?.ids?.mapNotNull { lib.songById[it]?.toMediaItem() }.orEmpty()
-            if (saved == null || items.isEmpty()) {
-                val all = lib.songs.shuffled().take(50).map { it.toMediaItem() }
+            val q = savedQueue()
+            if (q == null || q.second.isEmpty()) {
+                val all = app.container.library.awaitLoaded().songs.shuffled().take(50).map { it.toMediaItem() }
                 MediaSession.MediaItemsWithStartPosition(all, 0, 0)
             } else {
-                val currentId = saved.ids.getOrNull(saved.index)
-                val idx = items.indexOfFirst { it.songId() == currentId }.coerceAtLeast(0)
-                MediaSession.MediaItemsWithStartPosition(items, idx, saved.positionMs)
+                val (saved, items, idx) = q
+                MediaSession.MediaItemsWithStartPosition(items, idx.coerceAtLeast(0), if (idx >= 0) saved.positionMs else 0)
             }
+        }
+
+        override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+            val base = super.onConnect(session, controller)
+            if (controller.packageName != packageName || !base.isAccepted) return base
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(base.availableSessionCommands.buildUpon().add(SLEEP_COMMAND).build())
+                .setAvailablePlayerCommands(base.availablePlayerCommands)
+                .setSessionExtras(sleep.state().toBundle())
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            if (customCommand.customAction != SleepState.ACTION) return super.onCustomCommand(session, controller, customCommand, args)
+            setSleep(args.getInt(SleepState.ARG_MINUTES, 0))
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
 
         private suspend fun resolve(items: List<MediaItem>): List<MediaItem> {

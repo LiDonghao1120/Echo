@@ -12,7 +12,7 @@ val appId = "com.novcloud.echo"
 
 val refName: String? = System.getenv("GITHUB_REF_NAME")
 val tagVersion: String? = refName?.takeIf { System.getenv("GITHUB_REF_TYPE") == "tag" && it.startsWith("v") }?.removePrefix("v")
-val appVersionName: String = tagVersion ?: "0.6.0"
+val appVersionName: String = tagVersion ?: "0.7.0"
 val appVersionCode: Int = run {
     val parts = appVersionName.substringBefore('-').split('.').mapNotNull { it.toIntOrNull() }
     val (ma, mi, pa) = Triple(parts.getOrElse(0) { 0 }, parts.getOrElse(1) { 1 }, parts.getOrElse(2) { 0 })
@@ -142,6 +142,7 @@ dependencies {
     implementation(libs.androidx.documentfile)
 
     testImplementation(libs.junit)
+    testImplementation(libs.org.json)
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.robolectric)
     testImplementation(platform(libs.androidx.compose.bom))

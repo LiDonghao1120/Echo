@@ -99,8 +99,9 @@ class MediaScanner(private val context: Context) {
                 val path = c.getString(iData).orEmpty()
                 val rawTrack = c.getInt(iTrack)
                 val discFromCol = if (iDisc >= 0) c.getString(iDisc)?.substringBefore('/')?.trim()?.toIntOrNull() else null
+                val key = SongKeys.of(path)
                 val song = Song(
-                    id = c.getLong(iId),
+                    id = SongKeys.id(key),
                     title = c.getString(iTitle)?.takeIf { it.isNotBlank() } ?: path.substringAfterLast('/').substringBeforeLast('.'),
                     artist = c.getString(iArtist)?.takeIf { it.isNotBlank() } ?: UNKNOWN,
                     album = c.getString(iAlbum)?.takeIf { it.isNotBlank() } ?: UNKNOWN,
@@ -116,6 +117,8 @@ class MediaScanner(private val context: Context) {
                     folder = path.substringBeforeLast('/', ""),
                     mimeType = c.getString(iMime).orEmpty(),
                     size = c.getLong(iSize),
+                    key = key,
+                    mediaId = c.getLong(iId),
                 )
                 out += Row(song, c.getInt(iMusic) != 0)
             }

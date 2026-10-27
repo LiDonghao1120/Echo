@@ -46,6 +46,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -63,6 +64,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -127,6 +129,7 @@ fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onColla
     val dragY = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    var sleepSheet by remember { mutableStateOf(false) }
     LightSystemIcons(navigation = true)
 
     BackHandler(enabled = avs.transition.targetState == androidx.compose.animation.EnterExitState.Visible) {
@@ -205,11 +208,49 @@ fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onColla
                 PaneButton(Icons.Rounded.Lyrics, pane == PlayerPane.Lyrics, colors.accent) {
                     pane = if (pane == PlayerPane.Lyrics) PlayerPane.Art else PlayerPane.Lyrics
                 }
+                SleepButton(colors.accent) { sleepSheet = true }
                 PaneButton(Icons.AutoMirrored.Rounded.QueueMusic, pane == PlayerPane.Queue, colors.accent) {
                     pane = if (pane == PlayerPane.Queue) PlayerPane.Art else PlayerPane.Queue
                 }
             }
             Spacer(Modifier.height(10.dp))
+        }
+    }
+    if (sleepSheet) com.novcloud.echo.ui.theme.EchoTheme(dark = true, motion = com.novcloud.echo.ui.theme.LocalMotion.current) {
+        SleepTimerSheet { sleepSheet = false }
+    }
+}
+
+@Composable
+private fun SleepButton(accent: Color, onClick: () -> Unit) {
+    val actions = LocalActions.current
+    val sleep by actions.player.sleep.collectAsState()
+    val remaining = rememberSleepRemaining(sleep)
+    val on by animateFloatAsState(if (sleep.active) 1f else 0f, spring(dampingRatio = 0.7f), label = "sleep")
+    Row(
+        Modifier.height(44.dp).echoClick(corner = 8.dp, color = accent, onClick = onClick).clip(EchoShape.card)
+            .background(Paper.copy(alpha = 0.10f * on)).padding(horizontal = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Bedtime, null, Modifier.size(22.dp), tint = lerp(Paper.copy(alpha = 0.7f), Paper, on))
+        val label = when {
+            remaining != null -> formatCountdown(remaining)
+            sleep.endOfItem -> "本曲"
+            else -> null
+        }
+        var shown by remember { mutableStateOf("") }
+        LaunchedEffect(label) { if (label != null) shown = label }
+        androidx.compose.animation.AnimatedVisibility(
+            label != null,
+            enter = fadeIn(tween(EchoMotion.Standard)) + androidx.compose.animation.expandHorizontally(spring(dampingRatio = 0.8f)),
+            exit = fadeOut(tween(EchoMotion.Quick)) + androidx.compose.animation.shrinkHorizontally(tween(EchoMotion.Standard)),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(8.dp))
+                Box(Modifier.size(5.dp).background(accent))
+                Spacer(Modifier.width(6.dp))
+                Text(label ?: shown, style = EchoType.numeral(14.sp), color = Paper)
+            }
         }
     }
 }

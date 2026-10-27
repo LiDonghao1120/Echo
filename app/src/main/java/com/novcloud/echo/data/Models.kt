@@ -24,10 +24,14 @@ data class Song(
     val mimeType: String,
     val size: Long,
     val docUri: String = "",
+    val key: String = SongKeys.of(path),
+    val mediaId: Long = 0,
 ) {
-    val uri: Uri get() = if (docUri.isNotEmpty()) Uri.parse(docUri) else ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-    val art: ArtRef get() = ArtRef(albumId, id, docUri)
+    val uri: Uri get() = if (docUri.isNotEmpty()) Uri.parse(docUri) else ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, mediaId)
+    val art: ArtRef get() = ArtRef(albumId, artId, docUri)
+    internal val artId: Long get() = if (docUri.isEmpty()) mediaId else id
     val artists: List<String> by lazy(LazyThreadSafetyMode.PUBLICATION) { splitArtists(artist) }
+    val titleKey: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sortKey(title) }
 }
 
 @Immutable
@@ -41,7 +45,7 @@ data class Album(
     val year: Int,
     val songs: List<Song>,
 ) {
-    val art: ArtRef get() = songs.firstOrNull().let { ArtRef(id, it?.id ?: -1, it?.docUri.orEmpty()) }
+    val art: ArtRef get() = songs.firstOrNull().let { ArtRef(id, it?.artId ?: -1, it?.docUri.orEmpty()) }
     val durationMs: Long get() = songs.sumOf { it.durationMs }
     val dateAdded: Long get() = songs.maxOfOrNull { it.dateAdded } ?: 0
 }
@@ -75,6 +79,10 @@ data class Library(
     val songById: Map<Long, Song> by lazy { songs.associateBy { it.id } }
     val albumById: Map<Long, Album> by lazy { albums.associateBy { it.id } }
     val artistByName: Map<String, Artist> by lazy { artists.associateBy { it.name } }
+    val songByKey: Map<String, Song> by lazy { songs.associateBy { it.key } }
+    val search: LibrarySearch by lazy { LibrarySearch(this) }
+    /** Ids this library's files had before 0.7 (MediaStore _ID, or the hash SAF songs used), for one-time conversion. */
+    val songByLegacyId: Map<Long, Song> by lazy { songs.associateBy { SongKeys.legacyId(it) } }
 
     companion object {
         fun build(songs: List<Song>): Library {
@@ -88,7 +96,7 @@ data class Library(
                     year = list.maxOf { it.year },
                     songs = sorted,
                 )
-            }.sortedBy { sortKey(it.title) }
+            }.sortedByKey { sortKey(it.title) }
             val albumMap = albums.associateBy { it.id }
             val albumsByArtist = albums.groupBy { it.artist }
             val songsByArtist = HashMap<String, MutableList<Song>>()
@@ -98,15 +106,15 @@ data class Library(
                 val featured = list.map { it.albumId }.distinct().mapNotNull { albumMap[it] }
                 Artist(
                     name = name,
-                    songs = list.sortedBy { sortKey(it.title) },
+                    songs = list.sortedByKey { it.titleKey },
                     albums = (own + featured).distinctBy { it.id }.sortedByDescending { it.year },
                 )
-            }.sortedBy { sortKey(it.name) }
+            }.sortedByKey { nameSortKey(it.name) }
             val genres = songs.filter { it.genre.isNotBlank() }.groupBy { it.genre }
                 .map { (g, l) -> Genre(g, l) }.sortedByDescending { it.songs.size }
-            val folders = songs.groupBy { it.folder }.map { (p, l) -> Folder(p, l.sortedBy { sortKey(it.title) }) }
-                .sortedBy { sortKey(it.name) }
-            return Library(songs.sortedBy { sortKey(it.title) }, albums, artists, genres, folders, loaded = true)
+            val folders = songs.groupBy { it.folder }.map { (p, l) -> Folder(p, l.sortedByKey { it.titleKey }) }
+                .sortedByKey { sortKey(it.name) }
+            return Library(songs.sortedByKey { it.titleKey }, albums, artists, genres, folders, loaded = true)
         }
     }
 }
@@ -124,7 +132,11 @@ fun splitArtists(raw: String): List<String> {
 fun mostCommon(values: List<String>): String =
     values.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: ""
 
-fun sortKey(s: String): String = s.trim().lowercase()
+inline fun <T> List<T>.sortedByKey(key: (T) -> String): List<T> =
+    map { it to key(it) }.sortedBy { it.second }.map { it.first }
+
+fun sortKey(s: String): String = Pinyin.sortKey(s, name = false)
+fun nameSortKey(s: String): String = Pinyin.sortKey(s, name = true)
 
 fun displayArtist(s: String) = if (s == UNKNOWN || s.isBlank()) "未知歌手" else s
 fun displayAlbum(s: String) = if (s == UNKNOWN || s.isBlank()) "未知专辑" else s

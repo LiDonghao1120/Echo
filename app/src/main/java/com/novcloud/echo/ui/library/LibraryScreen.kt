@@ -58,6 +58,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.novcloud.echo.EchoApp
 import com.novcloud.echo.data.Song
+import com.novcloud.echo.data.nameSortKey
+import com.novcloud.echo.data.sortKey
+import com.novcloud.echo.data.sortedByKey
+import com.novcloud.echo.ui.components.AlphabetRail
+import com.novcloud.echo.ui.components.sectionStarts
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.runtime.derivedStateOf
 import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.ArtistAvatar
@@ -144,8 +152,8 @@ fun LibraryScreen() {
 private val sorts = listOf("title" to "标题", "artist" to "歌手", "album" to "专辑", "added" to "添加时间", "duration" to "时长")
 
 fun sortSongs(songs: List<Song>, sort: String): List<Song> = when (sort) {
-    "artist" -> songs.sortedBy { it.artist.lowercase() }
-    "album" -> songs.sortedWith(compareBy({ it.album.lowercase() }, { it.disc }, { it.track }))
+    "artist" -> songs.sortedByKey { nameSortKey(it.artist) + "\u0001" + it.titleKey }
+    "album" -> songs.sortedByKey { sortKey(it.album) + "\u0001" + "%04d%05d".format(it.disc, it.track) }
     "added" -> songs.sortedByDescending { it.dateAdded }
     "duration" -> songs.sortedByDescending { it.durationMs }
     else -> songs
@@ -161,30 +169,51 @@ private fun SongsTab() {
     val songs = remember(lib, sort) { sortSongs(lib.songs, sort) }
     var menu by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp)) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f), primary = true) { actions.player.play(songs) }
-                Spacer(Modifier.width(10.dp))
-                PillButton(Icons.Rounded.Shuffle, "随机", Modifier.weight(1f)) { actions.player.play(songs, shuffle = true) }
-                Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, null) }
-                    DropdownMenu(menu, { menu = false }) {
-                        sorts.forEach { (k, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label, color = if (k == sort) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
-                                onClick = { menu = false; scope.launch { container.prefs.setSongSort(k) } },
-                            )
+    val list = rememberLazyListState()
+    val sections = remember(songs, sort) {
+        val keys = when (sort) {
+            "title" -> songs.map { it.titleKey }
+            "artist" -> songs.map { nameSortKey(it.artist) }
+            "album" -> songs.map { sortKey(it.album) }
+            else -> null
+        }
+        if (keys != null && songs.size >= RAIL_MIN) sectionStarts(keys) else emptyMap()
+    }
+    val current by remember(sections) {
+        derivedStateOf { sections.entries.lastOrNull { it.value + 1 <= list.firstVisibleItemIndex }?.key ?: sections.keys.firstOrNull() }
+    }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            Modifier.fillMaxSize(), state = list,
+            contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp, end = if (sections.isEmpty()) 0.dp else 18.dp),
+        ) {
+            item {
+                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f), primary = true) { actions.player.play(songs) }
+                    Spacer(Modifier.width(10.dp))
+                    PillButton(Icons.Rounded.Shuffle, "随机", Modifier.weight(1f)) { actions.player.play(songs, shuffle = true) }
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, null) }
+                        DropdownMenu(menu, { menu = false }) {
+                            sorts.forEach { (k, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label, color = if (k == sort) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
+                                    onClick = { menu = false; scope.launch { container.prefs.setSongSort(k) } },
+                                )
+                            }
                         }
                     }
                 }
             }
+            items(songs, key = { it.id }) { s ->
+                SongRow(s, { actions.player.playSong(s, songs) }, current = state.song?.id == s.id, playing = state.isPlaying)
+            }
         }
-        items(songs, key = { it.id }) { s ->
-            SongRow(s, { actions.player.playSong(s, songs) }, current = state.song?.id == s.id, playing = state.isPlaying)
-        }
+        AlphabetRail(sections, current, { i -> scope.launch { list.scrollToItem(i + 1) } })
     }
 }
+
+private const val RAIL_MIN = 24
 
 @Composable
 fun PillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
@@ -230,16 +259,26 @@ private fun ArtistsTab() {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
-    LazyVerticalGrid(
-        GridCells.Adaptive(150.dp),
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        items(lib.artists, key = { it.name }) { a ->
-            ArtistCard(a.name, Modifier.fillMaxWidth().aspectRatio(0.78f)) { actions.openArtist(a.name) }
+    val grid = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+    val sections = remember(lib) { if (lib.artists.size >= RAIL_MIN) sectionStarts(lib.artists.map { nameSortKey(it.name) }) else emptyMap() }
+    val current by remember(sections) {
+        derivedStateOf { sections.entries.lastOrNull { it.value <= grid.firstVisibleItemIndex }?.key ?: sections.keys.firstOrNull() }
+    }
+    Box(Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            GridCells.Adaptive(150.dp),
+            Modifier.fillMaxSize(),
+            state = grid,
+            contentPadding = PaddingValues(start = 16.dp, end = if (sections.isEmpty()) 16.dp else 30.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(lib.artists, key = { it.name }) { a ->
+                ArtistCard(a.name, Modifier.fillMaxWidth().aspectRatio(0.78f)) { actions.openArtist(a.name) }
+            }
         }
+        AlphabetRail(sections, current, { i -> scope.launch { grid.scrollToItem(i) } })
     }
 }
 
@@ -357,7 +396,7 @@ private fun PlaylistsTab() {
                 Modifier.fillMaxWidth().clickable { actions.openPlaylist(p.id) }.padding(horizontal = 20.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val first = p.firstSongId?.let { lib.songById[it] }
+                val first = p.firstSongKey?.let { container.library.resolve(it, lib) }
                 Collage(listOfNotNull(first?.art), Modifier.size(64.dp), EchoShape.cover, p.name)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {

@@ -7,8 +7,11 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.novcloud.echo.data.ArtFetcher
 import com.novcloud.echo.data.ArtKeyer
+import com.novcloud.echo.data.BackupManager
 import com.novcloud.echo.data.LibraryRepository
+import com.novcloud.echo.data.Pinyin
 import com.novcloud.echo.data.Prefs
+import com.novcloud.echo.diag.DiagLog
 import com.novcloud.echo.data.db.EchoDatabase
 import com.novcloud.echo.data.lyrics.LyricsLoader
 import com.novcloud.echo.domain.DailyPin
@@ -44,6 +47,7 @@ class AppContainer(app: Application) {
     val prefs = Prefs(app)
     val library = LibraryRepository(app, db, prefs, appScope)
     val lyrics = LyricsLoader(app)
+    val backup = BackupManager(app, db, prefs, library)
     val player = PlayerConnection(app, library.library, appScope)
     val lyricsTree: StateFlow<String?> = prefs.lyricsTree.stateIn(appScope, SharingStarted.Eagerly, null)
 
@@ -91,6 +95,8 @@ class EchoApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        DiagLog.init(this)
+        Pinyin.install { assets.open("pinyin.bin") }
         container = AppContainer(this)
     }
 

@@ -24,7 +24,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextInput
+import com.novcloud.echo.playback.SleepState
+import com.novcloud.echo.ui.player.SleepTimerContent
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -86,12 +90,14 @@ class ScreenshotTest {
         playing: Boolean = true,
         tall: Int? = null,
         withArt: Boolean = true,
+        sleep: SleepState? = null,
         before: () -> Unit = {},
     ) {
         if (tall != null) RuntimeEnvironment.setQualifiers("+h${tall}dp")
         compose.mainClock.autoAdvance = false
         Samples.seed(ctx, withArt)
         if (playing) Samples.playing(ctx)
+        sleep?.let { Samples.app(ctx).player.previewSleep(it) }
         waitForHome()
         compose.setContent {
             EchoTheme(dark, motion = false) {
@@ -144,6 +150,36 @@ class ScreenshotTest {
     @Test fun library_songs_light() = app("library_songs_light", dark = false, route = "library")
     @Test fun album_dark() = app("album_dark", route = "album/1")
     @Test fun search_dark() = app("search_dark", route = "search")
+
+    @Test fun search_pinyin_dark() = app("search_pinyin_dark", route = "search") {
+        compose.onNode(hasSetTextAction()).performTextInput("wy")
+    }
+
+    @Test fun library_index_dark() = app("library_index_dark", route = "library") {
+        compose.onRoot().performTouchInput { down(androidx.compose.ui.geometry.Offset(right - 26f, height * 0.52f)) }
+    }
+
+    @Test fun nowplaying_sleep_dark() = app("nowplaying_sleep_dark", expanded = true, sleep = SleepState(System.currentTimeMillis() + 1_421_000, totalMs = 30 * 60_000L))
+
+    @Test fun sleep_sheet_dark() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            EchoTheme(true, motion = false) {
+                Box(Modifier.fillMaxSize().background(Color(0xFF000000)), contentAlignment = Alignment.BottomCenter) {
+                    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = EchoShape.card) {
+                        Box(Modifier.padding(top = 24.dp)) {
+                            SleepTimerContent(
+                                SleepState(deadline = System.currentTimeMillis() + 1_421_000, totalMs = 30 * 60_000L),
+                                remaining = 1_421_000, onPick = {}, onCancel = {},
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        settle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/sleep_sheet_dark.png")
+    }
     @Test fun settings_dark() = app("settings_dark", route = "settings")
     @Test fun settings_light() = app("settings_light", dark = false, route = "settings")
     @Test fun folders_dark() = app("folders_dark", route = "settings/folders")

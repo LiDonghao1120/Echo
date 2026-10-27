@@ -57,6 +57,7 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 - Colours taken from the album art, a large title and a waveform-style scrubber.
 - The mini player expands into Now Playing with a shared-element transition.
 - In the queue, swipe a track away or move it up next. **Play next** and **Add to queue** are available from any song's menu.
+- **Sleep timer**: 15, 30, 45, 60 or 90 minutes, any length you dial in, or the end of the current song. The countdown shows in Now Playing, the volume fades out over the last 30 seconds, and the timer keeps running with the app closed.
 
 ### Lyrics
 - **Synced LRC lyrics** that scroll with the song. Tap a line to jump to it.
@@ -66,11 +67,18 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 - Optionally keeps the screen on while lyrics are showing.
 
 ### Your library
-- Songs (sort by title, artist, album, date added or duration), albums, artists, genres, folders, playlists and favourites, plus search.
+- Songs (sort by title, artist, album, date added or duration), albums, artists, genres, folders, playlists and favourites.
+- **Pinyin search**: find Chinese titles, artists and albums by full pinyin, initials or a mix with characters (`zhoujielun`, `zjl`, `周jl`), all offline. Common polyphonic characters match either reading.
+- An **A–Z index** on the song and artist lists, sorted by pinyin with Latin names alongside. Drag along it to jump between letters.
 - Tracks with several artists (`/`, `、`, `;`, `&`, `feat.`) show up under each of them.
 - If Android doesn't report genres, Echo reads them from the file tags.
 - Opens straight to your library: the last scan is kept on the device and new or removed files are picked up in the background.
 - **Scan folders**: add folders with the system picker, including ones Android's media index skips, and include or exclude any folder on the device. Ignore tracks shorter than a set length. Duplicates are removed.
+- Favourites, playlists and listening history follow your files: they are tied to each file's path, and a song that was moved or renamed is found again by its tags.
+
+### Backup and diagnostics
+- **Backup**: export favourites, playlists, listening history, settings, scan folder rules and artist posters and wordmarks to one file you save wherever you like. When importing, choose to merge with what's on the phone or replace it.
+- **Diagnostic log**: Echo keeps a small log on the device (playback recovery, scan times, errors and crashes) that you can save from Settings and attach to a bug report. It is never sent anywhere.
 
 ### Playback
 - Media3 ExoPlayer in a background service, with controls in the notification, on the lock screen and on Bluetooth or wired headsets.
@@ -104,7 +112,7 @@ Get the latest APK from **[Releases](https://github.com/LiDonghao1120/Echo/relea
 
 ## Privacy
 
-Echo has no internet permission, so it cannot send anything anywhere. It reads the audio files on your device and keeps its own data (listening history, playlists, favourites, artist posters and wordmarks) in app storage. Nothing leaves your phone unless Android's own device backup is turned on, in which case the database is included like any other app's.
+Echo has no internet permission, so it cannot send anything anywhere. It reads the audio files on your device and keeps its own data (listening history, playlists, favourites, artist posters and wordmarks) in app storage. Nothing leaves your phone unless you export a backup or a diagnostic log yourself, or Android's own device backup is turned on, in which case the database is included like any other app's.
 
 ## Building from source
 
@@ -120,7 +128,7 @@ You need JDK 17+ and the Android SDK (compileSdk 36, minSdk 26). Without a relea
 
 Kotlin · Jetpack Compose · Material 3 · Media3 (ExoPlayer, MediaSession) · Room · DataStore · Coil · AndroidX Palette · Robolectric + Roborazzi screenshot tests
 
-Fonts: [Anton](https://github.com/googlefonts/AntonFont) and [Space Grotesk](https://github.com/floriankarsten/space-grotesk), under the SIL Open Font License ([licenses/](licenses)).
+Fonts: [Anton](https://github.com/googlefonts/AntonFont) and [Space Grotesk](https://github.com/floriankarsten/space-grotesk), under the SIL Open Font License. Pinyin readings come from [pinyin-data](https://github.com/mozillazg/pinyin-data) (MIT), packed by `tools/gen_pinyin.py`. See [licenses/](licenses).
 
 ---
 

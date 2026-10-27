@@ -9,8 +9,8 @@ import java.nio.file.Files
 
 class ArtistArtTest {
     private val songs = listOf(
-        Song(1, "a", "X", "Al1", 10, "X", "", 1000, 1, 1, 2020, 0, "/m/1.mp3", "/m", "", 1),
-        Song(2, "b", "X", "Al2", 20, "X", "", 1000, 1, 1, 2021, 0, "/m/2.mp3", "/m", "", 1),
+        Song(1, "a", "X", "Al1", 10, "X", "", 1000, 1, 1, 2020, 0, "/m/1.mp3", "/m", "", 1, mediaId = 1),
+        Song(2, "b", "X", "Al2", 20, "X", "", 1000, 1, 1, 2021, 0, "/m/2.mp3", "/m", "", 1, mediaId = 2),
     )
     private val artist = Library.build(songs).artistByName.getValue("X")
 

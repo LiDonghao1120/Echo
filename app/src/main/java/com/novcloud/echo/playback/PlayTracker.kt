@@ -18,6 +18,7 @@ data class TrackInfo(
     val albumId: Long,
     val genre: String,
     val durationMs: Long,
+    val key: String = "",
 )
 
 /**
@@ -105,6 +106,7 @@ class PlayTracker(
                 listenedMs = listened,
                 songDurationMs = duration,
                 completed = completed || duration > 0 && listened >= duration * 0.85,
+                songKey = song?.key ?: s.track.key,
             ),
             final,
         )

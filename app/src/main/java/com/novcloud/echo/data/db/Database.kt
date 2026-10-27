@@ -1,6 +1,7 @@
 package com.novcloud.echo.data.db
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -17,7 +18,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
-@Entity(tableName = "play_event", indices = [Index("startedAt"), Index("songId")])
+@Entity(tableName = "play_event", indices = [Index("startedAt"), Index("songId"), Index("songKey")])
 data class PlayEvent(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val songId: Long,
@@ -30,6 +31,7 @@ data class PlayEvent(
     val listenedMs: Long,
     val songDurationMs: Long,
     val completed: Boolean,
+    @ColumnInfo(defaultValue = "") val songKey: String = "",
 )
 
 @Entity(tableName = "playlist")
@@ -39,16 +41,31 @@ data class Playlist(
     val createdAt: Long,
 )
 
-@Entity(tableName = "playlist_entry", primaryKeys = ["playlistId", "songId"], indices = [Index("playlistId")])
+@Entity(tableName = "playlist_entry", primaryKeys = ["playlistId", "songKey"], indices = [Index("playlistId")])
 data class PlaylistEntry(
     val playlistId: Long,
-    val songId: Long,
+    val songKey: String,
     val position: Int,
     val addedAt: Long,
 )
 
 @Entity(tableName = "favorite")
-data class Favorite(@PrimaryKey val songId: Long, val addedAt: Long)
+data class Favorite(@PrimaryKey val songKey: String, val addedAt: Long)
+
+/** Last known tags of every referenced song key, so a moved file can be found again by its metadata. */
+@Entity(tableName = "song_ref")
+data class SongRef(
+    @PrimaryKey val key: String,
+    val title: String,
+    val artist: String,
+    val album: String,
+    val durationMs: Long,
+    val updatedAt: Long,
+)
+
+/** Where a key went when its file moved, for references outside the database (saved queue, older backups). */
+@Entity(tableName = "song_alias")
+data class SongAlias(@PrimaryKey val oldKey: String, val newKey: String)
 
 @Entity(tableName = "artist_image")
 data class ArtistImage(@PrimaryKey val artist: String, val path: String, val updatedAt: Long)
@@ -62,7 +79,7 @@ data class ArtistLogo(
     val updatedAt: Long,
 )
 
-data class PlaylistWithCount(val id: Long, val name: String, val createdAt: Long, val count: Int, val firstSongId: Long?)
+data class PlaylistWithCount(val id: Long, val name: String, val createdAt: Long, val count: Int, val firstSongKey: String?)
 
 @Dao
 interface PlayEventDao {
@@ -83,13 +100,19 @@ interface PlayEventDao {
 
     @Query("DELETE FROM play_event")
     suspend fun clear()
+
+    @Query("SELECT * FROM play_event ORDER BY startedAt ASC")
+    suspend fun all(): List<PlayEvent>
+
+    @Insert
+    suspend fun insertAll(e: List<PlayEvent>)
 }
 
 @Dao
 interface PlaylistDao {
     @Query(
-        """SELECT p.id, p.name, p.createdAt, COUNT(e.songId) AS count,
-           (SELECT songId FROM playlist_entry WHERE playlistId = p.id ORDER BY position LIMIT 1) AS firstSongId
+        """SELECT p.id, p.name, p.createdAt, COUNT(e.songKey) AS count,
+           (SELECT songKey FROM playlist_entry WHERE playlistId = p.id ORDER BY position LIMIT 1) AS firstSongKey
            FROM playlist p LEFT JOIN playlist_entry e ON e.playlistId = p.id
            GROUP BY p.id ORDER BY p.createdAt DESC"""
     )
@@ -98,8 +121,20 @@ interface PlaylistDao {
     @Query("SELECT * FROM playlist WHERE id = :id")
     fun byId(id: Long): Flow<Playlist?>
 
-    @Query("SELECT songId FROM playlist_entry WHERE playlistId = :id ORDER BY position")
-    fun songIds(id: Long): Flow<List<Long>>
+    @Query("SELECT songKey FROM playlist_entry WHERE playlistId = :id ORDER BY position")
+    fun songKeys(id: Long): Flow<List<String>>
+
+    @Query("SELECT * FROM playlist ORDER BY createdAt ASC")
+    suspend fun allPlaylists(): List<Playlist>
+
+    @Query("SELECT * FROM playlist_entry ORDER BY playlistId, position")
+    suspend fun allEntries(): List<PlaylistEntry>
+
+    @Query("DELETE FROM playlist_entry")
+    suspend fun clearAllEntries()
+
+    @Query("DELETE FROM playlist")
+    suspend fun clearAllPlaylists()
 
     @Insert
     suspend fun insert(p: Playlist): Long
@@ -119,8 +154,8 @@ interface PlaylistDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEntries(e: List<PlaylistEntry>)
 
-    @Query("DELETE FROM playlist_entry WHERE playlistId = :id AND songId = :songId")
-    suspend fun removeEntry(id: Long, songId: Long)
+    @Query("DELETE FROM playlist_entry WHERE playlistId = :id AND songKey = :key")
+    suspend fun removeEntry(id: Long, key: String)
 
     @Transaction
     suspend fun delete(id: Long) {
@@ -129,29 +164,99 @@ interface PlaylistDao {
     }
 
     @Transaction
-    suspend fun add(id: Long, songIds: List<Long>) {
+    suspend fun add(id: Long, keys: List<String>) {
         var pos = maxPosition(id) + 1
         val now = System.currentTimeMillis()
-        insertEntries(songIds.map { PlaylistEntry(id, it, pos++, now) })
+        insertEntries(keys.map { PlaylistEntry(id, it, pos++, now) })
     }
 }
 
 @Dao
 interface FavoriteDao {
-    @Query("SELECT songId FROM favorite ORDER BY addedAt DESC")
-    fun ids(): Flow<List<Long>>
+    @Query("SELECT songKey FROM favorite ORDER BY addedAt DESC")
+    fun keys(): Flow<List<String>>
+
+    @Query("SELECT * FROM favorite ORDER BY addedAt DESC")
+    suspend fun all(): List<Favorite>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun add(f: Favorite)
 
-    @Query("DELETE FROM favorite WHERE songId = :id")
-    suspend fun remove(id: Long)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun addAll(f: List<Favorite>)
+
+    @Query("DELETE FROM favorite WHERE songKey = :key")
+    suspend fun remove(key: String)
+
+    @Query("DELETE FROM favorite")
+    suspend fun clear()
+}
+
+@Dao
+interface IdentityDao {
+    @Query("SELECT * FROM song_ref")
+    suspend fun refs(): List<SongRef>
+
+    @Query("SELECT songKey FROM favorite UNION SELECT songKey FROM playlist_entry UNION SELECT songKey FROM play_event WHERE songKey != ''")
+    suspend fun referencedKeys(): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putRefs(refs: List<SongRef>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun addRefs(refs: List<SongRef>)
+
+    @Query("DELETE FROM song_ref")
+    suspend fun clearRefs()
+
+    @Query("SELECT * FROM song_alias")
+    suspend fun aliases(): List<SongAlias>
+
+    @Query("INSERT OR IGNORE INTO favorite (songKey, addedAt) SELECT :new, addedAt FROM favorite WHERE songKey = :old")
+    suspend fun copyFavorite(old: String, new: String)
+
+    @Query("DELETE FROM favorite WHERE songKey = :old")
+    suspend fun dropFavorite(old: String)
+
+    @Query("INSERT OR IGNORE INTO playlist_entry (playlistId, songKey, position, addedAt) SELECT playlistId, :new, position, addedAt FROM playlist_entry WHERE songKey = :old")
+    suspend fun copyEntries(old: String, new: String)
+
+    @Query("DELETE FROM playlist_entry WHERE songKey = :old")
+    suspend fun dropEntries(old: String)
+
+    @Query("UPDATE play_event SET songKey = :new, songId = :newId WHERE songKey = :old")
+    suspend fun moveEvents(old: String, new: String, newId: Long)
+
+    @Query("DELETE FROM song_ref WHERE `key` = :old")
+    suspend fun dropRef(old: String)
+
+    @Query("UPDATE song_alias SET newKey = :new WHERE newKey = :old")
+    suspend fun forwardAliases(old: String, new: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putAlias(a: SongAlias)
+
+    /** Points everything saved under [old] at [new]; rows already saved under [new] win. */
+    @Transaction
+    suspend fun move(old: String, new: String, newId: Long) {
+        copyFavorite(old, new)
+        dropFavorite(old)
+        copyEntries(old, new)
+        dropEntries(old)
+        moveEvents(old, new, newId)
+        dropRef(old)
+        forwardAliases(old, new)
+        putAlias(SongAlias(old, new))
+    }
 }
 
 @Dao
 interface ArtistImageDao {
     @Query("SELECT * FROM artist_image")
     fun all(): Flow<List<ArtistImage>>
+
+    @Query("SELECT * FROM artist_image")
+    suspend fun allNow(): List<ArtistImage>
 
     @Query("SELECT * FROM artist_image WHERE artist = :artist")
     suspend fun get(artist: String): ArtistImage?
@@ -168,6 +273,9 @@ interface ArtistLogoDao {
     @Query("SELECT * FROM artist_logo")
     fun all(): Flow<List<ArtistLogo>>
 
+    @Query("SELECT * FROM artist_logo")
+    suspend fun allNow(): List<ArtistLogo>
+
     @Query("SELECT * FROM artist_logo WHERE artist = :artist")
     suspend fun get(artist: String): ArtistLogo?
 
@@ -179,8 +287,8 @@ interface ArtistLogoDao {
 }
 
 @Database(
-    entities = [PlayEvent::class, Playlist::class, PlaylistEntry::class, Favorite::class, ArtistImage::class, ArtistLogo::class],
-    version = 2,
+    entities = [PlayEvent::class, Playlist::class, PlaylistEntry::class, Favorite::class, ArtistImage::class, ArtistLogo::class, SongRef::class, SongAlias::class],
+    version = 3,
     exportSchema = true,
 )
 abstract class EchoDatabase : RoomDatabase() {
@@ -189,6 +297,7 @@ abstract class EchoDatabase : RoomDatabase() {
     abstract fun favorites(): FavoriteDao
     abstract fun artistImages(): ArtistImageDao
     abstract fun artistLogos(): ArtistLogoDao
+    abstract fun identity(): IdentityDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -200,7 +309,51 @@ abstract class EchoDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Favorites and playlist entries were keyed by MediaStore _ID, which changes when a file is moved or renamed
+         * or the media database is rebuilt. Existing rows become legacy "id:<old id>" keys; the first library scan
+         * maps each to the file that still has that id (Rematch), and nothing that fails to match is dropped.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `favorite_new` (`songKey` TEXT NOT NULL, `addedAt` INTEGER NOT NULL, PRIMARY KEY(`songKey`))")
+                db.execSQL("INSERT OR IGNORE INTO `favorite_new` (songKey, addedAt) SELECT 'id:' || songId, addedAt FROM favorite")
+                db.execSQL("DROP TABLE `favorite`")
+                db.execSQL("ALTER TABLE `favorite_new` RENAME TO `favorite`")
+
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `playlist_entry_new` (`playlistId` INTEGER NOT NULL, `songKey` TEXT NOT NULL, " +
+                        "`position` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, PRIMARY KEY(`playlistId`, `songKey`))",
+                )
+                db.execSQL(
+                    "INSERT OR IGNORE INTO `playlist_entry_new` (playlistId, songKey, position, addedAt) " +
+                        "SELECT playlistId, 'id:' || songId, position, addedAt FROM playlist_entry",
+                )
+                db.execSQL("DROP TABLE `playlist_entry`")
+                db.execSQL("ALTER TABLE `playlist_entry_new` RENAME TO `playlist_entry`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_playlist_entry_playlistId` ON `playlist_entry` (`playlistId`)")
+
+                db.execSQL("ALTER TABLE `play_event` ADD COLUMN `songKey` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("UPDATE `play_event` SET songKey = 'id:' || songId")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_play_event_songKey` ON `play_event` (`songKey`)")
+
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `song_ref` (`key` TEXT NOT NULL, `title` TEXT NOT NULL, `artist` TEXT NOT NULL, " +
+                        "`album` TEXT NOT NULL, `durationMs` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+                )
+                db.execSQL(
+                    "INSERT OR REPLACE INTO `song_ref` (`key`, title, artist, album, durationMs, updatedAt) " +
+                        "SELECT songKey, title, artist, album, songDurationMs, startedAt FROM play_event ORDER BY startedAt",
+                )
+                db.execSQL(
+                    "INSERT OR IGNORE INTO `song_ref` (`key`, title, artist, album, durationMs, updatedAt) " +
+                        "SELECT songKey, '', '', '', 0, 0 FROM favorite UNION SELECT songKey, '', '', '', 0, 0 FROM playlist_entry",
+                )
+                db.execSQL("CREATE TABLE IF NOT EXISTS `song_alias` (`oldKey` TEXT NOT NULL, `newKey` TEXT NOT NULL, PRIMARY KEY(`oldKey`))")
+            }
+        }
+
         fun create(context: Context, name: String = "echo.db") =
-            Room.databaseBuilder(context, EchoDatabase::class.java, name).addMigrations(MIGRATION_1_2).build()
+            Room.databaseBuilder(context, EchoDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }

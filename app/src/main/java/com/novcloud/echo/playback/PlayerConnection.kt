@@ -7,7 +7,10 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import android.os.Bundle
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
+import com.novcloud.echo.diag.DiagLog
 import androidx.media3.session.SessionToken
 import com.novcloud.echo.data.Library
 import com.novcloud.echo.data.Song
@@ -50,6 +53,8 @@ class PlayerConnection(
     val position: StateFlow<Long> = _position.asStateFlow()
     private var ticker: Job? = null
     private var pendingSeek: Long? = null
+    private val _sleep = MutableStateFlow(SleepState())
+    val sleep: StateFlow<SleepState> = _sleep.asStateFlow()
 
     fun connect() {
         if (controller != null || connecting) return
@@ -58,6 +63,9 @@ class PlayerConnection(
         val future = MediaController.Builder(context, token)
             .setListener(object : MediaController.Listener {
                 override fun onDisconnected(controller: MediaController) = onLost(controller)
+                override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
+                    _sleep.value = SleepState.from(extras)
+                }
             })
             .buildAsync()
         future.addListener({
@@ -68,6 +76,7 @@ class PlayerConnection(
                 return@addListener
             }
             controller = c
+            _sleep.value = SleepState.from(c.sessionExtras)
             c.addListener(object : Player.Listener {
                 override fun onEvents(player: Player, events: Player.Events) {
                     if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) pendingSeek = null
@@ -92,6 +101,7 @@ class PlayerConnection(
     /** The session went away (service destroyed or crashed): drop the dead controller instead of showing its last state. */
     private fun onLost(c: MediaController) {
         if (controller !== c) return
+        DiagLog.w("EchoPlayer", "media session disconnected, reconnecting")
         controller = null
         ticker?.cancel()
         _state.value = _state.value.copy(isPlaying = false, buffering = false)
@@ -118,6 +128,15 @@ class PlayerConnection(
     }
 
     fun refresh() = sync()
+
+    /** Minutes until playback pauses; [SleepState.END_OF_ITEM] for the end of the current song, 0 to cancel. */
+    fun setSleep(minutes: Int) = withController { c ->
+        c.sendCustomCommand(SessionCommand(SleepState.ACTION, Bundle.EMPTY), Bundle().apply { putInt(SleepState.ARG_MINUTES, minutes) })
+    }
+
+    internal fun previewSleep(s: SleepState) {
+        _sleep.value = s
+    }
 
     internal fun preview(state: PlayerState, positionMs: Long) {
         _state.value = state

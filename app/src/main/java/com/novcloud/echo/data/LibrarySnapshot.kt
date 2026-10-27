@@ -35,7 +35,7 @@ class LibrarySnapshot(
 
     companion object {
         private const val MAGIC = 0x45434831
-        private const val FORMAT = 1
+        private const val FORMAT = 2
 
         /** Changes whenever [Song]'s fields change, so an older file is discarded instead of misread. */
         val SCHEMA: Int = FORMAT * 31 + Song::class.java.declaredFields
@@ -64,7 +64,7 @@ class LibrarySnapshot(
                 d.writeLong(s.id); d.str(s.title); d.str(s.artist); d.str(s.album); d.writeLong(s.albumId)
                 d.str(s.albumArtist); d.str(s.genre); d.writeLong(s.durationMs); d.writeInt(s.track); d.writeInt(s.disc)
                 d.writeInt(s.year); d.writeLong(s.dateAdded); d.str(s.path); d.str(s.folder); d.str(s.mimeType)
-                d.writeLong(s.size); d.str(s.docUri)
+                d.writeLong(s.size); d.str(s.docUri); d.str(s.key); d.writeLong(s.mediaId)
             }
         }
 
@@ -78,7 +78,7 @@ class LibrarySnapshot(
                             id = d.readLong(), title = d.str(), artist = d.str(), album = d.str(), albumId = d.readLong(),
                             albumArtist = d.str(), genre = d.str(), durationMs = d.readLong(), track = d.readInt(), disc = d.readInt(),
                             year = d.readInt(), dateAdded = d.readLong(), path = d.str(), folder = d.str(), mimeType = d.str(),
-                            size = d.readLong(), docUri = d.str(),
+                            size = d.readLong(), docUri = d.str(), key = d.str(), mediaId = d.readLong(),
                         ),
                     )
                 }

@@ -76,6 +76,7 @@ fun SettingsScreen() {
     var clearing by remember { mutableStateOf(false) }
     var licenses by remember { mutableStateOf(false) }
     val importFolder = com.novcloud.echo.ui.detail.rememberFolderImport()
+    val tools = rememberDataTools()
     val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -155,11 +156,17 @@ fun SettingsScreen() {
                 }
             }
             Group("数据") {
+                NavRow("导出备份", null, tools.exportBackup)
+                Rule()
+                NavRow("导入备份", null, tools.importBackup)
+                Rule()
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { clearing = true }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("清除收听记录", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
                 }
             }
             Group("关于") {
+                NavRow("导出诊断日志", null, tools.exportLog)
+                Rule()
                 NavRow("开源许可", null) { licenses = true }
             }
             Column(Modifier.fillMaxWidth().padding(top = 36.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -269,7 +276,7 @@ internal fun Chip(label: String, selected: Boolean, modifier: Modifier = Modifie
 private fun LicensesDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val text = remember {
-        listOf("Anton" to "licenses/Anton-OFL.txt", "Space Grotesk" to "licenses/SpaceGrotesk-OFL.txt").joinToString("\n\n") { (n, f) ->
+        listOf("Anton" to "licenses/Anton-OFL.txt", "Space Grotesk" to "licenses/SpaceGrotesk-OFL.txt", "pinyin-data" to "licenses/pinyin-data-MIT.txt").joinToString("\n\n") { (n, f) ->
             "$n\n" + runCatching { context.assets.open(f).bufferedReader().use { it.readText() } }.getOrDefault("")
         }
     }

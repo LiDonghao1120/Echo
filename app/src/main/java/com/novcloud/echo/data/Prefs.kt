@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore("echo")
 
-data class SavedQueue(val ids: List<Long>, val index: Int, val positionMs: Long, val shuffle: Boolean, val repeat: Int)
+data class SavedQueue(val keys: List<String>, val index: Int, val positionMs: Long, val shuffle: Boolean, val repeat: Int)
 
 enum class ThemeMode { System, Dark, Light }
 
@@ -23,6 +23,7 @@ class Prefs(private val context: Context) {
 
     private object K {
         val queue = stringPreferencesKey("queue")
+        val queueKeys = stringPreferencesKey("queue_keys")
         val index = intPreferencesKey("queue_index")
         val pos = longPreferencesKey("queue_pos")
         val shuffle = booleanPreferencesKey("shuffle")
@@ -79,8 +80,31 @@ class Prefs(private val context: Context) {
     suspend fun setSongSort(sort: String) = edit { it[K.songSort] = sort }
     suspend fun setKeepScreenOnLyrics(v: Boolean) = edit { it[K.keepScreenLyrics] = v }
 
+    suspend fun backupSettings(): BackupSettings {
+        val p = ds.data.first()
+        return BackupSettings(
+            theme = p[K.theme], minDurationSec = p[K.minDuration], songSort = p[K.songSort], keepScreenOnLyrics = p[K.keepScreenLyrics],
+            scanIncluded = p[K.scanIncluded].orEmpty(), scanExcluded = p[K.scanExcluded].orEmpty(), scanTrees = p[K.scanTrees].orEmpty(),
+            lyricsTree = p[K.lyricsTree],
+        )
+    }
+
+    /** [usable] filters folder grants: a tree from another phone (or a revoked one) cannot be read here. */
+    suspend fun restoreSettings(s: BackupSettings, usable: (String) -> Boolean) = edit {
+        fun <T> put(k: androidx.datastore.preferences.core.Preferences.Key<T>, v: T?) { if (v == null) it.remove(k) else it[k] = v }
+        put(K.theme, s.theme)
+        put(K.minDuration, s.minDurationSec)
+        put(K.songSort, s.songSort)
+        put(K.keepScreenLyrics, s.keepScreenOnLyrics)
+        it[K.scanIncluded] = s.scanIncluded
+        it[K.scanExcluded] = s.scanExcluded
+        it[K.scanTrees] = s.scanTrees.filter(usable).toSet()
+        put(K.lyricsTree, s.lyricsTree?.takeIf(usable))
+    }
+
     suspend fun saveQueue(q: SavedQueue) = edit {
-        it[K.queue] = q.ids.joinToString(",")
+        it.remove(K.queue)
+        it[K.queueKeys] = q.keys.joinToString(SEP)
         it[K.index] = q.index
         it[K.pos] = q.positionMs
         it[K.shuffle] = q.shuffle
@@ -89,9 +113,14 @@ class Prefs(private val context: Context) {
 
     suspend fun loadQueue(): SavedQueue? {
         val p = ds.data.first()
-        val ids = p[K.queue]?.split(',')?.mapNotNull { it.toLongOrNull() }.orEmpty()
-        if (ids.isEmpty()) return null
-        return SavedQueue(ids, p[K.index] ?: 0, p[K.pos] ?: 0, p[K.shuffle] ?: false, p[K.repeat] ?: 0)
+        val keys = p[K.queueKeys]?.split(SEP)?.filter { it.isNotEmpty() }
+            ?: p[K.queue]?.split(',')?.mapNotNull { it.toLongOrNull()?.let(SongKeys::legacyKey) }.orEmpty()
+        if (keys.isEmpty()) return null
+        return SavedQueue(keys, p[K.index] ?: 0, p[K.pos] ?: 0, p[K.shuffle] ?: false, p[K.repeat] ?: 0)
+    }
+
+    private companion object {
+        const val SEP = "\u001F"
     }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {

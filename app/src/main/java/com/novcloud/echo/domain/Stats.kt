@@ -77,7 +77,7 @@ object StatsEngine {
         val songAgg = events.groupBy { it.songId }.map { (id, l) ->
             val e = l.last()
             val s = lib.songById[id]
-            Ranked(id.toString(), s?.title ?: e.title, s?.artist ?: e.artist, s?.art ?: ArtRef(e.albumId, id), l.sumOf { it.listenedMs }, l.size)
+            Ranked(id.toString(), s?.title ?: e.title, s?.artist ?: e.artist, s?.art ?: ArtRef(e.albumId, -1), l.sumOf { it.listenedMs }, l.size)
         }.sortedWith(compareByDescending<Ranked> { it.plays }.thenByDescending { it.ms }).take(10)
 
         val artistMs = HashMap<String, Long>()
@@ -94,7 +94,7 @@ object StatsEngine {
 
         val albumAgg = events.groupBy { it.albumId }.map { (id, l) ->
             val al = lib.albumById[id]
-            Ranked(id.toString(), displayAlbum(al?.title ?: l.last().album), al?.artist ?: l.last().artist, al?.art ?: ArtRef(id, l.last().songId), l.sumOf { it.listenedMs }, l.size)
+            Ranked(id.toString(), displayAlbum(al?.title ?: l.last().album), al?.artist ?: l.last().artist, al?.art ?: ArtRef(id, -1), l.sumOf { it.listenedMs }, l.size)
         }.sortedByDescending { it.ms }.take(10)
 
         val genreAgg = events.groupBy { lib.songById[it.songId]?.genre?.ifBlank { null } ?: it.genre }.filterKeys { it.isNotBlank() }.map { (g, l) ->

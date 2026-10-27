@@ -10,6 +10,7 @@ import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
 
 const val EXTRA_ALBUM_ID = "album_id"
+const val EXTRA_SONG_KEY = "song_key"
 
 fun Song.toMediaItem(): MediaItem = MediaItem.Builder()
     .setMediaId(id.toString())
@@ -27,12 +28,14 @@ fun Song.toMediaItem(): MediaItem = MediaItem.Builder()
             .setIsPlayable(true)
             .setIsBrowsable(false)
             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-            .setExtras(Bundle().apply { putLong(EXTRA_ALBUM_ID, albumId) })
+            .setExtras(Bundle().apply { putLong(EXTRA_ALBUM_ID, albumId); putString(EXTRA_SONG_KEY, key) })
             .build()
     )
     .build()
 
 fun MediaItem.songId(): Long? = mediaId.toLongOrNull()
+
+fun MediaItem.songKey(): String? = mediaMetadata.extras?.getString(EXTRA_SONG_KEY)?.takeIf { it.isNotEmpty() }
 
 fun MediaItem.trackInfo(): TrackInfo? {
     val id = songId() ?: return null
@@ -45,5 +48,6 @@ fun MediaItem.trackInfo(): TrackInfo? {
         albumId = m.extras?.getLong(EXTRA_ALBUM_ID, -1) ?: -1,
         genre = m.genre?.toString().orEmpty(),
         durationMs = m.durationMs ?: 0,
+        key = songKey().orEmpty(),
     )
 }

@@ -17,6 +17,11 @@ import com.novcloud.echo.data.db.ArtistLogo
 import com.novcloud.echo.data.db.EchoDatabase
 import com.novcloud.echo.data.db.Favorite
 import com.novcloud.echo.data.db.Playlist
+import com.novcloud.echo.data.db.SongRef
+import com.novcloud.echo.diag.DiagLog
+import android.os.SystemClock
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Deferred
@@ -66,13 +71,16 @@ class LibraryRepository(
     private val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
     private val mutex = Mutex()
+    private val identityLock = Mutex()
+    @Volatile private var aliases: Map<String, String> = emptyMap()
     private var observerRegistered = false
     private var pending: Job? = null
 
-    val favorites: StateFlow<Set<Long>> = db.favorites().ids().map { it.toSet() }
-        .stateIn(scope, SharingStarted.Eagerly, emptySet())
-    val favoriteOrder: StateFlow<List<Long>> = db.favorites().ids()
+    private val favoriteKeys = db.favorites().keys().stateIn(scope, SharingStarted.Eagerly, emptyList())
+    val favoriteOrder: StateFlow<List<Long>> = combine(favoriteKeys, _library) { keys, lib -> keys.mapNotNull { lib.songByKey[it]?.id } }
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
+    val favorites: StateFlow<Set<Long>> = favoriteOrder.map { it.toSet() }
+        .stateIn(scope, SharingStarted.Eagerly, emptySet())
     val playlists = db.playlists().all().stateIn(scope, SharingStarted.Eagerly, emptyList())
     val artistImages: StateFlow<Map<String, String>> = db.artistImages().all()
         .map { l -> l.filter { File(it.path).exists() }.associate { it.artist to it.path } }
@@ -97,7 +105,10 @@ class LibraryRepository(
         treeStamps = snap.trees
         probed.putAll(snap.probed)
         val lib = Library.build(snap.songs)
-        if (!_library.value.loaded) _library.value = lib
+        if (!_library.value.loaded) {
+            _library.value = lib
+            reconcile(lib)
+        }
     }
     private val started = AtomicBoolean(false)
     private var missingJob: Job? = null
@@ -135,14 +146,19 @@ class LibraryRepository(
     private suspend fun scan(walk: Walk) {
         _scanning.value = true
         genreJob?.cancel()
+        val t0 = SystemClock.elapsedRealtime()
+        var tStore = 0L
+        var tTrees = -1L
         try {
             val min = prefs.minDurationSec.first() * 1000L
             val rules = FolderRules(prefs.scanIncluded.first(), prefs.scanExcluded.first())
             val trees = prefs.scanTrees.first().filter(::hasPermission)
             val loaded = _library.value.loaded
             val songs = withContext(Dispatchers.IO) {
-                val store = runCatching { scanner.scan(rules, min, probed) }.getOrNull()
+                val store = runCatching { scanner.scan(rules, min, probed) }
+                    .onFailure { DiagLog.e(TAG, "MediaStore scan failed", it) }.getOrNull()
                     ?: if (loaded) return@withContext null else MediaScanner.Result(emptyList(), emptySet())
+                tStore = SystemClock.elapsedRealtime() - t0
                 if (trees.isEmpty()) {
                     treeSongs = emptyList()
                     treeStamps = emptyMap()
@@ -150,18 +166,32 @@ class LibraryRepository(
                     val stamps = if (walk == Walk.Never && treeStamps.keys == trees.toSet()) treeStamps
                     else trees.associateWith { treeScanner.signature(it) ?: 0L }
                     if (walk == Walk.Always || stamps != treeStamps) {
+                        val t1 = SystemClock.elapsedRealtime()
                         runCatching { treeScanner.scan(trees, rules, store.knownPaths) { _progress.value = it } }
                             .onSuccess { treeSongs = it; treeStamps = stamps }
+                            .onFailure { DiagLog.e(TAG, "folder walk failed", it) }
+                        tTrees = SystemClock.elapsedRealtime() - t1
                     }
                 }
                 val extra = treeSongs.filter { it.durationMs >= min && rules.accepts(it.folder, true) && it.path.lowercase() !in store.knownPaths }
-                genres.apply(Dedupe.merge(store.songs, extra))
+                genres.apply(SongKeys.unique(Dedupe.merge(store.songs, extra)))
             } ?: return
-            if (LibrarySnapshot.changed(_library.value, songs)) {
+            val changed = LibrarySnapshot.changed(_library.value, songs)
+            if (changed) {
                 _library.value = withContext(Dispatchers.Default) { Library.build(songs) }
             }
+            reconcile(_library.value)
             saveSnapshot()
+            DiagLog.i(
+                TAG,
+                "scan $walk: ${songs.size} songs (${treeSongs.size} from ${trees.size} folders), store ${tStore}ms" +
+                    (if (tTrees >= 0) ", folders ${tTrees}ms" else "") + ", total ${SystemClock.elapsedRealtime() - t0}ms" +
+                    if (changed) "" else ", unchanged",
+            )
             fillGenres(songs)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            DiagLog.e(TAG, "scan $walk failed", e)
         } finally {
             _scanning.value = false
             _progress.value = null
@@ -254,25 +284,83 @@ class LibraryRepository(
         context.contentResolver.registerContentObserver(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, obs)
     }
 
-    fun toggleFavorite(id: Long) {
-        scope.launch {
-            if (id in favorites.value) db.favorites().remove(id) else db.favorites().add(Favorite(id, System.currentTimeMillis()))
+    /** Re-points saved references at the current files (see [Rematch]) and refreshes their stored tags. */
+    suspend fun reconcile(lib: Library = _library.value) = withContext(Dispatchers.IO) {
+        if (!lib.loaded) return@withContext
+        identityLock.withLock {
+            runCatching {
+                val dao = db.identity()
+                val referenced = dao.referencedKeys()
+                val refs = dao.refs().associateBy { it.key }
+                val plan = Rematch.plan(referenced, refs, lib)
+                plan.moves.forEach { (old, new) -> dao.move(old, new, SongKeys.id(new)) }
+                if (plan.refs.isNotEmpty()) dao.putRefs(plan.refs)
+                aliases = dao.aliases().associate { it.oldKey to it.newKey }
+                if (plan.moves.isNotEmpty()) {
+                    val legacy = plan.moves.keys.count { it.startsWith("id:") }
+                    val unmatched = referenced.count { it !in lib.songByKey && it !in plan.moves }
+                    DiagLog.i(TAG, "rematched ${plan.moves.size} saved songs ($legacy from pre-0.7 ids), $unmatched still unmatched")
+                }
+            }.onFailure { DiagLog.e(TAG, "reconcile failed", it) }
         }
     }
 
-    fun playlistSongs(id: Long) = db.playlists().songIds(id)
+    /** The library song a saved key refers to now, following moves. */
+    fun resolve(key: String, lib: Library = _library.value): Song? =
+        lib.songByKey[key] ?: aliases[key]?.let { lib.songByKey[it] }
+            ?: key.takeIf { it.startsWith("id:") }?.removePrefix("id:")?.toLongOrNull()?.let { lib.songByLegacyId[it] }
+
+    private fun songsFor(ids: List<Long>): List<Song> {
+        val lib = _library.value
+        return ids.mapNotNull { lib.songById[it] }
+    }
+
+    private suspend fun remember(songs: List<Song>) {
+        val now = System.currentTimeMillis()
+        db.identity().putRefs(songs.map { SongRef(it.key, it.title, it.artist, it.album, it.durationMs, now) })
+    }
+
+    fun toggleFavorite(id: Long) {
+        val song = _library.value.songById[id] ?: return
+        scope.launch {
+            if (song.key in favoriteKeys.value) db.favorites().remove(song.key) else {
+                remember(listOf(song))
+                db.favorites().add(Favorite(song.key, System.currentTimeMillis()))
+            }
+        }
+    }
+
+    fun playlistSongs(id: Long): Flow<List<Long>> =
+        combine(db.playlists().songKeys(id), _library) { keys, lib -> keys.mapNotNull { resolve(it, lib)?.id } }
+
     fun playlist(id: Long) = db.playlists().byId(id)
 
     suspend fun createPlaylist(name: String, songIds: List<Long> = emptyList()): Long {
         val id = db.playlists().insert(Playlist(name = name, createdAt = System.currentTimeMillis()))
-        if (songIds.isNotEmpty()) db.playlists().add(id, songIds)
+        val songs = songsFor(songIds)
+        if (songs.isNotEmpty()) {
+            remember(songs)
+            db.playlists().add(id, songs.map { it.key })
+        }
         return id
     }
 
-    fun addToPlaylist(id: Long, songIds: List<Long>) = scope.launch { db.playlists().add(id, songIds) }
-    fun removeFromPlaylist(id: Long, songId: Long) = scope.launch { db.playlists().removeEntry(id, songId) }
+    fun addToPlaylist(id: Long, songIds: List<Long>) = scope.launch {
+        val songs = songsFor(songIds)
+        remember(songs)
+        db.playlists().add(id, songs.map { it.key })
+    }
+
+    fun removeFromPlaylist(id: Long, songId: Long) = scope.launch {
+        val song = _library.value.songById[songId] ?: return@launch
+        db.playlists().removeEntry(id, song.key)
+    }
     fun renamePlaylist(id: Long, name: String) = scope.launch { db.playlists().rename(id, name) }
     fun deletePlaylist(id: Long) = scope.launch { db.playlists().delete(id) }
+
+    companion object {
+        const val TAG = "EchoLibrary"
+    }
 
     fun setArtistImage(artist: String, source: Uri) = scope.launch { withArt(artist) { putPoster(artist, source) } }
 

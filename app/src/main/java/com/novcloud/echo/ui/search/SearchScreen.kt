@@ -46,7 +46,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.novcloud.echo.EchoApp
-import com.novcloud.echo.data.Album
+import com.novcloud.echo.data.SearchResults
 import com.novcloud.echo.data.Artist
 import com.novcloud.echo.data.Library
 import com.novcloud.echo.data.Song
@@ -69,33 +69,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-private data class Results(val songs: List<Song>, val albums: List<Album>, val artists: List<Artist>)
-
-private fun search(lib: Library, q: String): Results {
-    val t = q.trim().lowercase()
-    fun m(s: String) = s.lowercase().contains(t)
-    fun rank(s: String) = if (s.lowercase().startsWith(t)) 0 else 1
-    return Results(
-        lib.songs.filter { m(it.title) || m(it.artist) || m(it.album) }.sortedBy { rank(it.title) }.take(60),
-        lib.albums.filter { m(it.title) || m(it.artist) }.sortedBy { rank(it.title) }.take(20),
-        lib.artists.filter { m(it.name) }.sortedBy { rank(it.name) }.take(20),
-    )
-}
-
 @Composable
-fun SearchScreen() {
+fun SearchScreen(initialQuery: String = "") {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
     val custom by container.library.artistImages.collectAsState()
     val home by container.home.collectAsState()
     val state by actions.player.state.collectAsState()
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf(initialQuery) }
     val focus = LocalFocusManager.current
-    val results by produceState<Results?>(null, query, lib) {
+    val results by produceState<SearchResults?>(null, query, lib) {
         if (query.isBlank()) { value = null; return@produceState }
         delay(120)
-        value = withContext(Dispatchers.Default) { search(lib, query) }
+        value = withContext(Dispatchers.Default) { lib.search.query(query) }
     }
 
     Column(Modifier.fillMaxSize()) {
