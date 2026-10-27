@@ -171,7 +171,7 @@
     <string name="lyrics_folder">Lyrics folder</string>
     <string name="not_set">Not set</string>
     <string name="lyrics_display">Lyrics display</string>
-    <string name="lyrics_keep_screen_on">Keep screen on while lyrics are showing</string>
+    <string name="lyrics_keep_screen_on">Keep screen on for lyrics</string>
     <string name="settings_data">Data</string>
     <string name="backup_export">Export backup</string>
     <string name="backup_import">Import backup</string>
@@ -333,8 +333,8 @@
         <item quantity="other">%1$s excluded</item>
     </plurals>
     <plurals name="stats_days_with_music">
-        <item quantity="one">Music on %1$s day</item>
-        <item quantity="other">Music on %1$s days</item>
+        <item quantity="one">%1$s day with music</item>
+        <item quantity="other">%1$s days with music</item>
     </plurals>
     <plurals name="stats_longest_streak">
         <item quantity="one">Longest: %1$s day</item>

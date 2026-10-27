@@ -34,6 +34,7 @@ class EnglishScreenshotTest : ScreenshotBase() {
     }
 
     @Test fun artist_en() = app("artist_en", route = "artist/Ivy%20Calder", tall = 1700)
+    @Test fun artist_kira_en() = app("artist_kira_en", route = "artist/Kira%20Nox")
     @Test fun album_en() = app("album_en", route = "album/1", tall = 1400)
     @Test fun daily_en() = app("daily_en", route = "mix/daily")
     @Test fun search_en() = app("search_en", route = "search")
@@ -58,8 +59,8 @@ class EnglishScreenshotTest : ScreenshotBase() {
     @Test fun sleep_sheet_en() = sleepSheet("sleep_sheet_en")
 
     @Test fun stats_en() = app("stats_en", route = "stats")
-    @Test fun stats_tall_en() = app("stats_tall_en", route = "stats", tall = 3300)
-    @Test fun stats_light_tall_en() = app("stats_light_tall_en", dark = false, route = "stats", tall = 3300)
+    @Test fun stats_tall_en() = app("stats_tall_en", route = "stats", tall = 3900)
+    @Test fun stats_light_tall_en() = app("stats_light_tall_en", dark = false, route = "stats", tall = 3900)
 
     @Test fun settings_en() = app("settings_en", route = "settings")
     @Test fun settings_tall_en() = app("settings_tall_en", route = "settings", tall = 2200)
