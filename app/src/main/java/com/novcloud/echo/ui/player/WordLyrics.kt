@@ -54,7 +54,7 @@ fun KaraokeText(text: String, style: TextStyle, timing: LineTiming, time: () -> 
             val l = layout
             val edge = 22.dp.toPx()
             val lift = 3.dp.toPx()
-            val glowRadius = 10.dp.toPx()
+            val glowRadius = 8.dp.toPx()
             val words = if (l == null) emptyList() else timing.segments.map { s -> wordShape(l, s.start, s.end) }
             val glowPaint = Paint().apply {
                 color = WordFill.Glow
@@ -76,7 +76,7 @@ fun KaraokeText(text: String, style: TextStyle, timing: LineTiming, time: () -> 
                     val w = words[i]!!
                     translate(top = -lift * e) {
                         drawIntoCanvas { c ->
-                            glowPaint.alpha = 0.42f * e
+                            glowPaint.alpha = 0.3f * e
                             c.drawPath(w.path, glowPaint)
                         }
                         clipRect(w.box.left, w.box.top, w.box.right, w.box.bottom) { drawLine(l, pos, edge) }
@@ -127,6 +127,7 @@ private fun DrawScope.drawLine(l: TextLayoutResult, pos: Float, edge: Float) {
                     0f to WordFill.Fill, 0.5f to WordFill.Edge, 1f to WordFill.Edge.copy(alpha = 0f),
                     startX = x - edge * 0.5f, endX = x + edge * 0.5f,
                 ),
+                alpha = 1f, // the paint keeps the base pass alpha otherwise, dimming the shader to it
             )
         }
     }
