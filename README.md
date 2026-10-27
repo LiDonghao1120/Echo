@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/hero.png" alt="Echo screens" width="100%">
+  <img src="docs/assets/en/hero.png" alt="Echo screens" width="100%">
 </p>
 
 ---
@@ -111,14 +111,14 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 ## Screenshots
 
 <p align="center">
-  <img src="docs/assets/home.png" width="30%" alt="Home">
-  <img src="docs/assets/daily-mix.png" width="30%" alt="Daily Mix">
-  <img src="docs/assets/artist.png" width="30%" alt="Artist page">
+  <img src="docs/assets/en/home.png" width="30%" alt="Home">
+  <img src="docs/assets/en/daily-mix.png" width="30%" alt="Daily Mix">
+  <img src="docs/assets/en/artist.png" width="30%" alt="Artist page">
 </p>
 <p align="center">
-  <img src="docs/assets/now-playing.png" width="30%" alt="Now Playing">
-  <img src="docs/assets/stats.png" width="30%" alt="Listening report">
-  <img src="docs/assets/library.png" width="30%" alt="Library">
+  <img src="docs/assets/en/lyrics.png" width="30%" alt="Lyrics">
+  <img src="docs/assets/en/stats.png" width="30%" alt="Listening report">
+  <img src="docs/assets/en/library.png" width="30%" alt="Library">
 </p>
 
 <p align="center"><sub>Artists, albums and artwork in the screenshots are fictional samples.</sub></p>
