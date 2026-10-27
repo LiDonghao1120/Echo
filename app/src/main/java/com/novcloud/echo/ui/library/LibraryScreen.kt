@@ -80,6 +80,8 @@ import com.novcloud.echo.ui.components.bouncyClick
 import com.novcloud.echo.ui.theme.seededGradient
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.foundation.layout.heightIn
@@ -96,7 +98,7 @@ import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.seededColor
 import kotlinx.coroutines.launch
 
-private val tabs = listOf("歌曲", "专辑", "歌手", "流派", "文件夹", "歌单")
+internal val tabs = listOf("歌曲", "专辑", "歌手", "流派", "文件夹", "歌单")
 
 @Composable
 fun LibraryScreen() {
@@ -104,37 +106,13 @@ fun LibraryScreen() {
     val lib by container.library.library.collectAsState()
     val pager = rememberPagerState { tabs.size }
     val scope = rememberCoroutineScope()
-    val p = palette
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.statusBarsPadding().padding(start = 20.dp, top = 16.dp, bottom = 10.dp).reveal(0)) {
             Eyebrow("${lib.songs.size} 首 · ${lib.albums.size} 张专辑 · ${lib.artists.size} 位歌手")
             Spacer(Modifier.height(4.dp))
             Text("曲库", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp))
         }
-        val tabScroll = rememberScrollState()
-        Box(Modifier.fillMaxWidth()) {
-            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(p.rule))
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(tabScroll).padding(horizontal = 12.dp),
-            ) {
-                tabs.forEachIndexed { i, t ->
-                    val selected = pager.currentPage == i
-                    val c by androidx.compose.animation.animateColorAsState(if (selected) MaterialTheme.colorScheme.onSurface else p.faint, label = "lt")
-                    val bar by androidx.compose.animation.core.animateFloatAsState(if (selected) 1f else 0f, androidx.compose.animation.core.spring(dampingRatio = 0.6f, stiffness = 500f), label = "lb")
-                    Column(
-                        Modifier.clickable(remember { MutableInteractionSource() }, null) { scope.launch { pager.animateScrollToPage(i) } }
-                            .padding(horizontal = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            t, Modifier.padding(top = 13.dp, bottom = 11.dp),
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (selected) FontWeight.Black else FontWeight.Medium), color = c,
-                        )
-                        Box(Modifier.width(28.dp * bar).height(3.dp).background(p.signal))
-                    }
-                }
-            }
-        }
+        LibraryTabs(tabs, pager) { i -> scope.launch { pager.animateScrollToPage(i) } }
         Spacer(Modifier.height(6.dp))
         HorizontalPager(pager, Modifier.weight(1f), beyondViewportPageCount = 1) { page ->
             when (page) {
@@ -412,3 +390,61 @@ private fun PlaylistsTab() {
     }
 }
 
+
+/**
+ * Every tab has a fixed width measured at its boldest weight, so the selected label's weight change can never
+ * move its neighbours. One indicator follows the pager's fractional position (taps and swipes alike), stretching
+ * between tabs mid-way; it and the label colours are read at draw time, so the row never re-lays out while moving.
+ */
+@Composable
+internal fun LibraryTabs(labels: List<String>, pager: androidx.compose.foundation.pager.PagerState, onSelect: (Int) -> Unit) {
+    val p = palette
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val base = MaterialTheme.typography.titleSmall
+    val widths = remember(labels, base, density) {
+        labels.map { with(density) { measurer.measure(it, base.copy(fontWeight = FontWeight.Black)).size.width.toDp() } + 16.dp }
+    }
+    val on = MaterialTheme.colorScheme.onSurface
+    val off = p.faint
+    val signal = p.signal
+    fun position() = (pager.currentPage + pager.currentPageOffsetFraction).coerceIn(0f, (labels.size - 1).toFloat())
+    Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(p.rule))
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp)
+                .drawBehind {
+                    val pos = position()
+                    val i = kotlin.math.floor(pos).toInt().coerceAtMost(labels.size - 2).coerceAtLeast(0)
+                    val f = if (labels.size < 2) 0f else pos - i
+                    val px = widths.map { it.toPx() }
+                    val left = px.take(i).sum()
+                    val c0 = left + px[i] / 2
+                    val c1 = if (labels.size < 2) c0 else left + px[i] + px[i + 1] / 2
+                    val center = c0 + (c1 - c0) * f
+                    val w = 28.dp.toPx() + (c1 - c0) * 0.55f * kotlin.math.sin(Math.PI * f).toFloat()
+                    val h = 3.dp.toPx()
+                    drawRect(signal, androidx.compose.ui.geometry.Offset(center - w / 2, size.height - h), androidx.compose.ui.geometry.Size(w, h))
+                },
+        ) {
+            labels.forEachIndexed { i, t ->
+                val selected = pager.currentPage == i
+                Box(
+                    Modifier.width(widths[i])
+                        .clickable(remember { MutableInteractionSource() }, null) { onSelect(i) }
+                        .testTag("library_tab_$i")
+                        .padding(top = 13.dp, bottom = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.foundation.text.BasicText(
+                        t,
+                        style = base.copy(fontWeight = if (selected) FontWeight.Black else FontWeight.Medium),
+                        maxLines = 1,
+                        softWrap = false,
+                        color = { lerp(off, on, (1f - kotlin.math.abs(position() - i)).coerceIn(0f, 1f)) },
+                    )
+                }
+            }
+        }
+    }
+}

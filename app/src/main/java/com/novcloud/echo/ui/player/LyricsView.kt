@@ -64,6 +64,12 @@ import com.novcloud.echo.EchoApp
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.lyrics.Lyrics
 import com.novcloud.echo.data.lyrics.LyricsLoader
+import com.novcloud.echo.data.lyrics.SmoothClock
+import com.novcloud.echo.data.lyrics.WordTiming
+import com.novcloud.echo.ui.theme.Ink
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListItemInfo
@@ -83,6 +89,7 @@ fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
     val container = (context.applicationContext as EchoApp).container
     val tree by container.lyricsTree.collectAsState()
     val keepOn by container.prefs.keepScreenOnLyrics.collectAsState(initial = true)
+    val byWord by container.prefs.lyricsByWord.collectAsState(initial = true)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -135,9 +142,11 @@ fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
                 }
             }
             else -> {
-                key(song.id, l) { LyricsList(l, offset) }
+                key(song.id, l) { LyricsList(l, offset, byWord, song.durationMs) }
                 LyricsTools(
                     offsetMs = offset,
+                    byWord = byWord,
+                    onByWord = { v -> scope.launch { container.prefs.setLyricsByWord(v) } },
                     fileName = override?.fileName.takeIf { override?.text != null },
                     synced = l.synced,
                     accent = accent,
@@ -161,6 +170,8 @@ internal fun formatOffset(ms: Long): String = when {
 @Composable
 fun LyricsTools(
     offsetMs: Long,
+    byWord: Boolean,
+    onByWord: (Boolean) -> Unit,
     fileName: String?,
     synced: Boolean,
     accent: Color,
@@ -175,7 +186,21 @@ fun LyricsTools(
         local = (local + d).coerceIn(-30_000L, 30_000L)
         onOffset(local)
     }
-    Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalAlignment = Alignment.End) {
+    val on by animateFloatAsState(if (open) 1f else 0f, spring(dampingRatio = 0.7f), label = "tools")
+    Column(
+        modifier.fillMaxWidth()
+            .drawBehind {
+                val reach = 96.dp.toPx()
+                val scrim = (on * 1.4f).coerceIn(0f, 1f)
+                if (scrim > 0f) drawRect(
+                    Brush.verticalGradient(0f to Color.Transparent, 0.35f to Ink.copy(alpha = 0.72f * scrim), 1f to Ink.copy(alpha = 0.88f * scrim), startY = -reach, endY = size.height),
+                    topLeft = Offset(0f, -reach),
+                    size = androidx.compose.ui.geometry.Size(size.width, size.height + reach),
+                )
+            }
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.End,
+    ) {
         androidx.compose.animation.AnimatedVisibility(
             open,
             enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(com.novcloud.echo.ui.theme.EchoMotion.Standard)) +
@@ -185,7 +210,7 @@ fun LyricsTools(
         ) {
             Column(
                 Modifier.padding(bottom = 8.dp).fillMaxWidth()
-                    .background(com.novcloud.echo.ui.theme.Ink.copy(alpha = 0.94f), com.novcloud.echo.ui.theme.EchoShape.card)
+                    .background(Ink, com.novcloud.echo.ui.theme.EchoShape.card)
                     .border(1.dp, Color.White.copy(alpha = 0.10f), com.novcloud.echo.ui.theme.EchoShape.card)
                     .padding(horizontal = 14.dp, vertical = 6.dp),
             ) {
@@ -213,6 +238,11 @@ fun LyricsTools(
                         StepButton(Icons.Rounded.KeyboardArrowUp, "歌词提前 0.1 秒", accent) { step(100) }
                     }
                     Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+                    androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("模式", style = com.novcloud.echo.ui.theme.EchoType.labelBold, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.width(44.dp))
+                        ModeSwitch(byWord, accent, onByWord, Modifier.weight(1f))
+                    }
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
                 }
                 androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("文件", style = com.novcloud.echo.ui.theme.EchoType.labelBold, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.width(44.dp))
@@ -229,7 +259,6 @@ fun LyricsTools(
                 }
             }
         }
-        val on by animateFloatAsState(if (open) 1f else 0f, spring(dampingRatio = 0.7f), label = "tools")
         Box(
             Modifier.size(40.dp)
                 .echoClick(corner = 4.dp, color = accent) { open = !open }
@@ -242,6 +271,36 @@ fun LyricsTools(
                 Modifier.size(20.dp).graphicsLayer { rotationZ = 90f * on },
                 tint = if (offsetMs != 0L || fileName != null) accent else Color.White.copy(alpha = 0.7f),
             )
+        }
+    }
+}
+
+/** 逐行 | 逐字 with a sliding square marker under the chosen side. */
+@Composable
+private fun ModeSwitch(byWord: Boolean, accent: Color, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val x by animateFloatAsState(if (byWord) 1f else 0f, spring(dampingRatio = 0.72f, stiffness = 520f), label = "mode")
+    BoxWithConstraints(
+        modifier.height(40.dp).border(1.dp, Color.White.copy(alpha = 0.16f), com.novcloud.echo.ui.theme.EchoShape.chip),
+    ) {
+        val half = maxWidth / 2
+        Box(
+            Modifier.width(half).fillMaxHeight().graphicsLayer { translationX = half.toPx() * x }
+                .padding(3.dp).background(accent, com.novcloud.echo.ui.theme.EchoShape.chip),
+        )
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+            listOf(false to "逐行", true to "逐字").forEach { (v, label) ->
+                val sel = 1f - kotlin.math.abs(x - if (v) 1f else 0f)
+                Box(
+                    Modifier.weight(1f).fillMaxHeight().clickable(enabled = byWord != v) { onChange(v) }
+                        .semantics { contentDescription = "歌词$label" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        label, style = com.novcloud.echo.ui.theme.EchoType.labelBold,
+                        color = androidx.compose.ui.graphics.lerp(Color.White.copy(alpha = 0.7f), com.novcloud.echo.ui.theme.Ink, sel),
+                    )
+                }
+            }
         }
     }
 }
@@ -278,11 +337,24 @@ private fun LazyListState.centerDelta(item: LazyListItemInfo): Float {
 }
 
 @Composable
-private fun LyricsList(lyrics: Lyrics, offsetMs: Long) {
+private fun LyricsList(lyrics: Lyrics, offsetMs: Long, byWord: Boolean, durationMs: Long) {
     val actions = LocalActions.current
     val position by actions.player.position.collectAsState()
     val offset by androidx.compose.runtime.rememberUpdatedState(offsetMs)
     val active by remember(lyrics) { derivedStateOf { lyrics.indexAt(position + 250 + offset) } }
+    val wordMode = byWord && lyrics.synced
+    val now = remember { mutableLongStateOf(position) }
+    if (wordMode) {
+        LaunchedEffect(Unit) {
+            val clock = SmoothClock()
+            while (true) {
+                withFrameMillis { frame ->
+                    now.longValue = clock.frame(frame, actions.player.position.value, actions.player.state.value.isPlaying)
+                }
+            }
+        }
+    }
+    val timing = remember(lyrics, active, wordMode) { if (wordMode) WordTiming.of(lyrics.lines, active, durationMs) else null }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = if (lyrics.synced) active.coerceAtLeast(0) else 0)
     var lastUserScroll by remember { mutableLongStateOf(0L) }
     val userScroll = remember {
@@ -346,12 +418,14 @@ private fun LyricsList(lyrics: Lyrics, offsetMs: Long) {
                             transformOrigin = TransformOrigin(0f, 0.5f)
                         },
                 ) {
-                    Text(
-                        line.text.ifBlank { "♪" },
-                        style = if (lyrics.synced) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium,
-                        fontWeight = if (lyrics.synced) FontWeight.ExtraBold else FontWeight.Medium,
-                        color = Color.White,
-                    )
+                    val lineStyle = if (lyrics.synced) MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold)
+                    else MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
+                    val sung = timing.takeIf { i == active && it != null && it.segments.isNotEmpty() }
+                    if (sung != null) {
+                        KaraokeText(line.text, lineStyle, sung, { now.longValue + offset })
+                    } else {
+                        Text(line.text.ifBlank { "♪" }, style = lineStyle, color = Color.White)
+                    }
                     line.translation?.let {
                         Text(
                             it,

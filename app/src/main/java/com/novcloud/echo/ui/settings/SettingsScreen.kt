@@ -65,6 +65,7 @@ fun SettingsScreen() {
     val actions = LocalActions.current
     val scope = rememberCoroutineScope()
     val theme by container.prefs.theme.collectAsState(initial = ThemeMode.System)
+    val byWord by container.prefs.lyricsByWord.collectAsState(initial = true)
     val minDur by container.prefs.minDurationSec.collectAsState(initial = 30)
     val tree by container.prefs.lyricsTree.collectAsState(initial = null)
     val keepOn by container.prefs.keepScreenOnLyrics.collectAsState(initial = true)
@@ -159,6 +160,13 @@ fun SettingsScreen() {
                         "移除", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.clip(EchoShape.card).clickable { scope.launch { container.prefs.setLyricsTree(null); container.lyrics.invalidate() } }.padding(12.dp),
                     )
+                }
+                Rule()
+                Text("歌词显示", Modifier.padding(start = 16.dp, top = 14.dp), style = MaterialTheme.typography.bodyLarge)
+                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(false to "逐行", true to "逐字").forEach { (v, l) ->
+                        Chip(l, byWord == v, Modifier.weight(1f)) { scope.launch { container.prefs.setLyricsByWord(v) } }
+                    }
                 }
                 Rule()
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { scope.launch { container.prefs.setKeepScreenOnLyrics(!keepOn) } }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {

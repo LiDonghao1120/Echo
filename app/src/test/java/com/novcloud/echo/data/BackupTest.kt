@@ -35,7 +35,7 @@ class BackupTest {
         events = listOf(event(k1, 1000), event(k2, 2000, "白鸟")),
         refs = listOf(SongRef(k1, "Glasshouse", "Ivy Calder", "Paper Satellites", 201_000, 9), SongRef(k2, "白鸟", "温屿", "北岸", 233_000, 9)),
         aliases = listOf(SongAlias("id:42", k1)),
-        settings = BackupSettings("Dark", 15, "artist", false, setOf("/storage/emulated/0/Music"), setOf("/storage/emulated/0/Ringtones"), setOf("content://tree/1"), "content://tree/2"),
+        settings = BackupSettings("Dark", 15, "artist", false, setOf("/storage/emulated/0/Music"), setOf("/storage/emulated/0/Ringtones"), setOf("content://tree/1"), "content://tree/2", lyricsByWord = false),
         artists = listOf(BackupArtist("Ivy Calder", "poster_0.jpg", "logo_0.png"), BackupArtist("温屿", null, "logo_1.png")),
         lyrics = listOf(
             com.novcloud.echo.data.db.LyricOverride(k1, offsetMs = 300, updatedAt = 11),

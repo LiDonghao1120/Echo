@@ -61,12 +61,13 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 
 ### Lyrics
 - **Synced LRC lyrics** that scroll with the song. Tap a line to jump to it.
-- Echo looks for a `.lrc` file next to the song, then in a lyrics folder you choose, then for lyrics embedded in the file (ID3 USLT, FLAC `LYRICS`).
+- **Word-by-word lyrics**: the current line fills glyph by glyph with a soft cream-to-vermilion wipe, and the word being sung lifts with a glow. Real word timing is used when the file has it (enhanced LRC `<mm:ss.xx>` tags, the inline `[mm:ss.xx]word` form, QRC/KRC word stamps, Apple Music style `.ttml`); other lines are paced by syllable across the line. Switch between line and word mode in the lyrics view or in Settings.
+- Echo looks for a `.ttml` or `.lrc` file next to the song, then in a lyrics folder you choose, then for lyrics embedded in the file (ID3 USLT, FLAC `LYRICS`).
 - **Bilingual lyrics**: the translation sits under the original line. Lines with the same timestamp, `/`-separated pairs and "original translation" lines (English, Japanese, Korean, mixed Japanese and English, German…, followed by the Chinese) are all recognised.
 - "Title - Artist" credit lines at the top of a file stay as one line instead of being split as a translation.
 - **Timing offset per song**: nudge lyrics earlier or later in 0.1-second steps from the lyrics view. The offset is saved for that song.
-- **Pick a lyric file** (`.lrc` or `.txt`) for any song. It is kept with the song, follows it if the file moves, and is included in backups.
-- Handles multiple timestamps, offsets and word-timing tags, and detects UTF-8 and GB18030 encodings.
+- **Pick a lyric file** (`.lrc`, `.ttml` or `.txt`) for any song. It is kept with the song, follows it if the file moves, and is included in backups.
+- Handles multiple timestamps and offsets, and detects UTF-8 and GB18030 encodings.
 - Optionally keeps the screen on while lyrics are showing.
 
 ### Your library

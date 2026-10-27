@@ -161,4 +161,28 @@ object Samples {
         val c = app(context)
         c.lyrics.prime(s, c.lyricsTree.value, com.novcloud.echo.data.lyrics.LrcParser.parse(lrc))
     }
+
+    /** Enhanced LRC around the preview position: the active line is half sung across its wrap. */
+    fun primeWordLyrics(context: Context, songTitle: String = "Paper Satellites") {
+        val s = songs.first { it.title == songTitle }
+        val p = s.durationMs * 37 / 100
+        fun t(ms: Long) = "%02d:%02d.%02d".format(ms / 60_000, ms / 1000 % 60, ms % 1000 / 10)
+        val words = listOf("Paper ", "satellites ", "drifting ", "over ", "the ", "harbour ", "lights ", "tonight")
+        val start = p - 3000
+        val stamped = words.mapIndexed { i, w -> "<${t(start + i * 750L)}>$w" }.joinToString("") + "<${t(start + words.size * 750L)}>"
+        val lrc = listOf(
+            "[${t(p - 12_000)}]Hold the signal, hold it close",
+            "[${t(p - 12_000)}]抓住信号 紧紧抓住",
+            "[${t(p - 7_000)}]We folded every letter into wings",
+            "[${t(p - 7_000)}]我们把每封信折成翅膀",
+            "[${t(start)}]$stamped",
+            "[${t(start)}]纸卫星飘过今夜港口的灯火",
+            "[${t(p + 3_200)}]夜明けまで待ってるよ",
+            "[${t(p + 3_200)}]我会等到天亮",
+            "[${t(p + 7_000)}]遠くへ 遠くへ",
+            "[${t(p + 7_000)}]去远方 去远方",
+        ).joinToString("\n")
+        val c = app(context)
+        c.lyrics.prime(s, c.lyricsTree.value, com.novcloud.echo.data.lyrics.LyricsParser.parse(lrc))
+    }
 }

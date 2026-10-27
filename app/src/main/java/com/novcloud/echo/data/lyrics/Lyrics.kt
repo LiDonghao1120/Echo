@@ -14,9 +14,36 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
-data class LyricLine(val timeMs: Long, val text: String, val translation: String? = null)
+/** A timed span of [LyricLine.text]: characters [start, end) are sung from [timeMs] until [endMs] (-1 = until the next span or line). */
+data class LyricWord(val start: Int, val end: Int, val timeMs: Long, val endMs: Long = -1)
+
+data class LyricLine(
+    val timeMs: Long,
+    val text: String,
+    val translation: String? = null,
+    val words: List<LyricWord>? = null,
+    val endMs: Long = -1,
+) {
+    /** The line cut to text[from, to), trimmed, with its word spans clipped to the cut and re-based. */
+    internal fun slice(from: Int, to: Int, translation: String?): LyricLine {
+        var a = from
+        var b = to
+        while (a < b && text[a].isWhitespace()) a++
+        while (b > a && text[b - 1].isWhitespace()) b--
+        val kept = words?.mapNotNull { w ->
+            var s = maxOf(w.start, a)
+            var e = minOf(w.end, b)
+            while (s < e && text[s].isWhitespace()) s++
+            while (e > s && text[e - 1].isWhitespace()) e--
+            if (s >= e) null else w.copy(start = s - a, end = e - a)
+        }?.takeIf { it.isNotEmpty() }
+        return copy(text = text.substring(a, b), translation = translation, words = kept)
+    }
+}
 
 data class Lyrics(val lines: List<LyricLine>, val synced: Boolean) {
+    val hasWordTiming: Boolean get() = lines.any { it.words != null }
+
     fun indexAt(posMs: Long): Int {
         if (!synced || lines.isEmpty()) return -1
         var lo = 0
@@ -30,45 +57,163 @@ data class Lyrics(val lines: List<LyricLine>, val synced: Boolean) {
     }
 }
 
+object LyricsParser {
+    fun parse(text: String): Lyrics? {
+        val head = text.trimStart('\uFEFF', ' ', '\n', '\r', '\t')
+        if (head.startsWith("<?xml") || head.startsWith("<tt")) Ttml.parse(text)?.let { return it }
+        return LrcParser.parse(text)
+    }
+}
+
+/**
+ * LRC with optional word timing in the forms found in the wild:
+ * enhanced LRC (A2) `[00:12.00]<00:12.00>word <00:12.40>word<00:13.00>`, the bracket variant
+ * `[00:12.00]word[00:12.40]word[00:13.00]` (ESLyric), QRC `[12000,1000]word(12000,400)word(12400,600)`
+ * and decrypted KRC `[12000,1000]<0,400,0>word<400,600,0>word`.
+ */
 object LrcParser {
     private val timeTag = Regex("\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?]")
-    private val wordTag = Regex("<\\d{1,3}:\\d{1,2}(?:[.:]\\d{1,3})?>")
+    private val stampTag = Regex("<(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?>|\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?]")
+    private val msLineTag = Regex("^\\[(\\d+),(\\d+)]")
+    private val qrcWord = Regex("\\((\\d+),(\\d+)\\)")
+    private val krcWord = Regex("<(\\d+),(\\d+),\\d+>")
     private val offsetTag = Regex("\\[offset:\\s*([+-]?\\d+)\\s*]", RegexOption.IGNORE_CASE)
-    private val metaTag = Regex("^\\[(ti|ar|al|by|re|ve|length|au|offset|tool|#):.*]$", RegexOption.IGNORE_CASE)
+    private val metaTag = Regex("^\\[(ti|ar|al|by|re|ve|length|au|offset|tool|#|kana|language|id|hash|sign|qq|total):.*]$", RegexOption.IGNORE_CASE)
+
+    private class Raw(val time: Long, val text: String, val words: List<LyricWord>?, val end: Long)
 
     fun parse(text: String): Lyrics? {
         val clean = text.replace("\r\n", "\n").replace('\r', '\n')
         val offset = offsetTag.find(clean)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-        val raw = ArrayList<Pair<Long, String>>()
+        val raw = ArrayList<Raw>()
         val plain = ArrayList<String>()
         clean.lineSequence().forEach { line ->
             val l = line.trim()
             if (l.isEmpty() || metaTag.matches(l)) return@forEach
-            val tags = timeTag.findAll(l).toList()
-            if (tags.isEmpty() || tags.first().range.first != 0) {
+            msLineTag.find(l)?.let { m ->
+                raw += msLine(m.groupValues[1].toLong(), m.groupValues[2].toLong(), l.substring(m.range.last + 1)).shifted(-offset)
+                return@forEach
+            }
+            val lead = leadingTags(l)
+            if (lead.isEmpty()) {
                 plain += l
                 return@forEach
             }
-            val body = l.substring(tags.last().range.last + 1).replace(wordTag, "").trim()
-            tags.forEach { m ->
-                val min = m.groupValues[1].toLong()
-                val sec = m.groupValues[2].toLong()
-                val frac = m.groupValues[3]
-                val ms = when (frac.length) { 0 -> 0L; 1 -> frac.toLong() * 100; 2 -> frac.toLong() * 10; else -> frac.take(3).toLong() }
-                raw += (min * 60_000 + sec * 1000 + ms - offset).coerceAtLeast(0) to body
+            val body = l.substring(lead.last().range.last + 1)
+            val start = ms(lead.first().groupValues, 1)
+            val timed = if (lead.size == 1) stamped(body, start) else null
+            if (timed != null) {
+                raw += timed.shifted(-offset)
+            } else {
+                val textOnly = stampTag.replace(body, "").trim()
+                lead.forEach { m -> raw += Raw((ms(m.groupValues, 1) - offset).coerceAtLeast(0), textOnly, null, -1) }
             }
         }
         if (raw.isEmpty()) {
             val lines = plain.filter { it.isNotBlank() }
             return if (lines.isEmpty()) null else Lyrics(Bilingual.split(lines.map { LyricLine(-1, it) }), synced = false)
         }
-        val grouped = raw.sortedBy { it.first }.groupBy { it.first }
+        val grouped = raw.sortedBy { it.time }.groupBy { it.time }
         val lines = grouped.map { (t, items) ->
-            val texts = items.map { it.second }.filter { it.isNotBlank() }.distinct()
-            LyricLine(t, texts.firstOrNull() ?: "", texts.drop(1).firstOrNull())
+            val texts = items.filter { it.text.isNotBlank() }.distinctBy { it.text }
+            val main = texts.firstOrNull { it.words != null } ?: texts.firstOrNull()
+            LyricLine(t, main?.text ?: "", texts.firstOrNull { it !== main }?.text, main?.words, main?.end ?: -1)
         }
         val trimmed = Bilingual.split(lines.dropWhile { it.text.isBlank() })
         return if (trimmed.none { it.text.isNotBlank() }) null else Lyrics(trimmed, synced = true)
+    }
+
+    private fun Raw.shifted(by: Long) = Raw(
+        (time + by).coerceAtLeast(0), text,
+        words?.map { w -> w.copy(timeMs = (w.timeMs + by).coerceAtLeast(0), endMs = if (w.endMs < 0) -1 else (w.endMs + by).coerceAtLeast(0)) },
+        if (end < 0) -1 else (end + by).coerceAtLeast(0),
+    )
+
+    /** Repeated line stamps `[a][b]text`: tags at the very start with nothing between them. */
+    private fun leadingTags(l: String): List<MatchResult> {
+        val out = ArrayList<MatchResult>()
+        var at = 0
+        while (true) {
+            val m = timeTag.matchAt(l, at) ?: break
+            out += m
+            at = m.range.last + 1
+        }
+        return out
+    }
+
+    private fun ms(g: List<String>, from: Int): Long {
+        val min = g[from].toLong()
+        val sec = g[from + 1].toLong()
+        val frac = g[from + 2]
+        val f = when (frac.length) { 0 -> 0L; 1 -> frac.toLong() * 100; 2 -> frac.toLong() * 10; else -> frac.take(3).toLong() }
+        return min * 60_000 + sec * 1000 + f
+    }
+
+    /** Stamp-before-text word timing (`<mm:ss.xx>` or inline `[mm:ss.xx]`); null when the body has no stamps. */
+    private fun stamped(body: String, lineStart: Long): Raw? {
+        val stamps = stampTag.findAll(body).toList()
+        if (stamps.isEmpty()) return null
+        val sb = StringBuilder()
+        val pieces = ArrayList<Triple<Int, Int, Long>>()
+        var cursor = 0
+        var time = lineStart
+        fun take(until: Int) {
+            val piece = body.substring(cursor, until)
+            val from = sb.length
+            sb.append(piece)
+            if (piece.isNotBlank()) pieces += Triple(from, sb.length, time)
+        }
+        stamps.forEach { m ->
+            take(m.range.first)
+            val g = m.groupValues
+            time = if (g[1].isNotEmpty()) ms(g, 1) else ms(g, 4)
+            cursor = m.range.last + 1
+        }
+        val trailingStamp = cursor == body.length
+        take(body.length)
+        val ends = pieces.mapIndexed { i, p -> if (i + 1 < pieces.size) pieces[i + 1].third else if (trailingStamp) time else -1L }
+        return finish(sb.toString(), pieces.mapIndexed { i, p -> Triple(p.first, p.second, p.third to ends[i]) }, lineStart, if (trailingStamp) time else -1)
+    }
+
+    private fun msLine(start: Long, dur: Long, body: String): Raw {
+        val sb = StringBuilder()
+        val pieces = ArrayList<Triple<Int, Int, Pair<Long, Long>>>()
+        val krc = krcWord.find(body)
+        if (krc != null && krc.range.first == 0) {
+            val tags = krcWord.findAll(body).toList()
+            tags.forEachIndexed { i, m ->
+                val piece = body.substring(m.range.last + 1, if (i + 1 < tags.size) tags[i + 1].range.first else body.length)
+                val from = sb.length
+                sb.append(piece)
+                val t0 = start + m.groupValues[1].toLong()
+                if (piece.isNotBlank()) pieces += Triple(from, sb.length, t0 to t0 + m.groupValues[2].toLong())
+            }
+        } else {
+            var cursor = 0
+            qrcWord.findAll(body).forEach { m ->
+                val piece = body.substring(cursor, m.range.first)
+                val from = sb.length
+                sb.append(piece)
+                val t0 = m.groupValues[1].toLong()
+                if (piece.isNotBlank()) pieces += Triple(from, sb.length, t0 to t0 + m.groupValues[2].toLong())
+                cursor = m.range.last + 1
+            }
+            sb.append(body.substring(cursor))
+        }
+        return finish(sb.toString(), pieces, start, start + dur)
+    }
+
+    private fun finish(text: String, pieces: List<Triple<Int, Int, Pair<Long, Long>>>, start: Long, end: Long): Raw {
+        val lead = text.indexOfFirst { !it.isWhitespace() }.let { if (it < 0) text.length else it }
+        val trimmed = text.trim()
+        val words = pieces.mapNotNull { (a0, b0, t) ->
+            var a = a0
+            var b = b0
+            while (a < b && text[a].isWhitespace()) a++
+            while (b > a && text[b - 1].isWhitespace()) b--
+            if (a >= b) null else LyricWord(a - lead, b - lead, t.first, t.second)
+        }
+        return Raw(start, trimmed, words.takeIf { it.isNotEmpty() }, end)
     }
 }
 
@@ -93,7 +238,7 @@ object Bilingual {
         return bySeparator.map { l ->
             if (l.translation != null) return@map l
             val i = inlineIndex(l.text)
-            if (i <= 0) l else l.copy(text = l.text.substring(0, i).trim(), translation = l.text.substring(i).trim())
+            if (i <= 0) l else l.slice(0, i, l.text.substring(i).trim())
         }
     }
 
@@ -106,7 +251,7 @@ object Bilingual {
             if (a.isEmpty() || b.isEmpty()) continue
             val sa = script(a)
             val sb = script(b)
-            if (sa != sb && sa != Script.None && sb != Script.None) return l.copy(text = a, translation = b)
+            if (sa != sb && sa != Script.None && sb != Script.None) return l.slice(0, i, b)
         }
         return l
     }
@@ -212,7 +357,7 @@ class LyricsLoader(private val context: Context, private val db: com.novcloud.ec
 
     private suspend fun picked(song: Song): Lyrics? {
         val text = db?.lyricOverrides()?.get(song.key)?.text ?: return null
-        return LrcParser.parse(text)
+        return LyricsParser.parse(text)
     }
 
     /** Reads a lyric file the user chose and keeps its text with the song; false when it is not readable lyrics. */
@@ -222,7 +367,7 @@ class LyricsLoader(private val context: Context, private val db: com.novcloud.ec
             context.contentResolver.openInputStream(uri)?.use { input -> input.readNBytesCompat(MAX_FILE) }
         }.getOrNull() ?: return@withContext false
         val text = TextDecoder.decode(bytes)
-        if (LrcParser.parse(text) == null) return@withContext false
+        if (LyricsParser.parse(text) == null) return@withContext false
         val name = runCatching {
             context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
                 if (c.moveToFirst()) c.getString(0) else null
@@ -264,10 +409,10 @@ class LyricsLoader(private val context: Context, private val db: com.novcloud.ec
     private fun sidecar(song: Song): Lyrics? {
         if (song.path.isEmpty()) return null
         val base = song.path.substringBeforeLast('.')
-        for (ext in listOf(".lrc", ".LRC", ".txt")) {
+        for (ext in listOf(".ttml", ".TTML", ".lrc", ".LRC", ".txt")) {
             val f = File(base + ext)
             val bytes = runCatching { if (f.canRead()) f.readBytes() else null }.getOrNull() ?: continue
-            LrcParser.parse(TextDecoder.decode(bytes))?.let { return it }
+            LyricsParser.parse(TextDecoder.decode(bytes))?.let { return it }
         }
         return null
     }
@@ -280,7 +425,7 @@ class LyricsLoader(private val context: Context, private val db: com.novcloud.ec
         for (k in keys) {
             val uri = index[k] ?: continue
             val bytes = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull() ?: continue
-            LrcParser.parse(TextDecoder.decode(bytes))?.let { return it }
+            LyricsParser.parse(TextDecoder.decode(bytes))?.let { return it }
         }
         return null
     }
@@ -304,6 +449,8 @@ class LyricsLoader(private val context: Context, private val db: com.novcloud.ec
                         if (c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) dirs += id
                         else if (name.endsWith(".lrc", true)) {
                             map.putIfAbsent(name.substringBeforeLast('.').lowercase(), DocumentsContract.buildDocumentUriUsingTree(treeUri, id))
+                        } else if (name.endsWith(".ttml", true)) {
+                            map[name.substringBeforeLast('.').lowercase()] = DocumentsContract.buildDocumentUriUsingTree(treeUri, id)
                         }
                     }
                 }
@@ -318,7 +465,7 @@ class LyricsLoader(private val context: Context, private val db: com.novcloud.ec
         val text = runCatching {
             context.contentResolver.openInputStream(song.uri)?.use { TagReader.lyrics(it) }
         }.getOrNull() ?: return null
-        return LrcParser.parse(text)
+        return LyricsParser.parse(text)
     }
 }
 

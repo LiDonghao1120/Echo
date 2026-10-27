@@ -146,6 +146,18 @@ class ScreenshotTest {
         app("lyrics_dark", expanded = true, pane = com.novcloud.echo.ui.player.PlayerPane.Lyrics)
     }
 
+    @Test fun lyrics_word_dark() {
+        Samples.primeWordLyrics(ctx)
+        app("lyrics_word_dark", expanded = true, pane = com.novcloud.echo.ui.player.PlayerPane.Lyrics)
+    }
+
+    @Test fun lyrics_word_tools_dark() {
+        Samples.primeWordLyrics(ctx)
+        app("lyrics_word_tools_dark", expanded = true, pane = com.novcloud.echo.ui.player.PlayerPane.Lyrics) {
+            compose.onNode(androidx.compose.ui.test.hasContentDescription("歌词调整")).performClick()
+        }
+    }
+
     @Test fun library_artists_dark() = app("library_artists_dark", route = "library") {
         compose.onNodeWithText("歌手").performClick()
     }

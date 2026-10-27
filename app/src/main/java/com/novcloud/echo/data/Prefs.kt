@@ -33,6 +33,7 @@ class Prefs(private val context: Context) {
         val theme = stringPreferencesKey("theme")
         val songSort = stringPreferencesKey("song_sort")
         val keepScreenLyrics = booleanPreferencesKey("lyrics_keep_screen")
+        val lyricsByWord = booleanPreferencesKey("lyrics_by_word")
         val scanIncluded = stringSetPreferencesKey("scan_included")
         val scanExcluded = stringSetPreferencesKey("scan_excluded")
         val scanTrees = stringSetPreferencesKey("scan_trees")
@@ -47,6 +48,7 @@ class Prefs(private val context: Context) {
     val theme: Flow<ThemeMode> = ds.data.map { p -> ThemeMode.entries.firstOrNull { it.name == p[K.theme] } ?: ThemeMode.System }
     val songSort: Flow<String> = ds.data.map { it[K.songSort] ?: "title" }
     val keepScreenOnLyrics: Flow<Boolean> = ds.data.map { it[K.keepScreenLyrics] ?: true }
+    val lyricsByWord: Flow<Boolean> = ds.data.map { it[K.lyricsByWord] ?: true }
 
     val scanIncluded: Flow<Set<String>> = ds.data.map { it[K.scanIncluded].orEmpty() }
     val scanExcluded: Flow<Set<String>> = ds.data.map { it[K.scanExcluded].orEmpty() }
@@ -83,11 +85,13 @@ class Prefs(private val context: Context) {
     suspend fun setTheme(mode: ThemeMode) = edit { it[K.theme] = mode.name }
     suspend fun setSongSort(sort: String) = edit { it[K.songSort] = sort }
     suspend fun setKeepScreenOnLyrics(v: Boolean) = edit { it[K.keepScreenLyrics] = v }
+    suspend fun setLyricsByWord(v: Boolean) = edit { it[K.lyricsByWord] = v }
 
     suspend fun backupSettings(): BackupSettings {
         val p = ds.data.first()
         return BackupSettings(
             theme = p[K.theme], minDurationSec = p[K.minDuration], songSort = p[K.songSort], keepScreenOnLyrics = p[K.keepScreenLyrics],
+            lyricsByWord = p[K.lyricsByWord],
             scanIncluded = p[K.scanIncluded].orEmpty(), scanExcluded = p[K.scanExcluded].orEmpty(), scanTrees = p[K.scanTrees].orEmpty(),
             lyricsTree = p[K.lyricsTree],
         )
@@ -100,6 +104,7 @@ class Prefs(private val context: Context) {
         put(K.minDuration, s.minDurationSec)
         put(K.songSort, s.songSort)
         put(K.keepScreenLyrics, s.keepScreenOnLyrics)
+        put(K.lyricsByWord, s.lyricsByWord)
         it[K.scanIncluded] = s.scanIncluded
         it[K.scanExcluded] = s.scanExcluded
         it[K.scanTrees] = s.scanTrees.filter(usable).toSet()
