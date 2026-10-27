@@ -19,7 +19,7 @@ import kotlin.random.Random
 enum class MixKind { Daily, Genre, Artist, Rediscover, Fresh, Moment, Favorites }
 
 @Immutable
-data class Mix(val id: String, val title: String, val subtitle: String, val kind: MixKind, val songs: List<Song>)
+data class Mix(val id: String, val title: String, val kind: MixKind, val songs: List<Song>, val slot: Int = 0)
 
 @Immutable
 data class HomeData(
@@ -85,7 +85,7 @@ object Recommender {
         val hasHistory = events.isNotEmpty()
 
         val kept = pinned?.mapNotNull { lib.songById[it] }?.takeIf { it.size * 2 > pinned.size }
-        val daily = Mix("daily", "每日推荐", "", MixKind.Daily, kept ?: daily(lib, aff, dayStart, seed))
+        val daily = Mix("daily", "", MixKind.Daily, kept ?: daily(lib, aff, dayStart, seed))
 
         val mixes = ArrayList<Mix>()
         val genres = if (aff.genre.isNotEmpty()) aff.genre.entries.sortedByDescending { it.value }.map { it.key }
@@ -93,7 +93,7 @@ object Recommender {
         genres.take(3).forEachIndexed { i, g ->
             val pool = lib.genres.firstOrNull { it.name == g }?.songs.orEmpty()
             val picked = diverse(pool.sortedByDescending { scoreOf(it, aff, dayStart, seed * 31 + i + 1, 0.6) }, 25, 3)
-            if (picked.size >= 5) mixes += Mix("genre:$g", g, "精选", MixKind.Genre, picked)
+            if (picked.size >= 5) mixes += Mix("genre:$g", g, MixKind.Genre, picked)
         }
         val topArtists = if (aff.artist.isNotEmpty()) aff.artist.entries.sortedByDescending { it.value }.map { it.key }
         else lib.artists.filter { it.name != UNKNOWN }.sortedByDescending { it.songs.size }.map { it.name }
@@ -108,13 +108,13 @@ object Recommender {
             val similar = lib.songs.filter { s -> s.artists.any { it in similarArtists } && s.genre in artistGenres }
                 .shuffled(r).let { diverse(it, 13, 2) }
             val songs = interleave(own, similar)
-            if (songs.size >= 5) mixes += Mix("artist:$name", name, "电台", MixKind.Artist, songs)
+            if (songs.size >= 5) mixes += Mix("artist:$name", name, MixKind.Artist, songs)
         }
         if (past.isNotEmpty()) {
             val monthAgo = dayStart - 30L * 86_400_000
             val rediscover = aff.plays.entries.filter { (id, c) -> c >= 3 && (aff.lastPlayed[id] ?: 0) < monthAgo }
                 .sortedByDescending { it.value }.mapNotNull { lib.songById[it.key] }
-            if (rediscover.size >= 5) mixes += Mix("rediscover", "重温", "好久没听", MixKind.Rediscover, diverse(rediscover, 25, 3))
+            if (rediscover.size >= 5) mixes += Mix("rediscover", "", MixKind.Rediscover, diverse(rediscover, 25, 3))
 
             val hour = Instant.ofEpochMilli(now).atZone(zone).hour
             val momentCounts = HashMap<Long, Int>()
@@ -125,11 +125,11 @@ object Recommender {
             }
             val r = Random(seed * 7 + hour / 3)
             val moment = momentCounts.entries.sortedByDescending { it.value + r.nextDouble() }.mapNotNull { lib.songById[it.key] }
-            if (moment.size >= 6) mixes += Mix("moment", momentTitle(hour), "此刻常听", MixKind.Moment, diverse(moment, 25, 3))
+            if (moment.size >= 6) mixes += Mix("moment", "", MixKind.Moment, diverse(moment, 25, 3), momentSlot(hour))
         }
         val fresh = lib.songs.filter { it.id !in live.plays }.sortedByDescending { it.dateAdded }
             .take(120).shuffled(Random(seed * 13)).let { diverse(it, 25, 2) }
-        if (fresh.size >= 5) mixes += Mix("fresh", "新发现", "还没听过", MixKind.Fresh, fresh)
+        if (fresh.size >= 5) mixes += Mix("fresh", "", MixKind.Fresh, fresh)
 
         val recentIds = LinkedHashSet<Long>()
         for (e in events.asReversed()) {
@@ -199,12 +199,13 @@ object Recommender {
         return out.distinctBy { it.id }
     }
 
-    private fun momentTitle(hour: Int) = when (hour) {
-        in 5..10 -> "清晨"
-        in 11..13 -> "午间"
-        in 14..17 -> "午后"
-        in 18..22 -> "夜晚"
-        else -> "深夜"
+    /** Early morning, midday, afternoon, evening, late night. */
+    private fun momentSlot(hour: Int) = when (hour) {
+        in 5..10 -> 0
+        in 11..13 -> 1
+        in 14..17 -> 2
+        in 18..22 -> 3
+        else -> 4
     }
 }
 

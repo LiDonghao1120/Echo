@@ -12,15 +12,15 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
-enum class StatsRange(val label: String, val days: Long?) {
-    Week("7天", 7), Month("30天", 30), Year("一年", 365), All("全部", null)
+enum class StatsRange(val days: Long?) {
+    Week(7), Month(30), Year(365), All(null)
 }
 
 @Immutable
 data class Ranked(val key: String, val title: String, val subtitle: String, val art: Any?, val ms: Long, val plays: Int)
 
 @Immutable
-data class TrendPoint(val label: String, val ms: Long)
+data class TrendPoint(val date: LocalDate, val ms: Long, val monthly: Boolean = false)
 
 @Immutable
 data class Stats(
@@ -136,8 +136,7 @@ object StatsEngine {
                 val byDay = events.groupBy { dayOf(it) }.mapValues { (_, l) -> l.sumOf { it.listenedMs } }
                 (n - 1 downTo 0).map { i ->
                     val d = today.minusDays(i.toLong())
-                    val label = if (range == StatsRange.Week) WEEKDAYS[d.dayOfWeek.value - 1] else "${d.monthValue}/${d.dayOfMonth}"
-                    TrendPoint(label, byDay[d] ?: 0)
+                    TrendPoint(d, byDay[d] ?: 0)
                 }
             }
             StatsRange.Year, StatsRange.All -> {
@@ -151,7 +150,7 @@ object StatsEngine {
                 val byMonth = events.groupBy { dayOf(it).withDayOfMonth(1) }.mapValues { (_, l) -> l.sumOf { it.listenedMs } }
                 (0 until count).map { i ->
                     val m = firstMonth.plusMonths(i.toLong())
-                    TrendPoint("${m.monthValue}月", byMonth[m] ?: 0)
+                    TrendPoint(m, byMonth[m] ?: 0, monthly = true)
                 }
             }
         }
@@ -173,5 +172,4 @@ object StatsEngine {
         return current to longest
     }
 
-    val WEEKDAYS = listOf("一", "二", "三", "四", "五", "六", "日")
 }

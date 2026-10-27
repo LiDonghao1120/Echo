@@ -5,14 +5,14 @@ import com.novcloud.echo.data.db.LyricOverride
 import com.novcloud.echo.data.db.PlayEvent
 import com.novcloud.echo.data.db.SongAlias
 import com.novcloud.echo.data.db.SongRef
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import org.json.JSONArray
+import org.json.JSONObject
 
 data class BackupEntry(val key: String, val position: Int, val addedAt: Long)
 
@@ -46,7 +46,9 @@ data class BackupData(
     val lyrics: List<LyricOverride> = emptyList(),
 )
 
-class BackupException(message: String) : Exception(message)
+class BackupException(val reason: Reason) : Exception(reason.name) {
+    enum class Reason { Invalid, NotEcho, Newer, Incomplete, Unopenable }
+}
 
 /**
  * A backup is a zip: manifest.json (format name + version), data.json, events.json and art/ with artist posters
@@ -104,12 +106,12 @@ object BackupCodec {
         } catch (e: BackupException) {
             throw e
         } catch (e: Exception) {
-            throw BackupException("不是有效的备份文件")
+            throw BackupException(BackupException.Reason.Invalid)
         }
-        val m = manifest ?: throw BackupException("不是回响的备份文件")
-        if (m.optString("format") != FORMAT) throw BackupException("不是回响的备份文件")
-        if (m.optInt("version") > VERSION) throw BackupException("备份来自更新版本的回响，请先升级")
-        val d = data ?: throw BackupException("备份文件不完整")
+        val m = manifest ?: throw BackupException(BackupException.Reason.NotEcho)
+        if (m.optString("format") != FORMAT) throw BackupException(BackupException.Reason.NotEcho)
+        if (m.optInt("version") > VERSION) throw BackupException(BackupException.Reason.Newer)
+        val d = data ?: throw BackupException(BackupException.Reason.Incomplete)
         return parse(m, d, events ?: JSONArray())
     }
 

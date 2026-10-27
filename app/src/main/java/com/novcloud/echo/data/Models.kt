@@ -138,5 +138,11 @@ inline fun <T> List<T>.sortedByKey(key: (T) -> String): List<T> =
 fun sortKey(s: String): String = Pinyin.sortKey(s, name = false)
 fun nameSortKey(s: String): String = Pinyin.sortKey(s, name = true)
 
-fun displayArtist(s: String) = if (s == UNKNOWN || s.isBlank()) "未知歌手" else s
-fun displayAlbum(s: String) = if (s == UNKNOWN || s.isBlank()) "未知专辑" else s
+/** Placeholder names in the current UI language; [com.novcloud.echo.EchoApp] loads them from resources. */
+object UnknownNames {
+    @Volatile var artist = "未知歌手"
+    @Volatile var album = "未知专辑"
+}
+
+fun displayArtist(s: String) = if (s == UNKNOWN || s.isBlank()) UnknownNames.artist else s
+fun displayAlbum(s: String) = if (s == UNKNOWN || s.isBlank()) UnknownNames.album else s

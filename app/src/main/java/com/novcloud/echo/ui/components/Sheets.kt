@@ -21,8 +21,8 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
 import androidx.compose.material3.AlertDialog
@@ -44,8 +44,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
@@ -78,21 +81,21 @@ fun SongMenuSheet(song: Song, ctx: SongMenuContext, onDismiss: () -> Unit) {
                 }
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-            MenuItem(Icons.AutoMirrored.Rounded.PlaylistPlay, "下一首播放") { actions.player.playNext(listOf(song)); close() }
-            MenuItem(Icons.AutoMirrored.Rounded.QueueMusic, "添加到播放队列") { actions.player.enqueue(listOf(song)); close() }
-            MenuItem(if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (liked) "取消喜欢" else "喜欢") {
+            MenuItem(Icons.AutoMirrored.Rounded.PlaylistPlay, stringResource(R.string.menu_play_next)) { actions.player.playNext(listOf(song)); close() }
+            MenuItem(Icons.AutoMirrored.Rounded.QueueMusic, stringResource(R.string.menu_add_to_queue)) { actions.player.enqueue(listOf(song)); close() }
+            MenuItem(if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, stringResource(if (liked) R.string.menu_unlike else R.string.menu_like)) {
                 actions.repo.toggleFavorite(song.id); close()
             }
-            MenuItem(Icons.AutoMirrored.Rounded.PlaylistAdd, "添加到歌单") { addTo = true }
-            if (ctx.playlistId != null) MenuItem(Icons.Rounded.RemoveCircleOutline, "从歌单移除") {
+            MenuItem(Icons.AutoMirrored.Rounded.PlaylistAdd, stringResource(R.string.menu_add_to_playlist)) { addTo = true }
+            if (ctx.playlistId != null) MenuItem(Icons.Rounded.RemoveCircleOutline, stringResource(R.string.menu_remove_from_playlist)) {
                 actions.repo.removeFromPlaylist(ctx.playlistId, song.id); close()
             }
-            MenuItem(Icons.Rounded.Album, "查看专辑") { close { actions.openAlbum(song.albumId) } }
+            MenuItem(Icons.Rounded.Album, stringResource(R.string.menu_go_to_album)) { close { actions.openAlbum(song.albumId) } }
             song.artists.forEach { a ->
                 MenuItem(Icons.Rounded.Person, displayArtist(a)) { close { actions.openArtist(a) } }
             }
-            MenuItem(Icons.Rounded.Info, "歌曲信息") { info = true }
-            if (ctx.nowPlaying) MenuItem(Icons.Rounded.GraphicEq, "音效") { close { actions.openEffects() } }
+            MenuItem(Icons.Rounded.Info, stringResource(R.string.menu_song_info)) { info = true }
+            if (ctx.nowPlaying) MenuItem(Icons.Rounded.GraphicEq, stringResource(R.string.audio_effects)) { close { actions.openEffects() } }
         }
     }
     if (addTo) AddToPlaylistDialog(listOf(song)) { addTo = false; close() }
@@ -118,7 +121,7 @@ fun AddToPlaylistDialog(songs: List<Song>, onDone: () -> Unit) {
     var creating by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     if (creating) {
-        NameDialog("新建歌单", "") { name ->
+        NameDialog(stringResource(R.string.playlist_new), "") { name ->
             if (name != null) scope.launch { actions.repo.createPlaylist(name, songs.map { it.id }); onDone() } else creating = false
         }
         return
@@ -126,8 +129,8 @@ fun AddToPlaylistDialog(songs: List<Song>, onDone: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDone,
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDone) { Text("取消") } },
-        title = { Text("添加到歌单") },
+        dismissButton = { TextButton(onClick = onDone) { Text(stringResource(R.string.action_cancel)) } },
+        title = { Text(stringResource(R.string.menu_add_to_playlist)) },
         text = {
             LazyColumn {
                 item {
@@ -137,7 +140,7 @@ fun AddToPlaylistDialog(songs: List<Song>, onDone: () -> Unit) {
                     ) {
                         Icon(Icons.Rounded.Add, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(14.dp))
-                        Text("新建歌单", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.playlist_new), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall)
                     }
                 }
                 items(playlists, key = { it.id }) { p ->
@@ -162,8 +165,8 @@ fun NameDialog(title: String, initial: String, onResult: (String?) -> Unit) {
         onDismissRequest = { onResult(null) },
         title = { Text(title) },
         text = { OutlinedTextField(text, { text = it }, singleLine = true, shape = RoundedCornerShape(12.dp)) },
-        confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { onResult(text.trim()) }) { Text("确定") } },
-        dismissButton = { TextButton(onClick = { onResult(null) }) { Text("取消") } },
+        confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { onResult(text.trim()) }) { Text(stringResource(R.string.action_done)) } },
+        dismissButton = { TextButton(onClick = { onResult(null) }) { Text(stringResource(R.string.action_cancel)) } },
     )
 }
 
@@ -173,31 +176,31 @@ fun ConfirmDialog(title: String, confirm: String, onResult: (Boolean) -> Unit) {
         onDismissRequest = { onResult(false) },
         title = { Text(title) },
         confirmButton = { TextButton(onClick = { onResult(true) }) { Text(confirm, color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = { onResult(false) }) { Text("取消") } },
+        dismissButton = { TextButton(onClick = { onResult(false) }) { Text(stringResource(R.string.action_cancel)) } },
     )
 }
 
 @Composable
 private fun SongInfoDialog(song: Song, onDismiss: () -> Unit) {
     val rows = listOf(
-        "标题" to song.title,
-        "歌手" to displayArtist(song.artist),
-        "专辑" to displayAlbum(song.album),
-        "流派" to song.genre.ifBlank { "—" },
-        "年份" to if (song.year > 0) song.year.toString() else "—",
-        "时长" to formatTime(song.durationMs),
-        "格式" to song.mimeType.substringAfter('/').uppercase(),
-        "大小" to "%.1f MB".format(song.size / 1048576.0),
-        "路径" to song.path,
+        stringResource(R.string.info_title) to song.title,
+        stringResource(R.string.info_artist) to displayArtist(song.artist),
+        stringResource(R.string.info_album) to displayAlbum(song.album),
+        stringResource(R.string.info_genre) to song.genre.ifBlank { "—" },
+        stringResource(R.string.info_year) to if (song.year > 0) song.year.toString() else "—",
+        stringResource(R.string.info_duration) to formatTime(song.durationMs),
+        stringResource(R.string.info_format) to song.mimeType.substringAfter('/').uppercase(),
+        stringResource(R.string.info_size) to stringResource(R.string.megabytes, song.size / 1048576.0),
+        stringResource(R.string.info_path) to song.path,
     )
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("好") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) } },
         text = {
             Column {
                 rows.forEach { (k, v) ->
                     Row(Modifier.padding(vertical = 5.dp)) {
-                        Text(k, Modifier.width(52.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        Text(k, Modifier.width(dimensionResource(R.dimen.info_label)), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                         Text(v, style = MaterialTheme.typography.bodyMedium)
                     }
                 }

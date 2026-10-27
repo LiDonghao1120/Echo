@@ -11,6 +11,8 @@ import com.novcloud.echo.data.displayArtist
 
 const val EXTRA_ALBUM_ID = "album_id"
 const val EXTRA_SONG_KEY = "song_key"
+private const val EXTRA_ARTIST = "artist"
+private const val EXTRA_ALBUM = "album"
 
 fun Song.toMediaItem(): MediaItem = MediaItem.Builder()
     .setMediaId(id.toString())
@@ -28,7 +30,7 @@ fun Song.toMediaItem(): MediaItem = MediaItem.Builder()
             .setIsPlayable(true)
             .setIsBrowsable(false)
             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-            .setExtras(Bundle().apply { putLong(EXTRA_ALBUM_ID, albumId); putString(EXTRA_SONG_KEY, key) })
+            .setExtras(Bundle().apply { putLong(EXTRA_ALBUM_ID, albumId); putString(EXTRA_SONG_KEY, key); putString(EXTRA_ARTIST, artist); putString(EXTRA_ALBUM, album) })
             .build()
     )
     .build()
@@ -43,8 +45,8 @@ fun MediaItem.trackInfo(): TrackInfo? {
     return TrackInfo(
         id = id,
         title = m.title?.toString().orEmpty(),
-        artist = m.artist?.toString()?.takeUnless { it == displayArtist(UNKNOWN) } ?: UNKNOWN,
-        album = m.albumTitle?.toString()?.takeUnless { it == displayAlbum(UNKNOWN) } ?: UNKNOWN,
+        artist = m.extras?.getString(EXTRA_ARTIST) ?: m.artist?.toString()?.takeUnless { it == displayArtist(UNKNOWN) } ?: UNKNOWN,
+        album = m.extras?.getString(EXTRA_ALBUM) ?: m.albumTitle?.toString()?.takeUnless { it == displayAlbum(UNKNOWN) } ?: UNKNOWN,
         albumId = m.extras?.getLong(EXTRA_ALBUM_ID, -1) ?: -1,
         genre = m.genre?.toString().orEmpty(),
         durationMs = m.durationMs ?: 0,

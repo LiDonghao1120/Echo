@@ -10,9 +10,9 @@ import com.novcloud.echo.data.db.EchoDatabase
 import com.novcloud.echo.data.db.Playlist
 import com.novcloud.echo.data.db.PlaylistEntry
 import com.novcloud.echo.diag.DiagLog
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /** A backup read from a file and waiting for the user to pick merge or replace. */
 class PendingImport(val data: BackupData, internal val artDir: File) {
@@ -73,7 +73,7 @@ class BackupManager(
         runCatching {
             work.deleteRecursively()
             val dir = File(work, "art")
-            val input = context.contentResolver.openInputStream(source) ?: throw BackupException("无法打开文件")
+            val input = context.contentResolver.openInputStream(source) ?: throw BackupException(BackupException.Reason.Unopenable)
             val data = input.use { BackupCodec.read(it, dir) }
             PendingImport(data, dir)
         }.onFailure { DiagLog.w(TAG, "backup read failed", it) }

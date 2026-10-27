@@ -1,15 +1,13 @@
 package com.novcloud.echo.ui.player
 
-import com.novcloud.echo.ui.theme.EchoMotion
-
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -19,7 +17,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -77,34 +78,34 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
+import com.novcloud.echo.R
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.Artwork
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.SongMenuContext
-import com.novcloud.echo.ui.components.formatTime
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Canvas
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import com.novcloud.echo.ui.components.echoAura
 import com.novcloud.echo.ui.components.echoClick
+import com.novcloud.echo.ui.components.formatTime
+import com.novcloud.echo.ui.theme.EchoMotion
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
 import com.novcloud.echo.ui.theme.Ink
@@ -113,8 +114,8 @@ import com.novcloud.echo.ui.theme.Paper
 import com.novcloud.echo.ui.theme.Vermilion
 import com.novcloud.echo.ui.theme.displayStyle
 import com.novcloud.echo.ui.theme.isCjk
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 enum class PlayerPane { Art, Lyrics, Queue }
 
@@ -235,7 +236,7 @@ private fun SleepButton(accent: Color, onClick: () -> Unit) {
         Icon(Icons.Rounded.Bedtime, null, Modifier.size(22.dp), tint = lerp(Paper.copy(alpha = 0.7f), Paper, on))
         val label = when {
             remaining != null -> formatCountdown(remaining)
-            sleep.endOfItem -> "本曲"
+            sleep.endOfItem -> stringResource(R.string.sleep_this_track)
             else -> null
         }
         var shown by remember { mutableStateOf("") }

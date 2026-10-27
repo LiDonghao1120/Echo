@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">回响</string>
     <string name="widget_description">封面、歌曲和播放控制</string>
@@ -8,4 +9,379 @@
     <string name="widget_next">下一首</string>
     <string name="widget_play">播放</string>
     <string name="widget_pause">暂停</string>
+    <string name="unknown_artist">未知歌手</string>
+    <string name="unknown_album">未知专辑</string>
+    <string name="permission_allow">允许访问音乐</string>
+    <string name="tab_home">首页</string>
+    <string name="tab_library">曲库</string>
+    <string name="tab_search">搜索</string>
+    <string name="tab_stats">统计</string>
+    <string name="action_play">播放</string>
+    <string name="action_shuffle">随机</string>
+    <string name="action_rescan">重新扫描</string>
+    <string name="action_choose_folders">扫描文件夹</string>
+    <string name="action_rename">重命名</string>
+    <string name="action_delete">删除</string>
+    <string name="action_change">更换</string>
+    <string name="action_choose">选择</string>
+    <string name="action_remove">移除</string>
+    <string name="action_clear">清空</string>
+    <string name="action_clear_history">清除</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_done">确定</string>
+    <string name="action_ok">好</string>
+    <string name="home_empty">未找到本地音乐</string>
+    <string name="home_for_you">为你推荐</string>
+    <string name="home_top_artists">常听歌手</string>
+    <string name="recently_played">最近播放</string>
+    <string name="most_played">最常播放</string>
+    <string name="recently_added">最近添加</string>
+    <string name="date_home">M月d日 · EEE</string>
+    <string name="mix_daily">每日推荐</string>
+    <string name="mix_rediscover">重温</string>
+    <string name="mix_rediscover_sub">好久没听</string>
+    <string name="mix_fresh">新发现</string>
+    <string name="mix_fresh_sub">还没听过</string>
+    <string name="mix_genre_sub">精选</string>
+    <string name="mix_artist_sub">电台</string>
+    <string name="mix_moment_sub">此刻常听</string>
+    <string name="songs">歌曲</string>
+    <string name="albums">专辑</string>
+    <string name="artists">歌手</string>
+    <string name="genres">流派</string>
+    <string name="folders">文件夹</string>
+    <string name="playlists">歌单</string>
+    <string name="playlist">歌单</string>
+    <string name="genre">流派</string>
+    <string name="folder">文件夹</string>
+    <string name="liked_songs">我喜欢的音乐</string>
+    <string name="all_songs">全部歌曲</string>
+    <string name="list_empty">空空如也</string>
+    <string name="playlist_new">新建歌单</string>
+    <string name="playlist_delete">删除歌单</string>
+    <string name="playlist_delete_confirm">删除「%1$s」？</string>
+    <string name="sort_title">标题</string>
+    <string name="sort_artist">歌手</string>
+    <string name="sort_album">专辑</string>
+    <string name="sort_added">添加时间</string>
+    <string name="sort_duration">时长</string>
+    <string name="genres_loading">正在读取流派…</string>
+    <string name="genres_none">歌曲里没有流派标签</string>
+    <string name="music_folders">扫描文件夹</string>
+    <string name="folders_added">已添加</string>
+    <string name="folders_add">添加文件夹</string>
+    <string name="folders_device">设备上的文件夹</string>
+    <string name="album_disc">DISC %1$d</string>
+    <string name="album_more_by">%1$s 的更多专辑</string>
+    <string name="artist_top_songs">热门歌曲</string>
+    <string name="artist_your_listening">我的收听</string>
+    <string name="artist_art">歌手形象</string>
+    <string name="art_poster">海报</string>
+    <string name="art_logo">名称标志</string>
+    <string name="art_from_photos">相册</string>
+    <string name="art_from_files">文件</string>
+    <string name="art_import_folder">从文件夹批量导入</string>
+    <string name="art_importing">正在导入…</string>
+    <string name="art_import_done">导入完成</string>
+    <string name="art_read_failed">无法读取这张图片</string>
+    <string name="menu_play_next">下一首播放</string>
+    <string name="menu_add_to_queue">添加到播放队列</string>
+    <string name="menu_like">喜欢</string>
+    <string name="menu_unlike">取消喜欢</string>
+    <string name="menu_add_to_playlist">添加到歌单</string>
+    <string name="menu_remove_from_playlist">从歌单移除</string>
+    <string name="menu_go_to_album">查看专辑</string>
+    <string name="menu_song_info">歌曲信息</string>
+    <string name="info_title">标题</string>
+    <string name="info_artist">歌手</string>
+    <string name="info_album">专辑</string>
+    <string name="info_genre">流派</string>
+    <string name="info_year">年份</string>
+    <string name="info_duration">时长</string>
+    <string name="info_format">格式</string>
+    <string name="info_size">大小</string>
+    <string name="info_path">路径</string>
+    <string name="search_hint">歌曲、专辑、歌手</string>
+    <string name="search_no_results">没有找到「%1$s」</string>
+    <string name="lyrics">歌词</string>
+    <string name="lyrics_loading">读取歌词…</string>
+    <string name="lyrics_none">暂无歌词</string>
+    <string name="lyrics_choose_file">选择歌词文件</string>
+    <string name="lyrics_choose_folder">选择歌词文件夹</string>
+    <string name="lyrics_bad_file">不是可用的歌词文件</string>
+    <string name="lyrics_tools">歌词调整</string>
+    <string name="lyrics_tool_timing">时间</string>
+    <string name="lyrics_tool_mode">模式</string>
+    <string name="lyrics_tool_file">文件</string>
+    <string name="lyrics_file_auto">自动匹配</string>
+    <string name="lyrics_offset_zero">0.0s</string>
+    <string name="lyrics_offset_earlier">提前 %1$.1fs</string>
+    <string name="lyrics_offset_later">延后 %1$.1fs</string>
+    <string name="lyrics_earlier_desc">歌词提前 0.1 秒</string>
+    <string name="lyrics_later_desc">歌词延后 0.1 秒</string>
+    <string name="lyrics_by_line">逐行</string>
+    <string name="lyrics_by_word">逐字</string>
+    <string name="lyrics_by_line_desc">歌词逐行</string>
+    <string name="lyrics_by_word_desc">歌词逐字</string>
+    <string name="queue_up_next">接下来</string>
+    <string name="sleep_timer">定时关闭</string>
+    <string name="sleep_until_pause">后暂停播放</string>
+    <string name="sleep_end_of_song_state">播完这首</string>
+    <string name="sleep_end_of_track">播完当前歌曲</string>
+    <string name="sleep_end_of_track_hint">当前歌曲结束后暂停</string>
+    <string name="sleep_turn_off">取消定时</string>
+    <string name="sleep_custom">自定义</string>
+    <string name="sleep_any_length">任意时长</string>
+    <string name="sleep_start">开始</string>
+    <string name="sleep_this_track">本曲</string>
+    <string name="stats_title">收听报告</string>
+    <string name="stats_empty">暂无收听记录</string>
+    <string name="stats_range_week">7天</string>
+    <string name="stats_range_month">30天</string>
+    <string name="stats_range_year">一年</string>
+    <string name="stats_range_all">全部</string>
+    <string name="stats_all_time">全部记录</string>
+    <string name="stats_last_28_days">近 28 天</string>
+    <string name="stats_rhythm">节律</string>
+    <string name="stats_peak_hour">高峰时刻</string>
+    <string name="stats_trend">起伏</string>
+    <string name="stats_week">一周</string>
+    <string name="stats_top_artists">最爱歌手</string>
+    <string name="stats_on_repeat">单曲循环</string>
+    <string name="stats_shelf">唱片架</string>
+    <string name="stats_genres">流派光谱</string>
+    <string name="stats_habits">习惯</string>
+    <string name="stats_streak">连续收听</string>
+    <string name="stats_completion">完整播放</string>
+    <string name="time_peak_hour">HH:mm</string>
+    <string name="date_range_day">M.d</string>
+    <string name="date_range_day_year">yyyy.M.d</string>
+    <string name="date_trend_day">M/d</string>
+    <string name="date_trend_month">M月</string>
+    <string name="settings">设置</string>
+    <string name="settings_appearance">外观</string>
+    <string name="follow_system">跟随系统</string>
+    <string name="theme_dark">深色</string>
+    <string name="theme_light">浅色</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_playback">播放</string>
+    <string name="settings_min_duration">忽略短于</string>
+    <string name="min_duration_any">不限</string>
+    <string name="seconds_short">%1$d 秒</string>
+    <string name="lyrics_folder">歌词文件夹</string>
+    <string name="not_set">未选择</string>
+    <string name="lyrics_display">歌词显示</string>
+    <string name="lyrics_keep_screen_on">显示歌词时保持亮屏</string>
+    <string name="settings_data">数据</string>
+    <string name="backup_export">导出备份</string>
+    <string name="backup_import">导入备份</string>
+    <string name="history_clear">清除收听记录</string>
+    <string name="history_clear_confirm">清除全部收听记录？</string>
+    <string name="settings_about">关于</string>
+    <string name="diag_export">导出诊断日志</string>
+    <string name="licenses">开源许可</string>
+    <string name="audio_effects">音效</string>
+    <string name="fx_equalizer">均衡器</string>
+    <string name="fx_eq_unavailable">此设备不支持均衡器</string>
+    <string name="fx_bass_boost">低音增强</string>
+    <string name="fx_bass_off">关</string>
+    <string name="fx_replaygain">音量平衡</string>
+    <string name="fx_off">关闭</string>
+    <string name="fx_gain_track">单曲</string>
+    <string name="fx_gain_album">专辑</string>
+    <string name="fx_preamp">前置增益</string>
+    <string name="fx_prevent_clipping">防止削波</string>
+    <string name="fx_transitions">过渡</string>
+    <string name="fx_fade">播放、暂停和切歌时淡入淡出</string>
+    <string name="eq_flat">标准</string>
+    <string name="eq_bass">低音</string>
+    <string name="eq_vocal">人声</string>
+    <string name="eq_pop">流行</string>
+    <string name="eq_rock">摇滚</string>
+    <string name="eq_electronic">电子</string>
+    <string name="eq_jazz">爵士</string>
+    <string name="eq_classical">古典</string>
+    <string name="eq_acoustic">原声</string>
+    <string name="eq_treble">高音</string>
+    <string name="eq_custom">自定义</string>
+    <string name="backup_exporting">正在导出…</string>
+    <string name="backup_exported">备份已导出</string>
+    <string name="export_failed">导出失败</string>
+    <string name="backup_reading">正在读取…</string>
+    <string name="backup_unreadable">无法读取这个文件</string>
+    <string name="backup_restoring">正在恢复…</string>
+    <string name="backup_restored">已恢复备份</string>
+    <string name="restore_failed">恢复失败</string>
+    <string name="backup_file_name">回响备份-%1$s.zip</string>
+    <string name="backup_restore_title">恢复备份</string>
+    <string name="date_backup">yyyy年M月d日 HH:mm</string>
+    <string name="backup_merge">合并</string>
+    <string name="backup_merge_detail">保留手机上的数据，补上备份里没有的</string>
+    <string name="backup_replace">替换</string>
+    <string name="backup_replace_detail">用备份覆盖喜欢、歌单、收听记录和设置</string>
+    <string name="backup_replace_confirm">确认替换</string>
+    <string name="backup_replace_confirm_detail">手机上现有的这些数据会被清除</string>
+    <string name="backup_error_invalid">不是有效的备份文件</string>
+    <string name="backup_error_not_echo">不是回响的备份文件</string>
+    <string name="backup_error_newer">备份来自更新版本的回响，请先升级</string>
+    <string name="backup_error_incomplete">备份文件不完整</string>
+    <string name="backup_error_unopenable">无法打开文件</string>
+    <string name="diag_exported">诊断日志已导出</string>
+    <string name="diag_file_name">回响诊断-%1$s.txt</string>
+    <string name="diag_library">曲库 %1$s</string>
+    <string name="diag_exported_at">导出于 %1$s</string>
+    <string name="duration_hours_minutes">%1$s 小时 %2$s 分钟</string>
+    <string name="duration_minutes">%1$s 分钟</string>
+    <string name="language_chinese" translatable="false">简体中文</string>
+    <string name="language_english" translatable="false">English</string>
+    <string name="app_version_line" translatable="false">%1$s %2$s (%3$d)</string>
+    <string name="backup_app_version" translatable="false">%1$s %2$s</string>
+    <string name="art_file_pattern" translatable="false">Artist_Name.png · Artist_Name_poster.jpg</string>
+    <string name="percent" translatable="false">%1$d%%</string>
+    <string name="decibels" translatable="false">%1$+.1f dB</string>
+    <string name="megabytes" translatable="false">%1$.1f MB</string>
+    <string name="date_range" translatable="false">%1$s — %2$s</string>
+    <string name="stats_number_one" translatable="false">No.1</string>
+    <plurals name="songs_short">
+        <item quantity="other">%1$s 首</item>
+    </plurals>
+    <plurals name="songs_long">
+        <item quantity="other">%1$s 首歌曲</item>
+    </plurals>
+    <plurals name="albums_count">
+        <item quantity="other">%1$s 张专辑</item>
+    </plurals>
+    <plurals name="artists_count">
+        <item quantity="other">%1$s 位歌手</item>
+    </plurals>
+    <plurals name="plays_count">
+        <item quantity="other">%1$s 次</item>
+    </plurals>
+    <plurals name="plays_count_long">
+        <item quantity="other">%1$s 次播放</item>
+    </plurals>
+    <plurals name="unit_plays">
+        <item quantity="other">" 次"</item>
+    </plurals>
+    <plurals name="unit_days">
+        <item quantity="other">" 天"</item>
+    </plurals>
+    <plurals name="label_plays">
+        <item quantity="other">次播放</item>
+    </plurals>
+    <plurals name="label_listens">
+        <item quantity="other">次收听</item>
+    </plurals>
+    <plurals name="label_minutes">
+        <item quantity="other">分钟</item>
+    </plurals>
+    <plurals name="label_hours">
+        <item quantity="other">小时</item>
+    </plurals>
+    <plurals name="label_songs">
+        <item quantity="other">首歌曲</item>
+    </plurals>
+    <plurals name="label_songs_poster">
+        <item quantity="other">首歌</item>
+    </plurals>
+    <plurals name="label_songs_short">
+        <item quantity="other">首</item>
+    </plurals>
+    <plurals name="label_albums">
+        <item quantity="other">张专辑</item>
+    </plurals>
+    <plurals name="label_artists">
+        <item quantity="other">位歌手</item>
+    </plurals>
+    <plurals name="label_logos">
+        <item quantity="other">个名称标志</item>
+    </plurals>
+    <plurals name="label_posters">
+        <item quantity="other">张海报</item>
+    </plurals>
+    <plurals name="label_liked">
+        <item quantity="other">喜欢</item>
+    </plurals>
+    <plurals name="label_playlists">
+        <item quantity="other">歌单</item>
+    </plurals>
+    <plurals name="label_artist_images">
+        <item quantity="other">歌手形象</item>
+    </plurals>
+    <plurals name="art_unmatched">
+        <item quantity="other">未匹配 %1$s</item>
+    </plurals>
+    <plurals name="folders_added_count">
+        <item quantity="other">已添加 %1$s</item>
+    </plurals>
+    <plurals name="folders_excluded_count">
+        <item quantity="other">已排除 %1$s</item>
+    </plurals>
+    <plurals name="stats_days_with_music">
+        <item quantity="other">%1$s 天有声</item>
+    </plurals>
+    <plurals name="stats_longest_streak">
+        <item quantity="other">最长 %1$s 天</item>
+    </plurals>
+    <string-array name="greetings">
+        <item>早上好</item>
+        <item>中午好</item>
+        <item>下午好</item>
+        <item>晚上好</item>
+        <item>夜深了</item>
+    </string-array>
+    <string-array name="mix_moments">
+        <item>清晨</item>
+        <item>午间</item>
+        <item>午后</item>
+        <item>夜晚</item>
+        <item>深夜</item>
+    </string-array>
+    <string-array name="weekdays_short">
+        <item>一</item>
+        <item>二</item>
+        <item>三</item>
+        <item>四</item>
+        <item>五</item>
+        <item>六</item>
+        <item>日</item>
+    </string-array>
+    <string-array name="stats_peak_weekday">
+        <item>最爱周一</item>
+        <item>最爱周二</item>
+        <item>最爱周三</item>
+        <item>最爱周四</item>
+        <item>最爱周五</item>
+        <item>最爱周六</item>
+        <item>最爱周日</item>
+    </string-array>
+    <string-array name="stats_periods">
+        <item>清晨的耳朵</item>
+        <item>上午的节拍</item>
+        <item>午间的旋律</item>
+        <item>午后的回声</item>
+        <item>夜晚的主场</item>
+        <item>深夜的独白</item>
+    </string-array>
+    <string-array name="month_marks" translatable="false">
+        <item>JAN</item>
+        <item>FEB</item>
+        <item>MAR</item>
+        <item>APR</item>
+        <item>MAY</item>
+        <item>JUN</item>
+        <item>JUL</item>
+        <item>AUG</item>
+        <item>SEP</item>
+        <item>OCT</item>
+        <item>NOV</item>
+        <item>DEC</item>
+    </string-array>
+    <integer-array name="greeting_from">
+        <item>5</item>
+        <item>11</item>
+        <item>14</item>
+        <item>18</item>
+        <item>23</item>
+    </integer-array>
 </resources>

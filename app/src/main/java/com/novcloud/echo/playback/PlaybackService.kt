@@ -2,22 +2,9 @@ package com.novcloud.echo.playback
 
 import android.app.PendingIntent
 import android.content.Context
-import androidx.media3.exoplayer.audio.AudioSink
-import androidx.media3.exoplayer.audio.DefaultAudioSink
-import com.novcloud.echo.playback.audio.AudioSettings
-import com.novcloud.echo.playback.audio.EffectChain
-import com.novcloud.echo.playback.audio.FadingPlayer
-import com.novcloud.echo.playback.audio.GainProcessor
-import com.novcloud.echo.playback.audio.ReplayGainSink
-import com.novcloud.echo.playback.audio.VolumeMix
-import com.novcloud.echo.widget.WidgetActions
 import android.content.Intent
-import android.os.SystemClock
 import android.os.Bundle
-import com.google.common.util.concurrent.Futures
-import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionResult
-import com.novcloud.echo.diag.DiagLog
+import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -25,12 +12,25 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.novcloud.echo.EchoApp
 import com.novcloud.echo.MainActivity
 import com.novcloud.echo.data.SavedQueue
+import com.novcloud.echo.diag.DiagLog
+import com.novcloud.echo.playback.audio.AudioSettings
+import com.novcloud.echo.playback.audio.EffectChain
+import com.novcloud.echo.playback.audio.FadingPlayer
+import com.novcloud.echo.playback.audio.GainProcessor
+import com.novcloud.echo.playback.audio.ReplayGainSink
+import com.novcloud.echo.playback.audio.VolumeMix
+import com.novcloud.echo.widget.WidgetActions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -368,6 +368,15 @@ class PlaybackService : MediaSessionService() {
 
         /** Main thread only (broadcast receivers run there). */
         fun onWidget(action: String): Boolean = active?.handleWidget(action) ?: false
+
+        /** The UI language changed: redraw the media notification with the new labels. */
+        fun onLanguageChanged() { active?.refreshNotification() }
+    }
+
+    private fun refreshNotification() {
+        val s = session ?: return
+        val engaged = player.playWhenReady && (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING)
+        runCatching { onUpdateNotification(s, engaged) }.onFailure { DiagLog.w(TAG, "notification refresh failed", it) }
     }
 
     private inner class Callback : MediaSession.Callback {

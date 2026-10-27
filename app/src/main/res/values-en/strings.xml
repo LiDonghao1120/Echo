@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Echo</string>
+    <string name="widget_description">Album art, the current song and playback controls</string>
+    <string name="widget_idle">Tap to play</string>
+    <string name="widget_playing">Now playing</string>
+    <string name="widget_paused">Paused</string>
+    <string name="widget_prev">Previous</string>
+    <string name="widget_next">Next</string>
+    <string name="widget_play">Play</string>
+    <string name="widget_pause">Pause</string>
+    <string name="unknown_artist">Unknown Artist</string>
+    <string name="unknown_album">Unknown Album</string>
+    <string name="permission_allow">Allow access to music</string>
+    <string name="tab_home">Home</string>
+    <string name="tab_library">Library</string>
+    <string name="tab_search">Search</string>
+    <string name="tab_stats">Stats</string>
+    <string name="action_play">Play</string>
+    <string name="action_shuffle">Shuffle</string>
+    <string name="action_rescan">Rescan</string>
+    <string name="action_choose_folders">Choose folders</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_change">Change</string>
+    <string name="action_choose">Choose</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_clear_history">Clear</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_done">Done</string>
+    <string name="action_ok">OK</string>
+    <string name="home_empty">No music found on this device</string>
+    <string name="home_for_you">Made for you</string>
+    <string name="home_top_artists">Your top artists</string>
+    <string name="recently_played">Recently played</string>
+    <string name="most_played">Most played</string>
+    <string name="recently_added">Recently added</string>
+    <string name="date_home">EEEE, MMMM d</string>
+    <string name="mix_daily">Daily Mix</string>
+    <string name="mix_rediscover">Rediscover</string>
+    <string name="mix_rediscover_sub">Been a while</string>
+    <string name="mix_fresh">New to You</string>
+    <string name="mix_fresh_sub">Never played</string>
+    <string name="mix_genre_sub">Essentials</string>
+    <string name="mix_artist_sub">Radio</string>
+    <string name="mix_moment_sub">This time of day</string>
+    <string name="songs">Songs</string>
+    <string name="albums">Albums</string>
+    <string name="artists">Artists</string>
+    <string name="genres">Genres</string>
+    <string name="folders">Folders</string>
+    <string name="playlists">Playlists</string>
+    <string name="playlist">Playlist</string>
+    <string name="genre">Genre</string>
+    <string name="folder">Folder</string>
+    <string name="liked_songs">Liked Songs</string>
+    <string name="all_songs">All songs</string>
+    <string name="list_empty">Nothing here yet</string>
+    <string name="playlist_new">New playlist</string>
+    <string name="playlist_delete">Delete playlist</string>
+    <string name="playlist_delete_confirm">Delete “%1$s”?</string>
+    <string name="sort_title">Title</string>
+    <string name="sort_artist">Artist</string>
+    <string name="sort_album">Album</string>
+    <string name="sort_added">Date added</string>
+    <string name="sort_duration">Duration</string>
+    <string name="genres_loading">Reading genres…</string>
+    <string name="genres_none">None of your songs have genre tags</string>
+    <string name="music_folders">Music folders</string>
+    <string name="folders_added">Added</string>
+    <string name="folders_add">Add folder</string>
+    <string name="folders_device">On this device</string>
+    <string name="album_disc">DISC %1$d</string>
+    <string name="album_more_by">More by %1$s</string>
+    <string name="artist_top_songs">Top songs</string>
+    <string name="artist_your_listening">Your listening</string>
+    <string name="artist_art">Artist art</string>
+    <string name="art_poster">Poster</string>
+    <string name="art_logo">Logo</string>
+    <string name="art_from_photos">Photos</string>
+    <string name="art_from_files">Files</string>
+    <string name="art_import_folder">Import from a folder</string>
+    <string name="art_importing">Importing…</string>
+    <string name="art_import_done">Import complete</string>
+    <string name="art_read_failed">Couldn’t read that image</string>
+    <string name="menu_play_next">Play next</string>
+    <string name="menu_add_to_queue">Add to queue</string>
+    <string name="menu_like">Add to Liked Songs</string>
+    <string name="menu_unlike">Remove from Liked Songs</string>
+    <string name="menu_add_to_playlist">Add to playlist</string>
+    <string name="menu_remove_from_playlist">Remove from playlist</string>
+    <string name="menu_go_to_album">Go to album</string>
+    <string name="menu_song_info">Song info</string>
+    <string name="info_title">Title</string>
+    <string name="info_artist">Artist</string>
+    <string name="info_album">Album</string>
+    <string name="info_genre">Genre</string>
+    <string name="info_year">Year</string>
+    <string name="info_duration">Duration</string>
+    <string name="info_format">Format</string>
+    <string name="info_size">Size</string>
+    <string name="info_path">Path</string>
+    <string name="search_hint">Songs, albums, artists</string>
+    <string name="search_no_results">No results for “%1$s”</string>
+    <string name="lyrics">Lyrics</string>
+    <string name="lyrics_loading">Loading lyrics…</string>
+    <string name="lyrics_none">No lyrics</string>
+    <string name="lyrics_choose_file">Choose file</string>
+    <string name="lyrics_choose_folder">Choose folder</string>
+    <string name="lyrics_bad_file">That’s not a lyrics file Echo can read</string>
+    <string name="lyrics_tools">Lyrics settings</string>
+    <string name="lyrics_tool_timing">Timing</string>
+    <string name="lyrics_tool_mode">Mode</string>
+    <string name="lyrics_tool_file">File</string>
+    <string name="lyrics_file_auto">Matched automatically</string>
+    <string name="lyrics_offset_zero">0.0s</string>
+    <string name="lyrics_offset_earlier">%1$.1fs earlier</string>
+    <string name="lyrics_offset_later">%1$.1fs later</string>
+    <string name="lyrics_earlier_desc">Show lyrics 0.1 seconds earlier</string>
+    <string name="lyrics_later_desc">Delay lyrics by 0.1 seconds</string>
+    <string name="lyrics_by_line">Line by line</string>
+    <string name="lyrics_by_word">Word by word</string>
+    <string name="lyrics_by_line_desc">Line-by-line lyrics</string>
+    <string name="lyrics_by_word_desc">Word-by-word lyrics</string>
+    <string name="queue_up_next">Up Next</string>
+    <string name="sleep_timer">Sleep timer</string>
+    <string name="sleep_until_pause">until playback pauses</string>
+    <string name="sleep_end_of_song_state">End of track</string>
+    <string name="sleep_end_of_track">End of track</string>
+    <string name="sleep_end_of_track_hint">Pauses when this song ends</string>
+    <string name="sleep_turn_off">Turn off</string>
+    <string name="sleep_custom">Custom</string>
+    <string name="sleep_any_length">Any length</string>
+    <string name="sleep_start">Start</string>
+    <string name="sleep_this_track">This track</string>
+    <string name="stats_title">Listening report</string>
+    <string name="stats_empty">No listening history yet</string>
+    <string name="stats_range_week">7 days</string>
+    <string name="stats_range_month">30 days</string>
+    <string name="stats_range_year">1 year</string>
+    <string name="stats_range_all">All time</string>
+    <string name="stats_all_time">All time</string>
+    <string name="stats_last_28_days">Last 28 days</string>
+    <string name="stats_rhythm">Rhythm</string>
+    <string name="stats_peak_hour">Peak hour</string>
+    <string name="stats_trend">Ebb and flow</string>
+    <string name="stats_week">Your week</string>
+    <string name="stats_top_artists">Top artists</string>
+    <string name="stats_on_repeat">On repeat</string>
+    <string name="stats_shelf">On the shelf</string>
+    <string name="stats_genres">Genre spectrum</string>
+    <string name="stats_habits">Habits</string>
+    <string name="stats_streak">Day streak</string>
+    <string name="stats_completion">Played through</string>
+    <string name="time_peak_hour">h a</string>
+    <string name="date_range_day">MMM d</string>
+    <string name="date_range_day_year">MMM d, yyyy</string>
+    <string name="date_trend_day">M/d</string>
+    <string name="date_trend_month">MMM</string>
+    <string name="settings">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="follow_system">Follow system</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_light">Light</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_playback">Playback</string>
+    <string name="settings_min_duration">Skip tracks shorter than</string>
+    <string name="min_duration_any">No limit</string>
+    <string name="seconds_short">%1$d sec</string>
+    <string name="lyrics_folder">Lyrics folder</string>
+    <string name="not_set">Not set</string>
+    <string name="lyrics_display">Lyrics display</string>
+    <string name="lyrics_keep_screen_on">Keep screen on while lyrics are showing</string>
+    <string name="settings_data">Data</string>
+    <string name="backup_export">Export backup</string>
+    <string name="backup_import">Import backup</string>
+    <string name="history_clear">Clear listening history</string>
+    <string name="history_clear_confirm">Clear all listening history?</string>
+    <string name="settings_about">About</string>
+    <string name="diag_export">Export diagnostic log</string>
+    <string name="licenses">Open-source licenses</string>
+    <string name="audio_effects">Audio effects</string>
+    <string name="fx_equalizer">Equalizer</string>
+    <string name="fx_eq_unavailable">This device doesn’t support an equalizer</string>
+    <string name="fx_bass_boost">Bass boost</string>
+    <string name="fx_bass_off">Off</string>
+    <string name="fx_replaygain">ReplayGain</string>
+    <string name="fx_off">Off</string>
+    <string name="fx_gain_track">Track</string>
+    <string name="fx_gain_album">Album</string>
+    <string name="fx_preamp">Preamp</string>
+    <string name="fx_prevent_clipping">Prevent clipping</string>
+    <string name="fx_transitions">Transitions</string>
+    <string name="fx_fade">Fade in and out on play, pause and skip</string>
+    <string name="eq_flat">Flat</string>
+    <string name="eq_bass">Bass</string>
+    <string name="eq_vocal">Vocal</string>
+    <string name="eq_pop">Pop</string>
+    <string name="eq_rock">Rock</string>
+    <string name="eq_electronic">Electronic</string>
+    <string name="eq_jazz">Jazz</string>
+    <string name="eq_classical">Classical</string>
+    <string name="eq_acoustic">Acoustic</string>
+    <string name="eq_treble">Treble</string>
+    <string name="eq_custom">Custom</string>
+    <string name="backup_exporting">Exporting…</string>
+    <string name="backup_exported">Backup exported</string>
+    <string name="export_failed">Export failed</string>
+    <string name="backup_reading">Reading…</string>
+    <string name="backup_unreadable">Couldn’t read that file</string>
+    <string name="backup_restoring">Restoring…</string>
+    <string name="backup_restored">Backup restored</string>
+    <string name="restore_failed">Restore failed</string>
+    <string name="backup_file_name">Echo-backup-%1$s.zip</string>
+    <string name="backup_restore_title">Restore backup</string>
+    <string name="date_backup">MMM d, yyyy, h:mm a</string>
+    <string name="backup_merge">Merge</string>
+    <string name="backup_merge_detail">Keep everything on this phone and add what’s only in the backup</string>
+    <string name="backup_replace">Replace</string>
+    <string name="backup_replace_detail">Overwrite likes, playlists, listening history and settings with the backup</string>
+    <string name="backup_replace_confirm">Replace everything</string>
+    <string name="backup_replace_confirm_detail">This erases that data from this phone</string>
+    <string name="backup_error_invalid">Not a valid backup file</string>
+    <string name="backup_error_not_echo">This isn’t an Echo backup</string>
+    <string name="backup_error_newer">This backup is from a newer version of Echo. Update the app first.</string>
+    <string name="backup_error_incomplete">This backup file is incomplete</string>
+    <string name="backup_error_unopenable">Couldn’t open the file</string>
+    <string name="diag_exported">Diagnostic log exported</string>
+    <string name="diag_file_name">Echo-diagnostics-%1$s.txt</string>
+    <string name="diag_library">Library: %1$s</string>
+    <string name="diag_exported_at">Exported %1$s</string>
+    <string name="duration_hours_minutes">%1$s hr %2$s min</string>
+    <string name="duration_minutes">%1$s min</string>
+    <plurals name="songs_short">
+        <item quantity="one">%1$s song</item>
+        <item quantity="other">%1$s songs</item>
+    </plurals>
+    <plurals name="songs_long">
+        <item quantity="one">%1$s song</item>
+        <item quantity="other">%1$s songs</item>
+    </plurals>
+    <plurals name="albums_count">
+        <item quantity="one">%1$s album</item>
+        <item quantity="other">%1$s albums</item>
+    </plurals>
+    <plurals name="artists_count">
+        <item quantity="one">%1$s artist</item>
+        <item quantity="other">%1$s artists</item>
+    </plurals>
+    <plurals name="plays_count">
+        <item quantity="one">%1$s play</item>
+        <item quantity="other">%1$s plays</item>
+    </plurals>
+    <plurals name="plays_count_long">
+        <item quantity="one">%1$s play</item>
+        <item quantity="other">%1$s plays</item>
+    </plurals>
+    <plurals name="unit_plays">
+        <item quantity="one">" play"</item>
+        <item quantity="other">" plays"</item>
+    </plurals>
+    <plurals name="unit_days">
+        <item quantity="one">" day"</item>
+        <item quantity="other">" days"</item>
+    </plurals>
+    <plurals name="label_plays">
+        <item quantity="one">play</item>
+        <item quantity="other">plays</item>
+    </plurals>
+    <plurals name="label_listens">
+        <item quantity="one">play</item>
+        <item quantity="other">plays</item>
+    </plurals>
+    <plurals name="label_minutes">
+        <item quantity="one">minute</item>
+        <item quantity="other">minutes</item>
+    </plurals>
+    <plurals name="label_hours">
+        <item quantity="one">hour</item>
+        <item quantity="other">hours</item>
+    </plurals>
+    <plurals name="label_songs">
+        <item quantity="one">song</item>
+        <item quantity="other">songs</item>
+    </plurals>
+    <plurals name="label_songs_poster">
+        <item quantity="one">song</item>
+        <item quantity="other">songs</item>
+    </plurals>
+    <plurals name="label_songs_short">
+        <item quantity="one">song</item>
+        <item quantity="other">songs</item>
+    </plurals>
+    <plurals name="label_albums">
+        <item quantity="one">album</item>
+        <item quantity="other">albums</item>
+    </plurals>
+    <plurals name="label_artists">
+        <item quantity="one">artist</item>
+        <item quantity="other">artists</item>
+    </plurals>
+    <plurals name="label_logos">
+        <item quantity="one">logo</item>
+        <item quantity="other">logos</item>
+    </plurals>
+    <plurals name="label_posters">
+        <item quantity="one">poster</item>
+        <item quantity="other">posters</item>
+    </plurals>
+    <plurals name="label_liked">
+        <item quantity="one">liked song</item>
+        <item quantity="other">liked songs</item>
+    </plurals>
+    <plurals name="label_playlists">
+        <item quantity="one">playlist</item>
+        <item quantity="other">playlists</item>
+    </plurals>
+    <plurals name="label_artist_images">
+        <item quantity="one">artist image</item>
+        <item quantity="other">artist images</item>
+    </plurals>
+    <plurals name="art_unmatched">
+        <item quantity="one">%1$s not matched</item>
+        <item quantity="other">%1$s not matched</item>
+    </plurals>
+    <plurals name="folders_added_count">
+        <item quantity="one">%1$s added</item>
+        <item quantity="other">%1$s added</item>
+    </plurals>
+    <plurals name="folders_excluded_count">
+        <item quantity="one">%1$s excluded</item>
+        <item quantity="other">%1$s excluded</item>
+    </plurals>
+    <plurals name="stats_days_with_music">
+        <item quantity="one">Music on %1$s day</item>
+        <item quantity="other">Music on %1$s days</item>
+    </plurals>
+    <plurals name="stats_longest_streak">
+        <item quantity="one">Longest: %1$s day</item>
+        <item quantity="other">Longest: %1$s days</item>
+    </plurals>
+    <string-array name="greetings">
+        <item>Good morning</item>
+        <item>Good afternoon</item>
+        <item>Good evening</item>
+        <item>Still up?</item>
+    </string-array>
+    <string-array name="mix_moments">
+        <item>Early Morning</item>
+        <item>Midday</item>
+        <item>Afternoon</item>
+        <item>Evening</item>
+        <item>Late Night</item>
+    </string-array>
+    <string-array name="weekdays_short">
+        <item>Mon</item>
+        <item>Tue</item>
+        <item>Wed</item>
+        <item>Thu</item>
+        <item>Fri</item>
+        <item>Sat</item>
+        <item>Sun</item>
+    </string-array>
+    <string-array name="stats_peak_weekday">
+        <item>Loudest on Mondays</item>
+        <item>Loudest on Tuesdays</item>
+        <item>Loudest on Wednesdays</item>
+        <item>Loudest on Thursdays</item>
+        <item>Loudest on Fridays</item>
+        <item>Loudest on Saturdays</item>
+        <item>Loudest on Sundays</item>
+    </string-array>
+    <string-array name="stats_periods">
+        <item>Up with the sun</item>
+        <item>Morning momentum</item>
+        <item>Midday melodies</item>
+        <item>Afternoon echoes</item>
+        <item>Evenings are yours</item>
+        <item>Midnight monologue</item>
+    </string-array>
+    <integer-array name="greeting_from">
+        <item>5</item>
+        <item>12</item>
+        <item>18</item>
+        <item>23</item>
+    </integer-array>
+</resources>

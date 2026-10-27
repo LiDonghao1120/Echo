@@ -97,7 +97,7 @@ fun HourDial(hourly: List<Long>, day: Color, night: Color, track: Color, ink: Co
 }
 
 @Composable
-fun RidgeChart(points: List<TrendPoint>, line: Color, fill: Color, label: Color, ink: Color, modifier: Modifier = Modifier) {
+fun RidgeChart(points: List<TrendPoint>, labels: List<String>, line: Color, fill: Color, label: Color, ink: Color, modifier: Modifier = Modifier) {
     val grow = rememberGrow(points)
     val measurer = rememberTextMeasurer()
     var selected by remember(points) { mutableIntStateOf(points.indices.maxByOrNull { points[it].ms } ?: -1) }
@@ -152,7 +152,7 @@ fun RidgeChart(points: List<TrendPoint>, line: Color, fill: Color, label: Color,
         for (i in 0 until n) {
             if (i % labelEvery != 0 && i != n - 1) continue
             if (i == n - 1 && n > 12 && (n - 1) % labelEvery != 0 && (n - 1) % labelEvery < labelEvery / 2 + 1) continue
-            val t = measurer.measure(points[i].label, EchoType.label.copy(fontSize = 9.sp, letterSpacing = 0.5.sp, color = label))
+            val t = measurer.measure(labels[i], EchoType.label.copy(fontSize = 9.sp, letterSpacing = 0.5.sp, color = label))
             val x = (xy(i).x - t.size.width / 2f).coerceIn(0f, size.width - t.size.width)
             drawText(t, topLeft = Offset(x, size.height - t.size.height))
         }

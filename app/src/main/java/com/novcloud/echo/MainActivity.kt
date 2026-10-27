@@ -42,13 +42,18 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.novcloud.echo.data.ThemeMode
 import com.novcloud.echo.ui.AppRoot
+import com.novcloud.echo.ui.components.echoAura
 import com.novcloud.echo.ui.theme.EchoTheme
 import com.novcloud.echo.ui.theme.SystemBars
-import com.novcloud.echo.ui.components.echoAura
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
     private val openPlayer = MutableStateFlow(0L)
+
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(newBase)
+        Languages.override(newBase)?.let(::applyOverrideConfiguration)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
@@ -136,7 +141,7 @@ private fun PermissionGate(onResult: () -> Unit) {
         Spacer(Modifier.height(36.dp))
         Text(androidx.compose.ui.res.stringResource(R.string.app_name), style = MaterialTheme.typography.headlineLarge)
         Spacer(Modifier.height(28.dp))
-        com.novcloud.echo.ui.components.SolidButton("允许访问音乐") {
+        com.novcloud.echo.ui.components.SolidButton(androidx.compose.ui.res.stringResource(R.string.permission_allow)) {
             if (asked >= 2) context.startActivity(
                 Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)),
             ) else launcher.launch(perms)

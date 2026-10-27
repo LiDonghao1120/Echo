@@ -11,13 +11,15 @@ import com.novcloud.echo.data.BackupManager
 import com.novcloud.echo.data.LibraryRepository
 import com.novcloud.echo.data.Pinyin
 import com.novcloud.echo.data.Prefs
-import com.novcloud.echo.diag.DiagLog
 import com.novcloud.echo.data.db.EchoDatabase
 import com.novcloud.echo.data.lyrics.LyricsLoader
+import com.novcloud.echo.diag.DiagLog
 import com.novcloud.echo.domain.DailyPin
 import com.novcloud.echo.domain.HomeData
 import com.novcloud.echo.domain.Recommender
 import com.novcloud.echo.playback.PlayerConnection
+import java.io.File
+import java.time.LocalDate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,19 +29,17 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.File
-import java.time.LocalDate
 
 class AppContainer(app: Application) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -94,11 +94,34 @@ class EchoApp : Application(), ImageLoaderFactory {
     lateinit var container: AppContainer
         private set
 
+    private var locale: java.util.Locale? = null
+
     override fun onCreate() {
         super.onCreate()
+        Languages.applyLegacy(this)
+        loadNames()
         DiagLog.init(this)
         Pinyin.install { assets.open("pinyin.bin") }
         container = AppContainer(this)
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Languages.applyLegacy(this)
+        if (resources.configuration.locales[0] != locale) onLanguageChanged()
+    }
+
+    /** Refreshes what lives outside the activity: placeholder names, the widget and the media notification. */
+    fun onLanguageChanged() {
+        loadNames()
+        com.novcloud.echo.widget.Widgets.push(this, null)
+        com.novcloud.echo.playback.PlaybackService.onLanguageChanged()
+    }
+
+    private fun loadNames() {
+        locale = resources.configuration.locales[0]
+        com.novcloud.echo.data.UnknownNames.artist = getString(R.string.unknown_artist)
+        com.novcloud.echo.data.UnknownNames.album = getString(R.string.unknown_album)
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)

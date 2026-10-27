@@ -43,9 +43,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.AddToPlaylistDialog
@@ -54,6 +57,7 @@ import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.LocalBottomInset
 import com.novcloud.echo.ui.components.SectionHeader
 import com.novcloud.echo.ui.components.SongRow
+import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.formatLong
 import com.novcloud.echo.ui.home.AlbumTile
 import com.novcloud.echo.ui.library.PillButton
@@ -61,7 +65,6 @@ import com.novcloud.echo.ui.player.rememberArtColors
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
 import com.novcloud.echo.ui.theme.palette
-import androidx.compose.ui.text.font.FontWeight
 
 @Composable
 fun AlbumScreen(id: Long) {
@@ -105,16 +108,16 @@ fun AlbumScreen(id: Long) {
                         val meta = listOfNotNull(album.songs.firstOrNull()?.genre?.ifBlank { null }, album.year.takeIf { it > 0 }?.toString()).joinToString(" · ")
                         if (meta.isNotEmpty()) Text(meta.uppercase(), style = EchoType.label, color = palette.muted)
                         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                            PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f), primary = true) { actions.player.play(album.songs) }
+                            PillButton(Icons.Rounded.PlayArrow, stringResource(R.string.action_play), Modifier.weight(1f), primary = true) { actions.player.play(album.songs) }
                             Spacer(Modifier.width(12.dp))
-                            PillButton(Icons.Rounded.Shuffle, "随机", Modifier.weight(1f)) { actions.player.play(album.songs, shuffle = true) }
+                            PillButton(Icons.Rounded.Shuffle, stringResource(R.string.action_shuffle), Modifier.weight(1f)) { actions.player.play(album.songs, shuffle = true) }
                         }
                     }
                 }
             }
             album.songs.forEachIndexed { i, s ->
                 if (multiDisc && (i == 0 || album.songs[i - 1].disc != s.disc)) item(key = "disc_${s.disc}") {
-                    Text("DISC ${s.disc}", style = EchoType.labelBold, color = palette.signal, modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp))
+                    Text(stringResource(R.string.album_disc, s.disc), style = EchoType.labelBold, color = palette.signal, modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp))
                 }
                 item(key = s.id) {
                     SongRow(
@@ -126,13 +129,13 @@ fun AlbumScreen(id: Long) {
             }
             item {
                 Text(
-                    "${album.songs.size} 首歌曲 · ${formatLong(album.durationMs)}",
+                    "${count(R.plurals.songs_long, album.songs.size)} · ${formatLong(album.durationMs)}",
                     style = EchoType.label, color = palette.muted,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
                 )
             }
             if (more.isNotEmpty()) {
-                item { SectionHeader("${displayArtist(album.artist)} 的更多专辑", onMore = { actions.openArtist(album.artist) }) }
+                item { SectionHeader(stringResource(R.string.album_more_by, displayArtist(album.artist)), onMore = { actions.openArtist(album.artist) }) }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(more, key = { it.id }) { AlbumTile(it, 140.dp) }

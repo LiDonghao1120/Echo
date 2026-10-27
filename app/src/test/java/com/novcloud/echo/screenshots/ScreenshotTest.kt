@@ -56,18 +56,15 @@ import org.robolectric.annotation.GraphicsMode
 
 private const val PHONE = "zh-rCN-w400dp-h880dp-normal-long-notround-any-xhdpi-keyshidden-nonav"
 
-@RunWith(AndroidJUnit4::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@org.robolectric.annotation.ConscryptMode(org.robolectric.annotation.ConscryptMode.Mode.OFF)
-@Config(sdk = [34], qualifiers = PHONE)
-class ScreenshotTest {
+/** Rendering helpers shared by the Chinese and English screenshot suites. */
+abstract class ScreenshotBase {
 
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private val ctx get() = compose.activity
+    protected val ctx get() = compose.activity
 
-    private fun settle(rounds: Int = 4) {
+    protected fun settle(rounds: Int = 4) {
         repeat(rounds) {
             compose.mainClock.advanceTimeBy(1_500)
             compose.waitForIdle()
@@ -77,13 +74,13 @@ class ScreenshotTest {
         compose.waitForIdle()
     }
 
-    private fun waitForHome() {
+    protected fun waitForHome() {
         val c = Samples.app(ctx)
         val deadline = System.currentTimeMillis() + 15_000
         while (System.currentTimeMillis() < deadline && !(c.home.value.hasHistory && c.home.value.daily != null)) Thread.sleep(100)
     }
 
-    private fun app(
+    protected fun app(
         name: String,
         dark: Boolean = true,
         route: String = "home",
@@ -113,6 +110,80 @@ class ScreenshotTest {
         settle(2)
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }
+
+    protected fun sleepSheet(name: String) {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            EchoTheme(true, motion = false) {
+                Box(Modifier.fillMaxSize().background(Color(0xFF000000)), contentAlignment = Alignment.BottomCenter) {
+                    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = EchoShape.card) {
+                        Box(Modifier.padding(top = 24.dp)) {
+                            SleepTimerContent(
+                                SleepState(deadline = System.currentTimeMillis() + 1_421_000, totalMs = 30 * 60_000L),
+                                remaining = 1_421_000, onPick = {}, onCancel = {},
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        settle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+    }
+
+    protected fun widgets(name: String, playing: com.novcloud.echo.widget.WidgetState, paused: com.novcloud.echo.widget.WidgetState) {
+        compose.mainClock.autoAdvance = false
+        val cover = android.graphics.BitmapFactory.decodeStream(javaClass.getResourceAsStream("/samples/cover_3.jpg"))
+        fun themed(dark: Boolean): android.content.Context {
+            val conf = android.content.res.Configuration(ctx.resources.configuration)
+            conf.uiMode = (conf.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                (if (dark) android.content.res.Configuration.UI_MODE_NIGHT_YES else android.content.res.Configuration.UI_MODE_NIGHT_NO)
+            return ctx.createConfigurationContext(conf)
+        }
+        @Composable
+        fun Widget(layout: Int, state: com.novcloud.echo.widget.WidgetState, dark: Boolean, height: Int, art: android.graphics.Bitmap?) {
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { c ->
+                    val host = android.widget.FrameLayout(themed(dark))
+                    val views = com.novcloud.echo.widget.Widgets.views(themed(dark), layout, state, art)
+                    host.addView(views.apply(themed(dark), host))
+                    host
+                },
+                modifier = Modifier.padding(horizontal = 24.dp).fillMaxWidth().height(height.dp),
+            )
+        }
+        compose.setContent {
+            Column(
+                Modifier.fillMaxSize().background(Color(0xFF5E6B73)).padding(vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                Widget(R.layout.widget_small, playing, false, 64, cover)
+                Widget(R.layout.widget_small, paused, true, 64, null)
+                Widget(R.layout.widget_large, playing, true, 158, cover)
+                Widget(R.layout.widget_large, paused, false, 190, cover)
+            }
+        }
+        settle(1)
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+    }
+
+    protected fun primeEffects() {
+        val fx = Samples.app(ctx).audioFx
+        fx.publishCaps(com.novcloud.echo.playback.audio.EqCaps(true, listOf(60, 230, 910, 3600, 14000), -1500, 1500, bassBoost = true))
+        fx.update {
+            com.novcloud.echo.playback.audio.AudioSettings(
+                eqEnabled = true, preset = "rock", bassStrength = 400,
+                gainMode = com.novcloud.echo.playback.audio.GainMode.Track, preampDb = 2f,
+            )
+        }
+    }
+}
+
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@org.robolectric.annotation.ConscryptMode(org.robolectric.annotation.ConscryptMode.Mode.OFF)
+@Config(sdk = [34], qualifiers = PHONE)
+class ScreenshotTest : ScreenshotBase() {
 
     @Test fun home_dark() = app("home_dark")
     @Test fun home_dark_tall() = app("home_dark_tall", tall = 1900)
@@ -175,35 +246,7 @@ class ScreenshotTest {
 
     @Test fun nowplaying_sleep_dark() = app("nowplaying_sleep_dark", expanded = true, sleep = SleepState(System.currentTimeMillis() + 1_421_000, totalMs = 30 * 60_000L))
 
-    @Test fun sleep_sheet_dark() {
-        compose.mainClock.autoAdvance = false
-        compose.setContent {
-            EchoTheme(true, motion = false) {
-                Box(Modifier.fillMaxSize().background(Color(0xFF000000)), contentAlignment = Alignment.BottomCenter) {
-                    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = EchoShape.card) {
-                        Box(Modifier.padding(top = 24.dp)) {
-                            SleepTimerContent(
-                                SleepState(deadline = System.currentTimeMillis() + 1_421_000, totalMs = 30 * 60_000L),
-                                remaining = 1_421_000, onPick = {}, onCancel = {},
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        settle()
-        compose.onRoot().captureRoboImage("build/outputs/roborazzi/sleep_sheet_dark.png")
-    }
-    private fun primeEffects() {
-        val fx = Samples.app(ctx).audioFx
-        fx.publishCaps(com.novcloud.echo.playback.audio.EqCaps(true, listOf(60, 230, 910, 3600, 14000), -1500, 1500, bassBoost = true))
-        fx.update {
-            com.novcloud.echo.playback.audio.AudioSettings(
-                eqEnabled = true, preset = "rock", bassStrength = 400,
-                gainMode = com.novcloud.echo.playback.audio.GainMode.Track, preampDb = 2f,
-            )
-        }
-    }
+    @Test fun sleep_sheet_dark() = sleepSheet("sleep_sheet_dark")
 
     @Test fun effects_dark() {
         primeEffects()
@@ -231,43 +274,11 @@ class ScreenshotTest {
         }
     }
 
-    @Test fun widgets() {
-        compose.mainClock.autoAdvance = false
-        val cover = android.graphics.BitmapFactory.decodeStream(javaClass.getResourceAsStream("/samples/cover_3.jpg"))
-        val playing = com.novcloud.echo.widget.WidgetState("Paper Satellites", "Ivy Calder", playing = true)
-        val paused = com.novcloud.echo.widget.WidgetState("白鸟与北岸的长夜", "温屿", playing = false)
-        fun themed(dark: Boolean): android.content.Context {
-            val conf = android.content.res.Configuration(ctx.resources.configuration)
-            conf.uiMode = (conf.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or
-                (if (dark) android.content.res.Configuration.UI_MODE_NIGHT_YES else android.content.res.Configuration.UI_MODE_NIGHT_NO)
-            return ctx.createConfigurationContext(conf)
-        }
-        @Composable
-        fun Widget(layout: Int, state: com.novcloud.echo.widget.WidgetState, dark: Boolean, height: Int, art: android.graphics.Bitmap?) {
-            androidx.compose.ui.viewinterop.AndroidView(
-                factory = { c ->
-                    val host = android.widget.FrameLayout(themed(dark))
-                    val views = com.novcloud.echo.widget.Widgets.views(themed(dark), layout, state, art)
-                    host.addView(views.apply(themed(dark), host))
-                    host
-                },
-                modifier = Modifier.padding(horizontal = 24.dp).fillMaxWidth().height(height.dp),
-            )
-        }
-        compose.setContent {
-            Column(
-                Modifier.fillMaxSize().background(Color(0xFF5E6B73)).padding(vertical = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
-                Widget(R.layout.widget_small, playing, false, 64, cover)
-                Widget(R.layout.widget_small, paused, true, 64, null)
-                Widget(R.layout.widget_large, playing, true, 158, cover)
-                Widget(R.layout.widget_large, paused, false, 190, cover)
-            }
-        }
-        settle(1)
-        compose.onRoot().captureRoboImage("build/outputs/roborazzi/widgets.png")
-    }
+    @Test fun widgets() = widgets(
+        "widgets",
+        com.novcloud.echo.widget.WidgetState("Paper Satellites", "Ivy Calder", playing = true),
+        com.novcloud.echo.widget.WidgetState("白鸟与北岸的长夜", "温屿", playing = false),
+    )
 
     @Test fun settings_dark() = app("settings_dark", route = "settings")
     @Test fun settings_light() = app("settings_light", dark = false, route = "settings")

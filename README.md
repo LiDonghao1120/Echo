@@ -38,7 +38,7 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 
 ### Mixes from your own library
 - **Daily Mix**: 30 tracks picked each day from your listening history, weighted towards the artists, genres and albums you keep coming back to. At most three songs per artist and two per album. It stays the same all day and changes the next morning.
-- Home also builds **genre picks**, **artist radio**, **Rediscover** (songs you've played at least three times but not in the last 30 days), **Right now** (what you usually play at this hour) and **New to you** (songs you've never played).
+- Home also builds **genre Essentials**, **artist Radio**, **Rediscover** (songs you've played at least three times but not in the last 30 days), a **time-of-day mix** (what you usually play at this hour) and **New to You** (songs you've never played).
 - Recently played, most played, top artists and recently added, all at a glance.
 
 ### Artist pages, your way
@@ -90,7 +90,7 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 - **Bass boost** on phones that support it.
 - **ReplayGain**: even out loudness by track or by album from `REPLAYGAIN_*` tags (ID3, Vorbis comments, MP4, Opus R128), with a preamp and clipping prevention. Gapless albums stay gapless.
 - **Fades**: a short fade in and out on play, pause and skip, which you can turn off.
-- Settings → 音效, or from the menu in Now Playing.
+- Settings → Audio effects, or from the menu in Now Playing.
 
 ### Home screen widget
 - Cover, title, artist and previous / play / next, in the same ink, paper and vermilion. Resizes from a single row to a two-row card and follows light and dark mode.
@@ -102,6 +102,11 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 - Your queue and position are restored after a restart.
 - If a track stalls or fails to decode, Echo restarts it where it stopped, and skips it if it keeps failing.
 - Dark, light or follow the system.
+
+### English and Simplified Chinese
+- The whole interface is written for both languages, from the listening report to the widget and the notification, with proper plurals and dates (“1 song”, “Tuesday, October 27”).
+- Echo follows your phone's language. To choose, go to Settings → Language: Follow system, 简体中文 or English. On Android 13 and later you can also set it in the system's per-app language settings.
+- Switching applies right away and doesn't stop the music.
 
 ## Screenshots
 
@@ -124,7 +129,7 @@ Get the latest APK from **[Releases](https://github.com/LiDonghao1120/Echo/relea
 
 - Requires Android 8.0 (API 26) or later.
 - Every release is signed with the same key, so you can install over an older version and keep your history, playlists and artist art.
-- The interface is in Simplified Chinese.
+- The interface is in English and Simplified Chinese.
 
 ## Privacy
 

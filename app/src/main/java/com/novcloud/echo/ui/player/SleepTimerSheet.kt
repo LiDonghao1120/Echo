@@ -54,11 +54,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.novcloud.echo.R
 import com.novcloud.echo.playback.SleepState
 import com.novcloud.echo.ui.components.Eyebrow
 import com.novcloud.echo.ui.components.LocalActions
@@ -67,9 +70,9 @@ import com.novcloud.echo.ui.theme.EchoMotion
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
 import com.novcloud.echo.ui.theme.palette
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 private val presets = listOf(15, 30, 45, 60, 90)
 
@@ -111,7 +114,7 @@ fun SleepTimerContent(state: SleepState, remaining: Long?, onPick: (Int) -> Unit
     val p = palette
     var custom by remember { mutableStateOf(false) }
     Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
-        Eyebrow("定时关闭")
+        Eyebrow(stringResource(R.string.sleep_timer))
         Spacer(Modifier.height(14.dp))
         AnimatedVisibility(state.active, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
             Row(Modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -125,15 +128,15 @@ fun SleepTimerContent(state: SleepState, remaining: Long?, onPick: (Int) -> Unit
                     if (remaining != null) {
                         Text(formatCountdown(remaining), style = EchoType.poster(40.sp), color = MaterialTheme.colorScheme.onSurface)
                         Spacer(Modifier.height(6.dp))
-                        Text("后暂停播放", style = MaterialTheme.typography.bodySmall, color = p.muted)
+                        Text(stringResource(R.string.sleep_until_pause), style = MaterialTheme.typography.bodySmall, color = p.muted)
                     } else {
-                        Text("播完这首", style = EchoType.heavy(28.sp), color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.sleep_end_of_song_state), style = EchoType.heavy(28.sp), color = MaterialTheme.colorScheme.onSurface)
                         Spacer(Modifier.height(6.dp))
-                        Text("当前歌曲结束后暂停", style = MaterialTheme.typography.bodySmall, color = p.muted)
+                        Text(stringResource(R.string.sleep_end_of_track_hint), style = MaterialTheme.typography.bodySmall, color = p.muted)
                     }
                 }
                 Text(
-                    "取消定时", style = MaterialTheme.typography.labelLarge, color = p.signal,
+                    stringResource(R.string.sleep_turn_off), style = MaterialTheme.typography.labelLarge, color = p.signal,
                     modifier = Modifier.echoClick(corner = 4.dp, onClick = onCancel).padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
@@ -145,9 +148,9 @@ fun SleepTimerContent(state: SleepState, remaining: Long?, onPick: (Int) -> Unit
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             presets.drop(3).forEach { m -> MinuteTile(m, state.totalMs == m * 60_000L, Modifier.weight(1f)) { onPick(m) } }
             Tile(Modifier.weight(1f), selected = custom, onClick = { custom = !custom }) { fg ->
-                Text("自定义", style = EchoType.heavy(22.sp), color = fg)
+                Text(stringResource(R.string.sleep_custom), style = EchoType.heavy(22.sp), color = fg, maxLines = 1)
                 Spacer(Modifier.height(4.dp))
-                Text("任意时长", style = EchoType.label.copy(letterSpacing = 0.6.sp), color = fg.copy(alpha = 0.6f))
+                Text(stringResource(R.string.sleep_any_length), style = EchoType.label.copy(letterSpacing = 0.6.sp), color = fg.copy(alpha = 0.6f))
             }
         }
         AnimatedVisibility(custom, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
@@ -158,7 +161,7 @@ fun SleepTimerContent(state: SleepState, remaining: Long?, onPick: (Int) -> Unit
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Bedtime, null, Modifier.size(20.dp), tint = fg)
                 Spacer(Modifier.width(10.dp))
-                Text("播完当前歌曲", style = MaterialTheme.typography.titleSmall, color = fg)
+                Text(stringResource(R.string.sleep_end_of_track), style = MaterialTheme.typography.titleSmall, color = fg)
             }
         }
     }
@@ -169,7 +172,7 @@ private fun MinuteTile(minutes: Int, selected: Boolean, modifier: Modifier, onCl
     Tile(modifier, selected = selected, onClick = onClick) { fg ->
         Text(minutes.toString(), style = EchoType.poster(30.sp), color = fg)
         Spacer(Modifier.height(4.dp))
-        Text("分钟", style = EchoType.label.copy(letterSpacing = 0.6.sp), color = fg.copy(alpha = 0.6f))
+        Text(pluralStringResource(R.plurals.label_minutes, minutes), style = EchoType.label.copy(letterSpacing = 0.6.sp), color = fg.copy(alpha = 0.6f))
     }
 }
 
@@ -238,12 +241,12 @@ private fun CustomMinutes(onPick: (Int) -> Unit) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(minutes.toString(), style = EchoType.poster(44.sp), color = onSurface)
             Spacer(Modifier.width(8.dp))
-            Text("分钟", Modifier.padding(bottom = 6.dp), style = MaterialTheme.typography.labelLarge, color = p.muted)
+            Text(pluralStringResource(R.plurals.label_minutes, minutes), Modifier.padding(bottom = 6.dp), style = MaterialTheme.typography.labelLarge, color = p.muted)
             Spacer(Modifier.weight(1f))
             Box(
                 Modifier.echoClick(corner = 4.dp, color = p.signal) { onPick(minutes) }.clip(EchoShape.card).background(p.signal)
                     .padding(horizontal = 20.dp, vertical = 10.dp),
-            ) { Text("开始", style = MaterialTheme.typography.labelLarge, color = p.onSignal) }
+            ) { Text(stringResource(R.string.sleep_start), style = MaterialTheme.typography.labelLarge, color = p.onSignal) }
         }
         Spacer(Modifier.height(10.dp))
         Canvas(

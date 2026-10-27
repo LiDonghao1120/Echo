@@ -12,8 +12,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -48,17 +48,22 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.domain.Ranked
 import com.novcloud.echo.domain.Stats
 import com.novcloud.echo.domain.StatsEngine
 import com.novcloud.echo.domain.StatsRange
+import com.novcloud.echo.domain.TrendPoint
 import com.novcloud.echo.ui.components.AnimatedNumber
 import com.novcloud.echo.ui.components.ArtistNameMark
 import com.novcloud.echo.ui.components.ArtistThumb
@@ -69,7 +74,11 @@ import com.novcloud.echo.ui.components.Eyebrow
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.LocalBottomInset
 import com.novcloud.echo.ui.components.LogoScrim
+import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.echoClick
+import com.novcloud.echo.ui.components.formatDate
+import com.novcloud.echo.ui.components.locale
+import com.novcloud.echo.ui.components.number
 import com.novcloud.echo.ui.components.rememberArtistLogo
 import com.novcloud.echo.ui.components.rememberArtistPoster
 import com.novcloud.echo.ui.components.reveal
@@ -82,9 +91,9 @@ import com.novcloud.echo.ui.theme.Sand
 import com.novcloud.echo.ui.theme.Vermilion
 import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.seededColor
+import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.time.LocalDate
 
 private val riso = listOf(Vermilion, Cobalt, Sand, Color(0xFFE8B931), Color(0xFF2E8B6E), Color(0xFFD9475E))
 
@@ -108,65 +117,94 @@ fun StatsReport(stats: Stats?, range: StatsRange, today: LocalDate = LocalDate.n
             Column(Modifier.statusBarsPadding().padding(start = 20.dp, end = 20.dp, top = 16.dp).reveal(0)) {
                 Eyebrow(rangeLine(range, today))
                 Spacer(Modifier.height(4.dp))
-                Text("收听报告", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp))
+                Text(stringResource(R.string.stats_title), maxLines = 1, style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp))
                 Spacer(Modifier.height(14.dp))
                 RangeTabs(range, onRange)
             }
         }
         val s = stats ?: return@LazyColumn
         if (s.empty) {
-            item { EmptyState(null, "暂无收听记录", Modifier.padding(top = 40.dp)) }
+            item { EmptyState(null, stringResource(R.string.stats_empty), Modifier.padding(top = 40.dp)) }
             return@LazyColumn
         }
         item(key = "poster") { Box(Modifier.reveal(1)) { ReportPoster(s, range, today) } }
         item(key = "rhythm") {
-            Chapter(1, "节律") {
+            Chapter(1, stringResource(R.string.stats_rhythm)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     HourDial(s.hourly, Vermilion, Cobalt, p.rule, MaterialTheme.colorScheme.onSurface, Modifier.size(168.dp))
                     Spacer(Modifier.width(18.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("高峰时刻", style = MaterialTheme.typography.labelMedium, color = p.muted)
-                        Text("%02d:00".format(s.peakHour), style = EchoType.poster(48.sp))
+                        Text(stringResource(R.string.stats_peak_hour), style = MaterialTheme.typography.labelMedium, color = p.muted)
+                        Text(formatDate(java.time.LocalTime.of(s.peakHour, 0), R.string.time_peak_hour), style = EchoType.poster(48.sp), maxLines = 1)
                         Spacer(Modifier.height(10.dp))
                         Text(periodName(s.peakHour), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
-                        Text("最爱周${StatsEngine.WEEKDAYS[s.peakWeekday]}", style = MaterialTheme.typography.bodyMedium, color = p.muted)
+                        Text(stringArrayResource(R.array.stats_peak_weekday)[s.peakWeekday], style = MaterialTheme.typography.bodyMedium, color = p.muted)
                     }
                 }
             }
         }
         item(key = "trend") {
-            Chapter(2, "起伏") {
-                RidgeChart(s.trend, Vermilion, Cobalt, p.muted, MaterialTheme.colorScheme.onSurface)
+            Chapter(2, stringResource(R.string.stats_trend)) {
+                RidgeChart(s.trend, trendLabels(s.trend, range), Vermilion, Cobalt, p.muted, MaterialTheme.colorScheme.onSurface)
             }
         }
         item(key = "week") {
-            Chapter(3, "一周") {
-                TallyWeek(s.weekday, StatsEngine.WEEKDAYS, p.signal, p.card, p.muted)
+            Chapter(3, stringResource(R.string.stats_week)) {
+                TallyWeek(s.weekday, stringArrayResource(R.array.weekdays_short).toList(), p.signal, p.card, p.muted)
             }
         }
-        if (s.topArtists.isNotEmpty()) item(key = "artists") { Chapter(4, "最爱歌手") { TopArtists(s.topArtists) } }
-        if (s.topSongs.isNotEmpty()) item(key = "songs") { Chapter(5, "单曲循环") { TopSongs(s.topSongs) } }
+        if (s.topArtists.isNotEmpty()) item(key = "artists") { Chapter(4, stringResource(R.string.stats_top_artists)) { TopArtists(s.topArtists) } }
+        if (s.topSongs.isNotEmpty()) item(key = "songs") { Chapter(5, stringResource(R.string.stats_on_repeat)) { TopSongs(s.topSongs) } }
         if (s.topAlbums.isNotEmpty()) item(key = "albums") { TopAlbums(s.topAlbums) }
-        if (s.topGenres.isNotEmpty()) item(key = "genres") { Chapter(7, "流派光谱") { Genres(s.topGenres) } }
-        item(key = "habit") { Chapter(8, "习惯") { Habits(s) } }
+        if (s.topGenres.isNotEmpty()) item(key = "genres") { Chapter(7, stringResource(R.string.stats_genres)) { Genres(s.topGenres) } }
+        item(key = "habit") { Chapter(8, stringResource(R.string.stats_habits)) { Habits(s) } }
     }
 }
 
+@Composable
 private fun rangeLine(range: StatsRange, today: LocalDate): String {
-    val d = range.days ?: return "全部记录"
+    val d = range.days ?: return stringResource(R.string.stats_all_time)
     val from = today.minusDays(d - 1)
-    return if (from.year == today.year) "${from.monthValue}.${from.dayOfMonth} — ${today.monthValue}.${today.dayOfMonth}"
-    else "${from.year}.${from.monthValue}.${from.dayOfMonth} — ${today.year}.${today.monthValue}.${today.dayOfMonth}"
+    val pattern = if (from.year == today.year) R.string.date_range_day else R.string.date_range_day_year
+    return stringResource(R.string.date_range, formatDate(from, pattern), formatDate(today, pattern))
 }
 
-private fun periodName(h: Int) = when (h) {
-    in 5..8 -> "清晨的耳朵"
-    in 9..11 -> "上午的节拍"
-    in 12..13 -> "午间的旋律"
-    in 14..17 -> "午后的回声"
-    in 18..22 -> "夜晚的主场"
-    else -> "深夜的独白"
+@Composable
+private fun periodName(h: Int): String = stringArrayResource(R.array.stats_periods)[
+    when (h) {
+        in 5..8 -> 0
+        in 9..11 -> 1
+        in 12..13 -> 2
+        in 14..17 -> 3
+        in 18..22 -> 4
+        else -> 5
+    }
+]
+
+@Composable
+private fun trendLabels(points: List<TrendPoint>, range: StatsRange): List<String> {
+    val res = LocalContext.current.resources
+    val weekdays = stringArrayResource(R.array.weekdays_short)
+    return remember(points, range, res.locale) {
+        points.map { pt ->
+            when {
+                pt.monthly -> res.formatDate(pt.date, R.string.date_trend_month)
+                range == StatsRange.Week -> weekdays[pt.date.dayOfWeek.value - 1]
+                else -> res.formatDate(pt.date, R.string.date_trend_day)
+            }
+        }
+    }
 }
+
+@Composable
+private fun rangeLabel(r: StatsRange): String = stringResource(
+    when (r) {
+        StatsRange.Week -> R.string.stats_range_week
+        StatsRange.Month -> R.string.stats_range_month
+        StatsRange.Year -> R.string.stats_range_year
+        StatsRange.All -> R.string.stats_range_all
+    },
+)
 
 @Composable
 private fun RangeTabs(range: StatsRange, onChange: (StatsRange) -> Unit) {
@@ -183,7 +221,7 @@ private fun RangeTabs(range: StatsRange, onChange: (StatsRange) -> Unit) {
                     Modifier.weight(1f).fillMaxHeight().clickable(remember { MutableInteractionSource() }, null) { onChange(r) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(r.label, style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (r == range) FontWeight.Black else FontWeight.Medium), color = c)
+                    Text(rangeLabel(r), maxLines = 1, style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (r == range) FontWeight.Black else FontWeight.Medium), color = c)
                 }
             }
         }
@@ -200,7 +238,7 @@ private fun ReportPoster(s: Stats, range: StatsRange, today: LocalDate) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             EchoMark(Modifier.size(18.dp), color = Paper, core = Vermilion)
             Spacer(Modifier.width(8.dp))
-            Text("回响", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black), color = Paper)
+            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black), color = Paper)
             Spacer(Modifier.weight(1f))
             Text(rangeLine(range, today), style = EchoType.label, color = Paper.copy(alpha = 0.55f))
         }
@@ -210,8 +248,11 @@ private fun ReportPoster(s: Stats, range: StatsRange, today: LocalDate) {
         Row(verticalAlignment = Alignment.Bottom) {
             AnimatedNumber(if (hours > 0) hours else minutes, style = EchoType.poster(132.sp), color = Paper)
             Column(Modifier.padding(start = 10.dp, bottom = 18.dp)) {
-                Text(if (hours > 0) "小时" else "分钟", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black), color = Paper)
-                if (hours > 0) Text("${minutes % 60} 分钟", style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.6f))
+                Text(
+                    if (hours > 0) pluralStringResource(R.plurals.label_hours, hours.toInt()) else pluralStringResource(R.plurals.label_minutes, minutes.toInt()),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black), color = Paper,
+                )
+                if (hours > 0) Text(stringResource(R.string.duration_minutes, number((minutes % 60).toInt())), style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.6f))
             }
             Spacer(Modifier.weight(1f))
             if (range.days != null && s.previousMs > 0) {
@@ -226,19 +267,19 @@ private fun ReportPoster(s: Stats, range: StatsRange, today: LocalDate) {
         }
         Spacer(Modifier.height(4.dp))
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-            PosterFigure(s.plays.toLong(), "次播放", Modifier.weight(1f))
+            PosterFigure(s.plays.toLong(), pluralStringResource(R.plurals.label_plays, s.plays), Modifier.weight(1f))
             Box(Modifier.width(1.dp).fillMaxHeight().background(Paper.copy(alpha = 0.14f)))
-            PosterFigure(s.songs.toLong(), "首歌", Modifier.weight(1f).padding(start = 14.dp))
+            PosterFigure(s.songs.toLong(), pluralStringResource(R.plurals.label_songs_poster, s.songs), Modifier.weight(1f).padding(start = 14.dp))
             Box(Modifier.width(1.dp).fillMaxHeight().background(Paper.copy(alpha = 0.14f)))
-            PosterFigure(s.artists.toLong(), "位歌手", Modifier.weight(1f).padding(start = 14.dp))
+            PosterFigure(s.artists.toLong(), pluralStringResource(R.plurals.label_artists, s.artists), Modifier.weight(1f).padding(start = 14.dp))
         }
         Spacer(Modifier.height(18.dp))
         DayStrip(s.recentDays, Vermilion, Paper.copy(alpha = 0.08f))
         Spacer(Modifier.height(8.dp))
         Row {
-            Text("近 28 天", style = EchoType.label, color = Paper.copy(alpha = 0.45f))
+            Text(stringResource(R.string.stats_last_28_days), style = EchoType.label, color = Paper.copy(alpha = 0.45f))
             Spacer(Modifier.weight(1f))
-            Text("${s.activeDays} 天有声", style = EchoType.label, color = Paper.copy(alpha = 0.45f))
+            Text(count(R.plurals.stats_days_with_music, s.activeDays), style = EchoType.label, color = Paper.copy(alpha = 0.45f))
         }
     }
 }
@@ -283,12 +324,12 @@ private fun TopArtists(list: List<Ranked>) {
         if (poster != null) AsyncImage(poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.copy(alpha = 0.35f), 0.35f to Color.Transparent, 0.6f to Color.Transparent, 1f to Ink.copy(alpha = 0.9f))))
         Box(Modifier.align(Alignment.Center).fillMaxWidth().height(maxHeight * 0.5f)) { LogoScrim(logo, 0.8f) }
-        Text("No.1", Modifier.align(Alignment.TopStart).padding(16.dp), style = EchoType.poster(40.sp), color = Vermilion)
+        Text(stringResource(R.string.stats_number_one), Modifier.align(Alignment.TopStart).padding(16.dp), style = EchoType.poster(40.sp), color = Vermilion)
         ArtistNameMark(first.key, logo, maxWidth - 48.dp, maxHeight * 0.3f, Modifier.align(Alignment.Center), textSize = 52.sp, minTextSize = 22.sp)
         Row(Modifier.align(Alignment.BottomStart).padding(16.dp), verticalAlignment = Alignment.Bottom) {
             Text(shortDuration(first.ms), style = EchoType.poster(30.sp), color = Paper)
             Spacer(Modifier.width(10.dp))
-            Text("${first.plays} 次播放", style = MaterialTheme.typography.labelMedium, color = Paper.copy(alpha = 0.7f), modifier = Modifier.padding(bottom = 4.dp))
+            Text(count(R.plurals.plays_count_long, first.plays), style = MaterialTheme.typography.labelMedium, color = Paper.copy(alpha = 0.7f), modifier = Modifier.padding(bottom = 4.dp))
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -335,8 +376,8 @@ private fun TopSongs(list: List<Ranked>) {
                 Text(r.title, style = (if (i == 0) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge).copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(displayArtist(r.subtitle), style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1)
             }
-            Text("${r.plays}", style = EchoType.numeral(16.sp))
-            Text(" 次", style = MaterialTheme.typography.labelSmall, color = p.muted)
+            Text(number(r.plays), style = EchoType.numeral(16.sp))
+            Text(pluralStringResource(R.plurals.unit_plays, r.plays), style = MaterialTheme.typography.labelSmall, color = p.muted)
         }
     }
 }
@@ -349,7 +390,7 @@ private fun TopAlbums(list: List<Ranked>) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text("06", style = EchoType.poster(30.sp), color = palette.signal)
                 Spacer(Modifier.width(10.dp))
-                Text("唱片架", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black), modifier = Modifier.padding(bottom = 2.dp))
+                Text(stringResource(R.string.stats_shelf), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black), modifier = Modifier.padding(bottom = 2.dp))
             }
             Spacer(Modifier.height(10.dp))
             Box(Modifier.fillMaxWidth().height(2.dp).background(MaterialTheme.colorScheme.onSurface))
@@ -400,9 +441,9 @@ private fun Habits(s: Stats) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.Bottom) {
                 AnimatedNumber(s.currentStreak.toLong(), style = EchoType.poster(56.sp))
-                Text(" 天", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black), modifier = Modifier.padding(bottom = 8.dp))
+                Text(pluralStringResource(R.plurals.unit_days, s.currentStreak), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black), modifier = Modifier.padding(bottom = 8.dp))
             }
-            Text("连续收听", style = MaterialTheme.typography.labelMedium, color = p.muted)
+            Text(stringResource(R.string.stats_streak), style = MaterialTheme.typography.labelMedium, color = p.muted)
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 repeat(minOf(s.longestStreak, 14)) { i ->
@@ -410,13 +451,13 @@ private fun Habits(s: Stats) {
                 }
             }
             Spacer(Modifier.height(4.dp))
-            Text("最长 ${s.longestStreak} 天", style = EchoType.label, color = p.faint)
+            Text(count(R.plurals.stats_longest_streak, s.longestStreak), style = EchoType.label, color = p.faint)
         }
         Box(Modifier.size(112.dp), contentAlignment = Alignment.Center) {
             SquareGauge(s.completionRate, Cobalt, p.card, Modifier.fillMaxSize())
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 AnimatedNumber((s.completionRate * 100).toLong(), format = { "$it%" }, style = EchoType.poster(30.sp))
-                Text("完整播放", style = MaterialTheme.typography.labelSmall, color = p.muted)
+                Text(stringResource(R.string.stats_completion), style = MaterialTheme.typography.labelSmall, color = p.muted)
             }
         }
     }

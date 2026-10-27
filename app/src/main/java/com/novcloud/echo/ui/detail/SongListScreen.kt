@@ -46,11 +46,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.AddToPlaylistDialog
@@ -62,6 +64,7 @@ import com.novcloud.echo.ui.components.LocalBottomInset
 import com.novcloud.echo.ui.components.NameDialog
 import com.novcloud.echo.ui.components.SongMenuContext
 import com.novcloud.echo.ui.components.SongRow
+import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.formatLong
 import com.novcloud.echo.ui.library.PillButton
 import com.novcloud.echo.ui.player.rememberArtColors
@@ -96,26 +99,35 @@ fun SongListScreen(source: ListSource) {
     val playlist by playlistFlow.collectAsState(initial = null)
     val playlistIds by idsFlow.collectAsState(initial = emptyList())
 
-    val (title, eyebrow, songs) = remember(source, lib, home, favorites, events, playlist, playlistIds) {
+    val mixNow = (source as? ListSource.MixSrc)?.let { home.mix(it.id) }
+    val mixName = mixNow?.let { com.novcloud.echo.ui.home.mixTitle(it) }.orEmpty()
+    val mixEyebrow = mixNow?.let { com.novcloud.echo.ui.home.mixSubtitle(it) }.orEmpty()
+    val playlistLabel = stringResource(R.string.playlist)
+    val genreLabel = stringResource(R.string.genre)
+    val folderLabel = stringResource(R.string.folder)
+    val recentLabel = stringResource(R.string.recently_played)
+    val mostLabel = stringResource(R.string.most_played)
+    val addedLabel = stringResource(R.string.recently_added)
+    val likedLabel = stringResource(R.string.liked_songs)
+    val allSongsLabel = stringResource(R.string.all_songs)
+    val (title, eyebrow, songs) = remember(source, lib, home, favorites, events, playlist, playlistIds, mixName) {
         when (source) {
-            is ListSource.MixSrc -> home.mix(source.id).let { m ->
-                Triple(if (m?.id == "daily") "每日推荐" else displayArtist(m?.title ?: ""), m?.subtitle ?: "", m?.songs.orEmpty())
-            }
-            is ListSource.PlaylistSrc -> Triple(playlist?.name ?: "", "歌单", playlistIds.mapNotNull { lib.songById[it] })
-            is ListSource.GenreSrc -> Triple(source.name, "流派", lib.genres.firstOrNull { it.name == source.name }?.songs.orEmpty())
-            is ListSource.FolderSrc -> Triple(lib.folders.firstOrNull { it.path == source.path }?.name ?: "", "文件夹", lib.folders.firstOrNull { it.path == source.path }?.songs.orEmpty())
+            is ListSource.MixSrc -> Triple(mixName, mixEyebrow, mixNow?.songs.orEmpty())
+            is ListSource.PlaylistSrc -> Triple(playlist?.name ?: "", playlistLabel, playlistIds.mapNotNull { lib.songById[it] })
+            is ListSource.GenreSrc -> Triple(source.name, genreLabel, lib.genres.firstOrNull { it.name == source.name }?.songs.orEmpty())
+            is ListSource.FolderSrc -> Triple(lib.folders.firstOrNull { it.path == source.path }?.name ?: "", folderLabel, lib.folders.firstOrNull { it.path == source.path }?.songs.orEmpty())
             is ListSource.Kind -> when {
                 source.kind == "recent" -> {
                     val ids = LinkedHashSet<Long>()
                     events.asReversed().forEach { if (ids.size < 100) ids += it.songId }
-                    Triple("最近播放", "", ids.mapNotNull { lib.songById[it] })
+                    Triple(recentLabel, "", ids.mapNotNull { lib.songById[it] })
                 }
-                source.kind == "most" -> Triple("最常播放", "", home.playCounts.entries.sortedByDescending { it.value }.take(100).mapNotNull { lib.songById[it.key] })
-                source.kind == "added" -> Triple("最近添加", "", lib.songs.sortedByDescending { it.dateAdded }.take(100))
-                source.kind == "favorites" -> Triple("我喜欢的音乐", "", favorites.mapNotNull { lib.songById[it] })
+                source.kind == "most" -> Triple(mostLabel, "", home.playCounts.entries.sortedByDescending { it.value }.take(100).mapNotNull { lib.songById[it.key] })
+                source.kind == "added" -> Triple(addedLabel, "", lib.songs.sortedByDescending { it.dateAdded }.take(100))
+                source.kind == "favorites" -> Triple(likedLabel, "", favorites.mapNotNull { lib.songById[it] })
                 source.kind.startsWith("artist:") -> {
                     val n = source.kind.removePrefix("artist:")
-                    Triple(displayArtist(n), "全部歌曲", lib.artistByName[n]?.songs.orEmpty().sortedByDescending { home.playCounts[it.id] ?: 0 })
+                    Triple(displayArtist(n), allSongsLabel, lib.artistByName[n]?.songs.orEmpty().sortedByDescending { home.playCounts[it.id] ?: 0 })
                 }
                 else -> Triple("", "", emptyList<Song>())
             }
@@ -170,19 +182,19 @@ fun SongListScreen(source: ListSource) {
                         if (eyebrow.isNotEmpty()) com.novcloud.echo.ui.components.Eyebrow(eyebrow)
                         Text(title, style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black), textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp))
                         if (songs.isNotEmpty()) Text(
-                            "${songs.size} 首 · ${formatLong(songs.sumOf { it.durationMs })}",
+                            "${count(R.plurals.songs_short, songs.size)} · ${formatLong(songs.sumOf { it.durationMs })}",
                             style = EchoType.label, color = palette.muted,
                             modifier = Modifier.padding(top = 6.dp),
                         )
                         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp)) {
-                            PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f), primary = true) { actions.player.play(songs) }
+                            PillButton(Icons.Rounded.PlayArrow, stringResource(R.string.action_play), Modifier.weight(1f), primary = true) { actions.player.play(songs) }
                             Spacer(Modifier.width(12.dp))
-                            PillButton(Icons.Rounded.Shuffle, "随机", Modifier.weight(1f)) { actions.player.play(songs, shuffle = true) }
+                            PillButton(Icons.Rounded.Shuffle, stringResource(R.string.action_shuffle), Modifier.weight(1f)) { actions.player.play(songs, shuffle = true) }
                         }
                     }
                 }
             }
-            if (songs.isEmpty()) item { EmptyState(Icons.Rounded.MusicOff, "空空如也") }
+            if (songs.isEmpty()) item { EmptyState(Icons.Rounded.MusicOff, stringResource(R.string.list_empty)) }
             itemsIndexed(songs, key = { i, s -> "${s.id}_$i" }) { i, s ->
                 SongRow(
                     s, { actions.player.playSong(s, songs) },
@@ -198,15 +210,15 @@ fun SongListScreen(source: ListSource) {
                 if (playlistId != null) Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreHoriz, null) }
                     DropdownMenu(menu, { menu = false }) {
-                        DropdownMenuItem(text = { Text("重命名") }, onClick = { menu = false; renaming = true })
-                        DropdownMenuItem(text = { Text("删除歌单", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; deleting = true })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.action_rename)) }, onClick = { menu = false; renaming = true })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.playlist_delete), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; deleting = true })
                     }
                 }
             }
         }
     }
-    if (renaming && playlistId != null) NameDialog("重命名", title) { n -> renaming = false; if (n != null) container.library.renamePlaylist(playlistId, n) }
-    if (deleting && playlistId != null) ConfirmDialog("删除「$title」？", "删除") { ok ->
+    if (renaming && playlistId != null) NameDialog(stringResource(R.string.action_rename), title) { n -> renaming = false; if (n != null) container.library.renamePlaylist(playlistId, n) }
+    if (deleting && playlistId != null) ConfirmDialog(stringResource(R.string.playlist_delete_confirm, title), stringResource(R.string.action_delete)) { ok ->
         deleting = false
         if (ok) { container.library.deletePlaylist(playlistId); actions.back() }
     }

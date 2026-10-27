@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.MoreVert
@@ -31,7 +32,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,29 +46,25 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.navigation.NavController
 import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import com.novcloud.echo.data.ArtistImages
-import com.novcloud.echo.data.splitArtists
 import com.novcloud.echo.data.ArtistLogoInfo
 import com.novcloud.echo.data.Library
 import com.novcloud.echo.data.LibraryRepository
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
+import com.novcloud.echo.data.splitArtists
 import com.novcloud.echo.domain.HomeData
 import com.novcloud.echo.playback.PlayerConnection
 import com.novcloud.echo.ui.theme.EchoShape
@@ -74,7 +73,10 @@ import com.novcloud.echo.ui.theme.Ink
 import com.novcloud.echo.ui.theme.LocalPalette
 import com.novcloud.echo.ui.theme.displayStyle
 import com.novcloud.echo.ui.theme.seededColor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 data class SongMenuContext(val playlistId: Long? = null, val nowPlaying: Boolean = false)
 
@@ -241,7 +243,7 @@ fun Modifier.bouncyClick(onLongClick: (() -> Unit)? = null, onClick: () -> Unit)
 
 @Composable
 fun Eyebrow(text: String, modifier: Modifier = Modifier, color: Color = LocalPalette.current.signal) {
-    Text(text.uppercase(), modifier, style = EchoType.labelBold, color = color, maxLines = 1)
+    Text(text.uppercase(), modifier, style = EchoType.labelBold, color = color, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
 }
 
 @Composable
@@ -258,7 +260,10 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, index: Int? = nu
             Text("%02d".format(index), style = EchoType.labelBold, color = p.signal)
             Spacer(Modifier.width(10.dp))
         }
-        Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black), maxLines = 1)
+        Text(
+            title, Modifier.widthIn(max = 260.dp), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
         Spacer(Modifier.width(12.dp))
         Box(Modifier.weight(1f).height(1.dp).background(p.rule))
         if (onMore != null) {
@@ -331,7 +336,7 @@ fun SongRow(
 fun AnimatedNumber(
     value: Long,
     modifier: Modifier = Modifier,
-    format: (Long) -> String = { it.toString() },
+    format: (Long) -> String = rememberNumberFormat(),
     style: TextStyle = MaterialTheme.typography.headlineMedium,
     color: Color = LocalContentColor.current,
 ) {
@@ -347,7 +352,7 @@ fun EmptyState(icon: androidx.compose.ui.graphics.vector.ImageVector?, text: Str
     Column(modifier.fillMaxWidth().padding(48.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         EchoMark(Modifier.size(72.dp), color = p.faint, core = p.signal)
         Spacer(Modifier.height(20.dp))
-        Text(text, style = MaterialTheme.typography.titleMedium, color = p.muted)
+        Text(text, style = MaterialTheme.typography.titleMedium, color = p.muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         if (action != null) { Spacer(Modifier.height(18.dp)); action() }
     }
 }
@@ -372,7 +377,5 @@ fun formatTime(ms: Long): String {
     return "%d:%02d".format(s / 60, s % 60)
 }
 
-fun formatLong(ms: Long): String {
-    val m = ms / 60_000
-    return if (m >= 60) "${m / 60} 小时 ${m % 60} 分钟" else "$m 分钟"
-}
+@Composable
+fun formatLong(ms: Long): String = LocalContext.current.resources.longDuration(ms)

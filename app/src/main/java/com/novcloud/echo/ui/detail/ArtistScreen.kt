@@ -5,7 +5,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import com.novcloud.echo.data.displayArtist
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -58,6 +57,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -65,9 +66,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.ArtistImages
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.displayAlbum
+import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.data.splitArtists
 import com.novcloud.echo.ui.components.AnimatedNumber
 import com.novcloud.echo.ui.components.ArtistNameMark
@@ -76,6 +79,7 @@ import com.novcloud.echo.ui.components.LocalBottomInset
 import com.novcloud.echo.ui.components.LogoScrim
 import com.novcloud.echo.ui.components.SectionHeader
 import com.novcloud.echo.ui.components.SongRow
+import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.echoClick
 import com.novcloud.echo.ui.components.logoSize
 import com.novcloud.echo.ui.home.AlbumTile
@@ -186,30 +190,31 @@ fun ArtistScreen(name: String) {
                     ) { LogoScrim(logo, 0.9f) }
                     Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "${artist.songs.size} 首  ·  ${artist.albums.size} 张专辑",
+                            "${count(R.plurals.songs_short, artist.songs.size)}  ·  ${count(R.plurals.albums_count, artist.albums.size)}",
                             style = EchoType.label, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         )
                         Spacer(Modifier.height(14.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            HeaderKey(Icons.Rounded.PlayArrow, "播放", colors.accent, Ink, Modifier.width(132.dp)) {
+                            HeaderKey(Icons.Rounded.PlayArrow, stringResource(R.string.action_play), colors.accent, Ink, Modifier.width(132.dp)) {
                                 actions.player.play(artist.songs.sortedByDescending { home.playCounts[it.id] ?: 0 })
                             }
-                            HeaderKey(Icons.Rounded.Shuffle, "随机", MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), MaterialTheme.colorScheme.onSurface, Modifier.width(132.dp)) {
+                            HeaderKey(Icons.Rounded.Shuffle, stringResource(R.string.action_shuffle), MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), MaterialTheme.colorScheme.onSurface, Modifier.width(132.dp)) {
                                 actions.player.play(artist.songs, shuffle = true)
                             }
                         }
                     }
                 }
             }
-            item(key = "top_h") { SectionHeader("热门歌曲", index = 1, onMore = { actions.openList("artist:${artist.name}") }) }
+            item(key = "top_h") { SectionHeader(stringResource(R.string.artist_top_songs), index = 1, onMore = { actions.openList("artist:${artist.name}") }) }
             items(topSongs, key = { "top_${it.id}" }) { s ->
+                val plays = home.playCounts[s.id]?.let { count(R.plurals.plays_count, it) }
                 SongRow(
                     s, { actions.player.playSong(s, topSongs) }, current = state.song?.id == s.id, playing = state.isPlaying,
-                    subtitle = listOfNotNull(displayAlbum(s.album), home.playCounts[s.id]?.let { "$it 次" }).joinToString(" · "),
+                    subtitle = listOfNotNull(displayAlbum(s.album), plays).joinToString(" · "),
                 )
             }
             if (artist.albums.isNotEmpty()) {
-                item(key = "albums_h") { SectionHeader("专辑", index = 2) }
+                item(key = "albums_h") { SectionHeader(stringResource(R.string.albums), index = 2) }
                 item(key = "albums") {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(artist.albums, key = { it.id }) { AlbumTile(it, 148.dp) }
@@ -218,11 +223,11 @@ fun ArtistScreen(name: String) {
             }
             if (mine.first > 0) {
                 item(key = "mine") {
-                    SectionHeader("我的收听", index = 3)
+                    SectionHeader(stringResource(R.string.artist_your_listening), index = 3)
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                        Figure(mine.first.toLong(), "次播放", Modifier.weight(1f))
-                        Figure(mine.second, "分钟", Modifier.weight(1f))
-                        Figure(artist.songs.size.toLong(), "首歌曲", Modifier.weight(1f))
+                        Figure(mine.first.toLong(), pluralStringResource(R.plurals.label_plays, mine.first), Modifier.weight(1f))
+                        Figure(mine.second, pluralStringResource(R.plurals.label_minutes, mine.second.toInt()), Modifier.weight(1f))
+                        Figure(artist.songs.size.toLong(), pluralStringResource(R.plurals.label_songs, artist.songs.size), Modifier.weight(1f))
                     }
                 }
             }

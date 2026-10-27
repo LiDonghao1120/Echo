@@ -33,27 +33,47 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.novcloud.echo.BuildConfig
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.BackupException
 import com.novcloud.echo.data.ImportMode
 import com.novcloud.echo.data.PendingImport
 import com.novcloud.echo.diag.DiagLog
 import com.novcloud.echo.ui.components.Eyebrow
+import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.echoClick
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
 import com.novcloud.echo.ui.theme.palette
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class DataTools(val exportBackup: () -> Unit, val importBackup: () -> Unit, val exportLog: () -> Unit)
+
+private fun backupError(e: Throwable): Int = when ((e as? BackupException)?.reason) {
+    BackupException.Reason.Invalid -> R.string.backup_error_invalid
+    BackupException.Reason.NotEcho -> R.string.backup_error_not_echo
+    BackupException.Reason.Newer -> R.string.backup_error_newer
+    BackupException.Reason.Incomplete -> R.string.backup_error_incomplete
+    BackupException.Reason.Unopenable -> R.string.backup_error_unopenable
+    null -> R.string.backup_unreadable
+}
+
+/** "1,234 songs · 56 albums · 78 artists" in the current language. */
+fun librarySummary(res: android.content.res.Resources, lib: com.novcloud.echo.data.Library): String = listOf(
+    res.count(R.plurals.songs_short, lib.songs.size),
+    res.count(R.plurals.albums_count, lib.albums.size),
+    res.count(R.plurals.artists_count, lib.artists.size),
+).joinToString(" · ")
 
 private fun stamp(): String = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
 
@@ -62,27 +82,28 @@ fun rememberDataTools(): DataTools {
     val context = LocalContext.current
     val container = (context.applicationContext as EchoApp).container
     val scope = rememberCoroutineScope()
-    var busy by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf<Int?>(null) }
+    val res = context.resources
     var pending by remember { mutableStateOf<PendingImport?>(null) }
 
-    fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+    fun toast(text: Int) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
 
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        busy = "正在导出…"
+        busy = R.string.backup_exporting
         scope.launch {
             val r = container.backup.export(uri)
             busy = null
-            toast(if (r.isSuccess) "备份已导出" else "导出失败")
+            toast(if (r.isSuccess) R.string.backup_exported else R.string.export_failed)
         }
     }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        busy = "正在读取…"
+        busy = R.string.backup_reading
         scope.launch {
             val r = container.backup.read(uri)
             busy = null
-            r.onSuccess { pending = it }.onFailure { toast((it as? BackupException)?.message ?: "无法读取这个文件") }
+            r.onSuccess { pending = it }.onFailure { toast(backupError(it)) }
         }
     }
     val logger = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri: Uri? ->
@@ -90,15 +111,15 @@ fun rememberDataTools(): DataTools {
         scope.launch {
             val lib = container.library.library.value
             val header = listOf(
-                "回响 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                res.getString(R.string.app_version_line, res.getString(R.string.app_name), BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
                 DiagLog.device(),
-                "曲库 ${lib.songs.size} 首 · ${lib.albums.size} 张专辑 · ${lib.artists.size} 位歌手",
-                "导出于 ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date())}",
+                res.getString(R.string.diag_library, librarySummary(res, lib)),
+                res.getString(R.string.diag_exported_at, SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date())),
             ).joinToString("\n")
             val ok = withContext(Dispatchers.IO) {
                 runCatching { context.contentResolver.openOutputStream(uri, "wt")!!.use { DiagLog.export(it, header) } }.isSuccess
             }
-            toast(if (ok) "诊断日志已导出" else "导出失败")
+            toast(if (ok) R.string.diag_exported else R.string.export_failed)
         }
     }
 
@@ -107,27 +128,27 @@ fun rememberDataTools(): DataTools {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = palette.signal)
                 Spacer(Modifier.width(14.dp))
-                Text(msg)
+                Text(stringResource(msg))
             }
         })
     }
     pending?.let { p ->
         ImportSheet(p, onDismiss = { pending = null; container.backup.discard() }) { mode ->
             pending = null
-            busy = "正在恢复…"
+            busy = R.string.backup_restoring
             scope.launch {
                 val r = container.backup.apply(p, mode)
                 container.lyrics.invalidate()
                 busy = null
-                toast(if (r.isSuccess) "已恢复备份" else "恢复失败")
+                toast(if (r.isSuccess) R.string.backup_restored else R.string.restore_failed)
             }
         }
     }
     return remember(exporter, importer, logger) {
         DataTools(
-            exportBackup = { exporter.launch("回响备份-${stamp()}.zip") },
+            exportBackup = { exporter.launch(res.getString(R.string.backup_file_name, stamp())) },
             importBackup = { importer.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
-            exportLog = { logger.launch("回响诊断-${stamp()}.txt") },
+            exportLog = { logger.launch(res.getString(R.string.diag_file_name, stamp())) },
         )
     }
 }
@@ -145,29 +166,32 @@ fun ImportSheetContent(pending: PendingImport, onChoose: (ImportMode) -> Unit) {
     val p = palette
     var confirmReplace by remember { mutableStateOf(false) }
     Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
-        Eyebrow("恢复备份")
+        Eyebrow(stringResource(R.string.backup_restore_title))
         Spacer(Modifier.height(6.dp))
-        val created = pending.data.createdAt.takeIf { it > 0 }?.let { SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(it)) }
+        val created = pending.data.createdAt.takeIf { it > 0 }?.let {
+            com.novcloud.echo.ui.components.formatDate(java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()), R.string.date_backup)
+        }
+        val version = pending.data.appVersion.takeIf { it.isNotEmpty() }?.let { stringResource(R.string.backup_app_version, stringResource(R.string.app_name), it) }
         Text(
-            listOfNotNull(created, pending.data.appVersion.takeIf { it.isNotEmpty() }?.let { "回响 $it" }).joinToString(" · "),
+            listOfNotNull(created, version).joinToString(" · "),
             style = MaterialTheme.typography.bodySmall, color = p.muted,
         )
         Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Stat(pending.favorites, "喜欢")
-            Stat(pending.playlists, "歌单")
-            Stat(pending.events, "次收听")
-            Stat(pending.artists, "歌手形象")
+            Stat(pending.favorites, pluralStringResource(R.plurals.label_liked, pending.favorites))
+            Stat(pending.playlists, pluralStringResource(R.plurals.label_playlists, pending.playlists))
+            Stat(pending.events, pluralStringResource(R.plurals.label_listens, pending.events))
+            Stat(pending.artists, pluralStringResource(R.plurals.label_artist_images, pending.artists))
         }
         Spacer(Modifier.height(22.dp))
-        Choice("合并", "保留手机上的数据，补上备份里没有的", p.signal, p.onSignal) { onChoose(ImportMode.Merge) }
+        Choice(stringResource(R.string.backup_merge), stringResource(R.string.backup_merge_detail), p.signal, p.onSignal) { onChoose(ImportMode.Merge) }
         Spacer(Modifier.height(8.dp))
         if (!confirmReplace) {
-            Choice("替换", "用备份覆盖喜欢、歌单、收听记录和设置", MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface) {
+            Choice(stringResource(R.string.backup_replace), stringResource(R.string.backup_replace_detail), MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface) {
                 confirmReplace = true
             }
         } else {
-            Choice("确认替换", "手机上现有的这些数据会被清除", MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.surface) {
+            Choice(stringResource(R.string.backup_replace_confirm), stringResource(R.string.backup_replace_confirm_detail), MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.surface) {
                 onChoose(ImportMode.Replace)
             }
         }
@@ -177,7 +201,7 @@ fun ImportSheetContent(pending: PendingImport, onChoose: (ImportMode) -> Unit) {
 @Composable
 private fun Stat(value: Int, label: String) {
     Column {
-        Text(value.toString(), style = EchoType.poster(28.sp), color = MaterialTheme.colorScheme.onSurface)
+        Text(com.novcloud.echo.ui.components.number(value), style = EchoType.poster(28.sp), color = MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.height(4.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, color = palette.muted)
     }

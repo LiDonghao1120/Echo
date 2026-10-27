@@ -8,7 +8,6 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.novcloud.echo.data.Song
-import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.widget.WidgetState
 import com.novcloud.echo.widget.Widgets
 import kotlinx.coroutines.CoroutineScope
@@ -24,7 +23,7 @@ class WidgetSync(private val context: Context, private val scope: CoroutineScope
     fun update(item: MediaItem?, song: Song?, playing: Boolean, trackChanged: Boolean) {
         if (item == null) return
         val title = song?.title ?: item.mediaMetadata.title?.toString().orEmpty()
-        val artist = song?.let { displayArtist(it.artist) } ?: item.mediaMetadata.artist?.toString().orEmpty()
+        val artist = song?.artist ?: item.trackInfo()?.artist ?: item.mediaMetadata.artist?.toString().orEmpty()
         val base = shown ?: Widgets.load(context)
         val state = base.copy(title = title, artist = artist, playing = playing)
         val newCover = item.mediaId != coverFor

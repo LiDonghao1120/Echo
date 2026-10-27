@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -51,10 +52,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.playback.audio.AudioSettings
 import com.novcloud.echo.playback.audio.Band
 import com.novcloud.echo.playback.audio.EqCaps
@@ -79,30 +82,31 @@ fun AudioEffectsScreen() {
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(scroll).statusBarsPadding().padding(top = 56.dp, bottom = LocalBottomInset.current + 24.dp)) {
-            PageTitle("音效")
-            Group("均衡器") {
+            PageTitle(stringResource(R.string.audio_effects))
+            Group(stringResource(R.string.fx_equalizer)) {
                 val c = caps
                 when {
                     c == null -> Spacer(Modifier.height(56.dp))
                     !c.available -> Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("此设备不支持均衡器", style = MaterialTheme.typography.bodyLarge, color = palette.muted)
+                        Text(stringResource(R.string.fx_eq_unavailable), style = MaterialTheme.typography.bodyLarge, color = palette.muted)
                     }
                     else -> {
-                        SwitchRow("均衡器", s.eqEnabled) { v -> fx.update { it.copy(eqEnabled = v) } }
+                        SwitchRow(stringResource(R.string.fx_equalizer), s.eqEnabled) { v -> fx.update { it.copy(eqEnabled = v) } }
                         Rule()
                         Equalizer(c, s) { change -> fx.update(change) }
                     }
                 }
             }
-            if (caps?.bassBoost == true) Group("低音增强") {
+            if (caps?.bassBoost == true) Group(stringResource(R.string.fx_bass_boost)) {
                 LevelSlider(
                     value = s.bassStrength / 10f, range = 0f..100f, steps = 19,
-                    label = if (s.bassStrength == 0) "关" else "${s.bassStrength / 10}%",
+                    label = if (s.bassStrength == 0) stringResource(R.string.fx_bass_off) else stringResource(R.string.percent, s.bassStrength / 10),
                 ) { v -> fx.update { it.copy(bassStrength = (v * 10).roundToInt().coerceIn(0, 1000)) } }
             }
-            Group("音量平衡") {
+            Group(stringResource(R.string.fx_replaygain)) {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(GainMode.Off to "关闭", GainMode.Track to "单曲", GainMode.Album to "专辑").forEach { (m, l) ->
+                    listOf(GainMode.Off to R.string.fx_off, GainMode.Track to R.string.fx_gain_track, GainMode.Album to R.string.fx_gain_album).forEach { (m, id) ->
+                        val l = stringResource(id)
                         Chip(l, s.gainMode == m, Modifier.weight(1f)) { fx.update { it.copy(gainMode = m) } }
                     }
                 }
@@ -110,20 +114,20 @@ fun AudioEffectsScreen() {
                 val a by animateFloatAsState(if (on) 1f else 0.4f, tween(220), label = "rg")
                 Column(Modifier.alpha(a)) {
                     Rule()
-                    Text("前置增益", Modifier.padding(start = 16.dp, top = 14.dp), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.fx_preamp), Modifier.padding(start = 16.dp, top = 14.dp), style = MaterialTheme.typography.bodyLarge)
                     LevelSlider(
                         value = s.preampDb, range = -12f..12f, steps = 47, enabled = on,
-                        label = "%+.1f dB".format(s.preampDb),
+                        label = stringResource(R.string.decibels, s.preampDb),
                     ) { v -> fx.update { it.copy(preampDb = (v * 2).roundToInt() / 2f) } }
                     Rule()
-                    SwitchRow("防止削波", s.clipPrevention, enabled = on) { v -> fx.update { it.copy(clipPrevention = v) } }
+                    SwitchRow(stringResource(R.string.fx_prevent_clipping), s.clipPrevention, enabled = on) { v -> fx.update { it.copy(clipPrevention = v) } }
                 }
             }
-            Group("过渡") {
-                SwitchRow("播放、暂停和切歌时淡入淡出", s.fade) { v -> fx.update { it.copy(fade = v) } }
+            Group(stringResource(R.string.fx_transitions)) {
+                SwitchRow(stringResource(R.string.fx_fade), s.fade) { v -> fx.update { it.copy(fade = v) } }
             }
         }
-        CollapsingTopBar("音效", collapse)
+        CollapsingTopBar(stringResource(R.string.audio_effects), collapse)
     }
 }
 
@@ -185,7 +189,7 @@ private fun Equalizer(caps: EqCaps, s: AudioSettings, update: ((AudioSettings) -
 
     Column(Modifier.padding(top = 8.dp)) {
         Box(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
-            val text = if (active >= 0) "%+.1f dB".format(shown[active] / 100f) else EqPresets.label(s.preset)
+            val text = if (active >= 0) stringResource(R.string.decibels, shown[active] / 100f) else presetLabel(s.preset)
             Text(text, style = EchoType.numeral(18.sp), color = if (active >= 0) p.signal else MaterialTheme.colorScheme.onSurface)
         }
         Canvas(
@@ -271,10 +275,27 @@ private fun Equalizer(caps: EqCaps, s: AudioSettings, update: ((AudioSettings) -
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(ids) { id ->
-                Chip(EqPresets.label(id), s.preset == id, Modifier.width(72.dp)) {
+                Chip(presetLabel(id), s.preset == id, Modifier.widthIn(min = 72.dp)) {
                     update { it.copy(eqEnabled = true, preset = id) }
                 }
             }
         }
     }
 }
+
+@Composable
+fun presetLabel(id: String): String = stringResource(
+    when (id) {
+        EqPresets.CUSTOM -> R.string.eq_custom
+        "bass" -> R.string.eq_bass
+        "vocal" -> R.string.eq_vocal
+        "pop" -> R.string.eq_pop
+        "rock" -> R.string.eq_rock
+        "electronic" -> R.string.eq_electronic
+        "jazz" -> R.string.eq_jazz
+        "classical" -> R.string.eq_classical
+        "acoustic" -> R.string.eq_acoustic
+        "treble" -> R.string.eq_treble
+        else -> R.string.eq_flat
+    },
+)

@@ -4,32 +4,33 @@ import android.app.Activity
 import android.view.WindowManager
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListItemInfo
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.sp
-import com.novcloud.echo.ui.components.echoClick
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,13 +40,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -55,33 +61,29 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.lyrics.Lyrics
 import com.novcloud.echo.data.lyrics.LyricsLoader
 import com.novcloud.echo.data.lyrics.SmoothClock
 import com.novcloud.echo.data.lyrics.WordTiming
+import com.novcloud.echo.ui.components.LocalActions
+import com.novcloud.echo.ui.components.echoClick
 import com.novcloud.echo.ui.theme.Ink
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.runtime.withFrameMillis
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.lazy.LazyListItemInfo
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.runtime.key
-import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
-import com.novcloud.echo.ui.components.LocalActions
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
@@ -101,11 +103,11 @@ fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
         }
     }
     val override by remember(song.key) { container.db.lyricOverrides().observe(song.key) }.collectAsState(initial = null)
-    fun toast(text: String) = android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+    fun toast(text: Int) = android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
     var reload by remember { mutableStateOf(0) }
     val filePicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
-            if (container.lyrics.pick(song, uri)) reload++ else toast("不是可用的歌词文件")
+            if (container.lyrics.pick(song, uri)) reload++ else toast(R.string.lyrics_bad_file)
         }
     }
     var loaded by remember(song.id, tree, reload) { mutableStateOf(container.lyrics.peek(song, tree)) }
@@ -127,17 +129,17 @@ fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
             state == null -> {
                 var slow by remember(song.id) { mutableStateOf(false) }
                 LaunchedEffect(song.id) { delay(500); slow = true }
-                if (slow) Text("读取歌词…", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.4f), modifier = Modifier.align(Alignment.Center))
+                if (slow) Text(stringResource(R.string.lyrics_loading), style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.4f), modifier = Modifier.align(Alignment.Center))
             }
             l == null -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Rounded.Lyrics, null, tint = Color.White.copy(alpha = 0.35f))
-                Text("暂无歌词", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.45f), modifier = Modifier.padding(top = 10.dp))
+                Text(stringResource(R.string.lyrics_none), style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.45f), modifier = Modifier.padding(top = 10.dp))
                 androidx.compose.foundation.layout.Row(Modifier.padding(top = 8.dp)) {
                     androidx.compose.material3.TextButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
-                        Text("选择歌词文件", color = Color.White.copy(alpha = 0.85f))
+                        Text(stringResource(R.string.lyrics_choose_file), color = Color.White.copy(alpha = 0.85f))
                     }
                     if (tree == null) androidx.compose.material3.TextButton(onClick = { picker.launch(null) }) {
-                        Text("选择歌词文件夹", color = Color.White.copy(alpha = 0.85f))
+                        Text(stringResource(R.string.lyrics_choose_folder), color = Color.White.copy(alpha = 0.85f))
                     }
                 }
             }
@@ -161,10 +163,10 @@ fun LyricsView(song: Song, accent: Color, modifier: Modifier = Modifier) {
 }
 
 /** Offset steps are 0.1 s; positive shows each line earlier. */
-internal fun formatOffset(ms: Long): String = when {
-    ms == 0L -> "0.0s"
-    ms > 0 -> "提前 %.1fs".format(ms / 1000.0)
-    else -> "延后 %.1fs".format(-ms / 1000.0)
+internal fun formatOffset(res: android.content.res.Resources, ms: Long): String = when {
+    ms == 0L -> res.getString(R.string.lyrics_offset_zero)
+    ms > 0 -> res.getString(R.string.lyrics_offset_earlier, ms / 1000.0)
+    else -> res.getString(R.string.lyrics_offset_later, -ms / 1000.0)
 }
 
 @Composable
@@ -182,6 +184,9 @@ fun LyricsTools(
 ) {
     var open by remember { mutableStateOf(false) }
     var local by remember(offsetMs) { mutableLongStateOf(offsetMs) }
+    val res = androidx.compose.ui.platform.LocalContext.current.resources
+    val labelWidth = androidx.compose.ui.res.dimensionResource(R.dimen.lyric_tool_label)
+    val toolsLabel = stringResource(R.string.lyrics_tools)
     fun step(d: Long) {
         local = (local + d).coerceIn(-30_000L, 30_000L)
         onOffset(local)
@@ -216,8 +221,8 @@ fun LyricsTools(
             ) {
                 if (synced) {
                     androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("时间", style = com.novcloud.echo.ui.theme.EchoType.labelBold, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.width(44.dp))
-                        StepButton(Icons.Rounded.KeyboardArrowDown, "歌词延后 0.1 秒", accent) { step(-100) }
+                        Text(stringResource(R.string.lyrics_tool_timing), style = com.novcloud.echo.ui.theme.EchoType.labelBold, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.width(labelWidth), maxLines = 1)
+                        StepButton(Icons.Rounded.KeyboardArrowDown, stringResource(R.string.lyrics_later_desc), accent) { step(-100) }
                         Box(Modifier.weight(1f).height(44.dp).clickable(enabled = local != 0L) { local = 0; onOffset(0) }, contentAlignment = Alignment.Center) {
                             androidx.compose.animation.AnimatedContent(
                                 local,
@@ -229,33 +234,33 @@ fun LyricsTools(
                                 label = "offset",
                             ) { v ->
                                 Text(
-                                    formatOffset(v),
+                                    formatOffset(res, v),
                                     style = com.novcloud.echo.ui.theme.EchoType.numeral(18.sp),
                                     color = if (v == 0L) Color.White.copy(alpha = 0.6f) else Color.White,
                                 )
                             }
                         }
-                        StepButton(Icons.Rounded.KeyboardArrowUp, "歌词提前 0.1 秒", accent) { step(100) }
+                        StepButton(Icons.Rounded.KeyboardArrowUp, stringResource(R.string.lyrics_earlier_desc), accent) { step(100) }
                     }
                     Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
                     androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("模式", style = com.novcloud.echo.ui.theme.EchoType.labelBold, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.width(44.dp))
+                        Text(stringResource(R.string.lyrics_tool_mode), style = com.novcloud.echo.ui.theme.EchoType.labelBold, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.width(labelWidth), maxLines = 1)
                         ModeSwitch(byWord, accent, onByWord, Modifier.weight(1f))
                     }
                     Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
                 }
                 androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("文件", style = com.novcloud.echo.ui.theme.EchoType.labelBold, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.width(44.dp))
+                    Text(stringResource(R.string.lyrics_tool_file), style = com.novcloud.echo.ui.theme.EchoType.labelBold, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.width(labelWidth), maxLines = 1)
                     Text(
-                        fileName ?: "自动匹配",
+                        fileName ?: stringResource(R.string.lyrics_file_auto),
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (fileName != null) Color.White else Color.White.copy(alpha = 0.6f),
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    if (fileName != null) androidx.compose.material3.TextButton(onClick = onUnpick) { Text("移除", color = Color.White.copy(alpha = 0.7f)) }
-                    androidx.compose.material3.TextButton(onClick = onPick) { Text("选择", color = accent) }
+                    if (fileName != null) androidx.compose.material3.TextButton(onClick = onUnpick) { Text(stringResource(R.string.action_remove), color = Color.White.copy(alpha = 0.7f)) }
+                    androidx.compose.material3.TextButton(onClick = onPick) { Text(stringResource(R.string.action_choose), color = accent) }
                 }
             }
         }
@@ -263,7 +268,7 @@ fun LyricsTools(
             Modifier.size(40.dp)
                 .echoClick(corner = 4.dp, color = accent) { open = !open }
                 .background(Color.White.copy(alpha = 0.06f + 0.10f * on), com.novcloud.echo.ui.theme.EchoShape.chip)
-                .semantics { contentDescription = "歌词调整" },
+                .semantics { contentDescription = toolsLabel },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -275,7 +280,7 @@ fun LyricsTools(
     }
 }
 
-/** 逐行 | 逐字 with a sliding square marker under the chosen side. */
+/** Line by line | word by word, with a sliding square marker under the chosen side. */
 @Composable
 private fun ModeSwitch(byWord: Boolean, accent: Color, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
     val x by animateFloatAsState(if (byWord) 1f else 0f, spring(dampingRatio = 0.72f, stiffness = 520f), label = "mode")
@@ -288,11 +293,14 @@ private fun ModeSwitch(byWord: Boolean, accent: Color, onChange: (Boolean) -> Un
                 .padding(3.dp).background(accent, com.novcloud.echo.ui.theme.EchoShape.chip),
         )
         androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
-            listOf(false to "逐行", true to "逐字").forEach { (v, label) ->
+            listOf(
+                Triple(false, stringResource(R.string.lyrics_by_line), stringResource(R.string.lyrics_by_line_desc)),
+                Triple(true, stringResource(R.string.lyrics_by_word), stringResource(R.string.lyrics_by_word_desc)),
+            ).forEach { (v, label, description) ->
                 val sel = 1f - kotlin.math.abs(x - if (v) 1f else 0f)
                 Box(
                     Modifier.weight(1f).fillMaxHeight().clickable(enabled = byWord != v) { onChange(v) }
-                        .semantics { contentDescription = "歌词$label" },
+                        .semantics { contentDescription = description },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(

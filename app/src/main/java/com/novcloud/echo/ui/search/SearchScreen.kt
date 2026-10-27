@@ -2,12 +2,12 @@ package com.novcloud.echo.ui.search
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -42,13 +42,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.novcloud.echo.EchoApp
-import com.novcloud.echo.data.SearchResults
+import com.novcloud.echo.R
 import com.novcloud.echo.data.Artist
 import com.novcloud.echo.data.Library
+import com.novcloud.echo.data.SearchResults
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.ArtistAvatar
@@ -59,11 +63,9 @@ import com.novcloud.echo.ui.components.SectionHeader
 import com.novcloud.echo.ui.components.SongRow
 import com.novcloud.echo.ui.components.artistModel
 import com.novcloud.echo.ui.components.bouncyClick
+import com.novcloud.echo.ui.components.reveal
 import com.novcloud.echo.ui.home.AlbumTile
 import com.novcloud.echo.ui.library.GenreTile
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
-import com.novcloud.echo.ui.components.reveal
 import com.novcloud.echo.ui.theme.palette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -88,7 +90,7 @@ fun SearchScreen(initialQuery: String = "") {
     Column(Modifier.fillMaxSize()) {
         val p = palette
         Text(
-            "搜索", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp),
+            stringResource(R.string.tab_search), style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp),
             modifier = Modifier.statusBarsPadding().padding(start = 20.dp, top = 16.dp, bottom = 12.dp).reveal(0),
         )
         Row(
@@ -98,7 +100,7 @@ fun SearchScreen(initialQuery: String = "") {
             Icon(Icons.Rounded.Search, null, Modifier.size(26.dp), tint = if (query.isEmpty()) p.faint else p.signal)
             Spacer(Modifier.width(12.dp))
             Box(Modifier.weight(1f).padding(vertical = 10.dp)) {
-                if (query.isEmpty()) Text("歌曲、专辑、歌手", color = p.faint, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium))
+                if (query.isEmpty()) Text(stringResource(R.string.search_hint), maxLines = 1, color = p.faint, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium))
                 BasicTextField(
                     query, { query = it }, singleLine = true,
                     textStyle = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold),
@@ -120,7 +122,7 @@ fun SearchScreen(initialQuery: String = "") {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 16.dp)) {
             if (r == null) {
                 if (lib.genres.isNotEmpty()) {
-                    item { SectionHeader("流派") }
+                    item { SectionHeader(stringResource(R.string.genres)) }
                     val rows = lib.genres.take(12).chunked(2)
                     items(rows) { row ->
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -129,7 +131,7 @@ fun SearchScreen(initialQuery: String = "") {
                         }
                     }
                 } else if (lib.artists.isNotEmpty()) {
-                    item { SectionHeader("歌手") }
+                    item { SectionHeader(stringResource(R.string.artists)) }
                     items(lib.artists.sortedByDescending { it.songs.size }.take(6).chunked(2)) { row ->
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             row.forEach { a ->
@@ -142,11 +144,11 @@ fun SearchScreen(initialQuery: String = "") {
                 return@LazyColumn
             }
             if (r.songs.isEmpty() && r.albums.isEmpty() && r.artists.isEmpty()) {
-                item { EmptyState(Icons.Rounded.SearchOff, "没有找到「${query.trim()}」") }
+                item { EmptyState(Icons.Rounded.SearchOff, stringResource(R.string.search_no_results, query.trim())) }
                 return@LazyColumn
             }
             if (r.artists.isNotEmpty()) {
-                item { SectionHeader("歌手") }
+                item { SectionHeader(stringResource(R.string.artists)) }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(r.artists, key = { it.name }) { a ->
@@ -156,7 +158,7 @@ fun SearchScreen(initialQuery: String = "") {
                 }
             }
             if (r.albums.isNotEmpty()) {
-                item { SectionHeader("专辑") }
+                item { SectionHeader(stringResource(R.string.albums)) }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(r.albums, key = { it.id }) { AlbumTile(it, 130.dp) }
@@ -164,7 +166,7 @@ fun SearchScreen(initialQuery: String = "") {
                 }
             }
             if (r.songs.isNotEmpty()) {
-                item { SectionHeader("歌曲") }
+                item { SectionHeader(stringResource(R.string.songs)) }
                 items(r.songs, key = { it.id }) { s ->
                     SongRow(s, { actions.player.playSong(s, r.songs) }, current = state.song?.id == s.id, playing = state.isPlaying)
                 }

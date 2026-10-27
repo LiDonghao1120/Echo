@@ -17,11 +17,12 @@ import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
 import com.novcloud.echo.MainActivity
 import com.novcloud.echo.R
+import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.diag.DiagLog
 import com.novcloud.echo.playback.PlaybackService
 import java.io.File
 
-/** What the widget shows; persisted so it survives the process and a reboot (then always paused). */
+/** What the widget shows; persisted so it survives the process and a reboot (then always paused). [artist] is the raw tag value. */
 data class WidgetState(val title: String = "", val artist: String = "", val playing: Boolean = false, val coverVersion: Long = 0) {
     val hasTrack get() = title.isNotEmpty()
 }
@@ -31,6 +32,10 @@ class EchoWidget : AppWidgetProvider() {
 
     override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, options: Bundle) =
         Widgets.push(context, intArrayOf(id))
+
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_LOCALE_CHANGED) Widgets.push(context, null) else super.onReceive(context, intent)
+    }
 }
 
 /** Buttons on the widget. A live service with a queue is driven directly; otherwise the service is started like a media button press, which resumes the saved queue. */
@@ -118,13 +123,15 @@ object Widgets {
         val v = RemoteViews(context.packageName, layout)
         if (state.hasTrack) {
             v.setTextViewText(R.id.widget_title, state.title)
-            v.setTextViewText(R.id.widget_artist, state.artist)
+            v.setTextViewText(R.id.widget_artist, displayArtist(state.artist))
         } else {
             v.setTextViewText(R.id.widget_title, context.getString(R.string.app_name))
             v.setTextViewText(R.id.widget_artist, context.getString(R.string.widget_idle))
         }
         if (cover != null) v.setImageViewBitmap(R.id.widget_cover, cover) else v.setImageViewResource(R.id.widget_cover, R.drawable.ic_logo)
         v.setImageViewResource(R.id.widget_toggle, if (state.playing) R.drawable.ic_widget_pause else R.drawable.ic_widget_play)
+        v.setContentDescription(R.id.widget_prev, context.getString(R.string.widget_prev))
+        v.setContentDescription(R.id.widget_next, context.getString(R.string.widget_next))
         v.setContentDescription(R.id.widget_toggle, context.getString(if (state.playing) R.string.widget_pause else R.string.widget_play))
         if (layout == R.layout.widget_large) {
             v.setTextViewText(R.id.widget_state, context.getString(if (state.playing) R.string.widget_playing else R.string.widget_paused))

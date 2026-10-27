@@ -1,7 +1,5 @@
 package com.novcloud.echo.ui.settings
 
-import com.novcloud.echo.ui.theme.EchoMotion
-
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -56,9 +54,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.AudioFolder
 import com.novcloud.echo.data.FolderRules
 import com.novcloud.echo.data.SafPaths
@@ -66,6 +67,7 @@ import com.novcloud.echo.ui.components.LocalBottomInset
 import com.novcloud.echo.ui.components.SectionHeader
 import com.novcloud.echo.ui.components.SolidButton
 import com.novcloud.echo.ui.detail.CollapsingTopBar
+import com.novcloud.echo.ui.theme.EchoMotion
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
 import com.novcloud.echo.ui.theme.palette
@@ -102,7 +104,7 @@ fun ScanFoldersScreen() {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = top, bottom = LocalBottomInset.current + 24.dp)) {
             item(key = "title") {
                 Row(Modifier.fillMaxWidth().padding(end = 16.dp), verticalAlignment = Alignment.Bottom) {
-                    Box(Modifier.weight(1f)) { PageTitle("扫描文件夹") }
+                    Box(Modifier.weight(1f)) { PageTitle(stringResource(R.string.music_folders)) }
                     IconButton(onClick = { if (!scanning) repo.refresh() }, Modifier.padding(bottom = 2.dp)) {
                         Icon(Icons.Rounded.Refresh, null, tint = if (scanning) palette.faint else palette.signal)
                     }
@@ -113,7 +115,7 @@ fun ScanFoldersScreen() {
                     Row(Modifier.fillMaxWidth().height(18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("${lib.songs.size}", style = EchoType.numeral, color = MaterialTheme.colorScheme.onSurface)
                         Spacer(Modifier.width(6.dp))
-                        Text("首", style = MaterialTheme.typography.labelMedium, color = palette.muted)
+                        Text(pluralStringResource(R.plurals.label_songs_short, lib.songs.size), style = MaterialTheme.typography.labelMedium, color = palette.muted)
                         Spacer(Modifier.weight(1f))
                         progress?.let { Text("${it.done} / ${it.total}", style = EchoType.numeral, color = palette.muted) }
                     }
@@ -121,7 +123,7 @@ fun ScanFoldersScreen() {
                     Box(Modifier.fillMaxWidth().height(2.dp)) { ScanBar(scanning, progress) }
                 }
             }
-            item(key = "trees_h") { SectionHeader("已添加", index = 1) }
+            item(key = "trees_h") { SectionHeader(stringResource(R.string.folders_added), index = 1) }
             items(trees.sorted(), key = { "t_$it" }) { t ->
                 val path = SafPaths.treePath(Uri.parse(t))
                 val label = SafPaths.label(t)
@@ -136,11 +138,11 @@ fun ScanFoldersScreen() {
             }
             item(key = "add") {
                 SolidButton(
-                    "添加文件夹", Modifier.padding(horizontal = 20.dp, vertical = 8.dp).fillMaxWidth(), icon = Icons.Rounded.Add,
+                    stringResource(R.string.folders_add), Modifier.padding(horizontal = 20.dp, vertical = 8.dp).fillMaxWidth(), icon = Icons.Rounded.Add,
                     primary = trees.isEmpty(),
                 ) { picker.launch(null) }
             }
-            item(key = "device_h") { SectionHeader("设备上的文件夹", index = 2) }
+            item(key = "device_h") { SectionHeader(stringResource(R.string.folders_device), index = 2) }
             val all = folders
             if (all != null) {
                 items(all, key = { "f_${it.path}" }) { f ->
@@ -157,7 +159,7 @@ fun ScanFoldersScreen() {
                 }
             }
         }
-        CollapsingTopBar("扫描文件夹", collapse)
+        CollapsingTopBar(stringResource(R.string.music_folders), collapse)
     }
 }
 

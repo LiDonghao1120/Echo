@@ -3,6 +3,7 @@ package com.novcloud.echo.ui.library
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,13 +24,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Favorite
@@ -43,6 +48,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,54 +57,51 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.Song
+import com.novcloud.echo.data.displayAlbum
+import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.data.nameSortKey
 import com.novcloud.echo.data.sortKey
 import com.novcloud.echo.data.sortedByKey
 import com.novcloud.echo.ui.components.AlphabetRail
-import com.novcloud.echo.ui.components.sectionStarts
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.runtime.derivedStateOf
-import com.novcloud.echo.data.displayAlbum
-import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.ArtistAvatar
+import com.novcloud.echo.ui.components.ArtistCard
 import com.novcloud.echo.ui.components.Artwork
 import com.novcloud.echo.ui.components.Collage
+import com.novcloud.echo.ui.components.Eyebrow
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.LocalBottomInset
 import com.novcloud.echo.ui.components.NameDialog
 import com.novcloud.echo.ui.components.SongRow
 import com.novcloud.echo.ui.components.artistModel
 import com.novcloud.echo.ui.components.bouncyClick
-import com.novcloud.echo.ui.theme.seededGradient
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.unit.sp
-import com.novcloud.echo.ui.components.ArtistCard
-import com.novcloud.echo.ui.components.Eyebrow
+import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.echoClick
 import com.novcloud.echo.ui.components.reveal
+import com.novcloud.echo.ui.components.sectionStarts
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
 import com.novcloud.echo.ui.theme.Ink
 import com.novcloud.echo.ui.theme.Paper
 import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.seededColor
+import com.novcloud.echo.ui.theme.seededGradient
 import kotlinx.coroutines.launch
 
-internal val tabs = listOf("歌曲", "专辑", "歌手", "流派", "文件夹", "歌单")
+internal val tabs = listOf(R.string.songs, R.string.albums, R.string.artists, R.string.genres, R.string.folders, R.string.playlists)
 
 @Composable
 fun LibraryScreen() {
@@ -108,11 +111,11 @@ fun LibraryScreen() {
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.statusBarsPadding().padding(start = 20.dp, top = 16.dp, bottom = 10.dp).reveal(0)) {
-            Eyebrow("${lib.songs.size} 首 · ${lib.albums.size} 张专辑 · ${lib.artists.size} 位歌手")
+            Eyebrow(com.novcloud.echo.ui.settings.librarySummary(LocalContext.current.resources, lib))
             Spacer(Modifier.height(4.dp))
-            Text("曲库", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp))
+            Text(stringResource(R.string.tab_library), style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp))
         }
-        LibraryTabs(tabs, pager) { i -> scope.launch { pager.animateScrollToPage(i) } }
+        LibraryTabs(tabs.map { stringResource(it) }, pager) { i -> scope.launch { pager.animateScrollToPage(i) } }
         Spacer(Modifier.height(6.dp))
         HorizontalPager(pager, Modifier.weight(1f), beyondViewportPageCount = 1) { page ->
             when (page) {
@@ -127,7 +130,7 @@ fun LibraryScreen() {
     }
 }
 
-private val sorts = listOf("title" to "标题", "artist" to "歌手", "album" to "专辑", "added" to "添加时间", "duration" to "时长")
+private val sorts = listOf("title" to R.string.sort_title, "artist" to R.string.sort_artist, "album" to R.string.sort_album, "added" to R.string.sort_added, "duration" to R.string.sort_duration)
 
 fun sortSongs(songs: List<Song>, sort: String): List<Song> = when (sort) {
     "artist" -> songs.sortedByKey { nameSortKey(it.artist) + "\u0001" + it.titleKey }
@@ -167,15 +170,15 @@ private fun SongsTab() {
         ) {
             item {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PillButton(Icons.Rounded.PlayArrow, "播放", Modifier.weight(1f), primary = true) { actions.player.play(songs) }
+                    PillButton(Icons.Rounded.PlayArrow, stringResource(R.string.action_play), Modifier.weight(1f), primary = true) { actions.player.play(songs) }
                     Spacer(Modifier.width(10.dp))
-                    PillButton(Icons.Rounded.Shuffle, "随机", Modifier.weight(1f)) { actions.player.play(songs, shuffle = true) }
+                    PillButton(Icons.Rounded.Shuffle, stringResource(R.string.action_shuffle), Modifier.weight(1f)) { actions.player.play(songs, shuffle = true) }
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, null) }
                         DropdownMenu(menu, { menu = false }) {
                             sorts.forEach { (k, label) ->
                                 DropdownMenuItem(
-                                    text = { Text(label, color = if (k == sort) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
+                                    text = { Text(stringResource(label), color = if (k == sort) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
                                     onClick = { menu = false; scope.launch { container.prefs.setSongSort(k) } },
                                 )
                             }
@@ -205,7 +208,7 @@ fun PillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: Str
     ) {
         Icon(icon, null, Modifier.size(20.dp), tint = fg)
         Spacer(Modifier.width(6.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black), color = fg)
+        Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black), color = fg, maxLines = 1)
     }
 }
 
@@ -268,7 +271,7 @@ private fun GenresTab() {
     val probing by container.library.genreProbing.collectAsState()
     if (lib.genres.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(bottom = LocalBottomInset.current), contentAlignment = Alignment.Center) {
-            com.novcloud.echo.ui.components.EmptyState(null, if (probing || !lib.loaded) "正在读取流派…" else "歌曲里没有流派标签")
+            com.novcloud.echo.ui.components.EmptyState(null, stringResource(if (probing || !lib.loaded) R.string.genres_loading else R.string.genres_none))
         }
         return
     }
@@ -308,7 +311,7 @@ private fun FoldersTab() {
                 Modifier.fillMaxWidth().clickable { actions.openScanFolders() }.heightIn(min = 52.dp).padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("扫描文件夹", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = palette.signal)
+                Text(stringResource(R.string.music_folders), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = palette.signal)
                 Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = palette.faint)
             }
         }
@@ -352,8 +355,8 @@ private fun PlaylistsTab() {
                 ) { Icon(Icons.Rounded.Favorite, null, tint = Ink, modifier = Modifier.size(30.dp)) }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("我喜欢的音乐", style = MaterialTheme.typography.titleMedium)
-                    Text("${favorites.size} 首", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.liked_songs), style = MaterialTheme.typography.titleMedium)
+                    Text(count(R.plurals.songs_short, favorites.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -366,7 +369,7 @@ private fun PlaylistsTab() {
                     Icon(Icons.Rounded.Add, null, tint = palette.signal, modifier = Modifier.size(30.dp))
                 }
                 Spacer(Modifier.width(14.dp))
-                Text("新建歌单", style = MaterialTheme.typography.titleMedium, color = palette.signal)
+                Text(stringResource(R.string.playlist_new), style = MaterialTheme.typography.titleMedium, color = palette.signal)
             }
         }
         items(playlists, key = { it.id }) { p ->
@@ -379,12 +382,12 @@ private fun PlaylistsTab() {
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${p.count} 首", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(count(R.plurals.songs_short, p.count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
     }
-    if (creating) NameDialog("新建歌单", "") { name ->
+    if (creating) NameDialog(stringResource(R.string.playlist_new), "") { name ->
         creating = false
         if (name != null) scope.launch { val id = container.library.createPlaylist(name); actions.openPlaylist(id) }
     }
@@ -402,14 +405,16 @@ internal fun LibraryTabs(labels: List<String>, pager: androidx.compose.foundatio
     val density = androidx.compose.ui.platform.LocalDensity.current
     val measurer = androidx.compose.ui.text.rememberTextMeasurer()
     val base = MaterialTheme.typography.titleSmall
-    val widths = remember(labels, base, density) {
-        labels.map { with(density) { measurer.measure(it, base.copy(fontWeight = FontWeight.Black)).size.width.toDp() } + 16.dp }
+    val textWidths = remember(labels, base, density) {
+        labels.map { with(density) { measurer.measure(it, base.copy(fontWeight = FontWeight.Black)).size.width.toDp() } }
     }
     val on = MaterialTheme.colorScheme.onSurface
     val off = p.faint
     val signal = p.signal
     fun position() = (pager.currentPage + pager.currentPageOffsetFraction).coerceIn(0f, (labels.size - 1).toFloat())
-    Box(Modifier.fillMaxWidth()) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val gap = ((maxWidth - 24.dp - textWidths.fold(0.dp) { a, b -> a + b }) / labels.size).coerceIn(8.dp, 16.dp)
+        val widths = remember(textWidths, gap) { textWidths.map { it + gap } }
         Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(p.rule))
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp)

@@ -1,9 +1,9 @@
 package com.novcloud.echo.playback.audio
 
-import org.json.JSONArray
-import org.json.JSONObject
 import kotlin.math.abs
 import kotlin.math.log10
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** A band of the custom curve: centre frequency in Hz and level in millibels. */
 data class Band(val hz: Int, val mb: Int)
@@ -60,25 +60,23 @@ object EqPresets {
     const val CUSTOM = "custom"
     private val iso = listOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
 
-    /** id, label, dB per ISO band. */
-    val all: List<Triple<String, String, List<Int>>> = listOf(
-        Triple(FLAT, "标准", listOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
-        Triple("bass", "低音", listOf(6, 5, 4, 2, 0, 0, 0, 0, 0, 0)),
-        Triple("vocal", "人声", listOf(-2, -2, -1, 1, 3, 4, 3, 1, 0, -1)),
-        Triple("pop", "流行", listOf(-1, 1, 3, 4, 3, 0, -1, -1, 1, 2)),
-        Triple("rock", "摇滚", listOf(5, 4, 2, -1, -2, -1, 2, 3, 4, 4)),
-        Triple("electronic", "电子", listOf(5, 4, 1, 0, -2, 1, 0, 1, 4, 5)),
-        Triple("jazz", "爵士", listOf(3, 2, 1, 2, -1, -1, 0, 1, 2, 3)),
-        Triple("classical", "古典", listOf(4, 3, 2, 1, -1, -1, 0, 2, 3, 4)),
-        Triple("acoustic", "原声", listOf(4, 3, 2, 1, 1, 1, 2, 3, 2, 1)),
-        Triple("treble", "高音", listOf(0, 0, 0, 0, 0, 1, 3, 5, 6, 6)),
+    /** id, dB per ISO band. */
+    val all: List<Pair<String, List<Int>>> = listOf(
+        FLAT to listOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        "bass" to listOf(6, 5, 4, 2, 0, 0, 0, 0, 0, 0),
+        "vocal" to listOf(-2, -2, -1, 1, 3, 4, 3, 1, 0, -1),
+        "pop" to listOf(-1, 1, 3, 4, 3, 0, -1, -1, 1, 2),
+        "rock" to listOf(5, 4, 2, -1, -2, -1, 2, 3, 4, 4),
+        "electronic" to listOf(5, 4, 1, 0, -2, 1, 0, 1, 4, 5),
+        "jazz" to listOf(3, 2, 1, 2, -1, -1, 0, 1, 2, 3),
+        "classical" to listOf(4, 3, 2, 1, -1, -1, 0, 2, 3, 4),
+        "acoustic" to listOf(4, 3, 2, 1, 1, 1, 2, 3, 2, 1),
+        "treble" to listOf(0, 0, 0, 0, 0, 1, 3, 5, 6, 6),
     )
     val ids = all.map { it.first }.toSet()
 
-    fun label(id: String) = if (id == CUSTOM) "自定义" else all.firstOrNull { it.first == id }?.second ?: "标准"
-
     fun curve(id: String): List<Band> {
-        val db = all.firstOrNull { it.first == id }?.third ?: all[0].third
+        val db = all.firstOrNull { it.first == id }?.second ?: all[0].second
         return iso.zip(db) { hz, d -> Band(hz, d * 100) }
     }
 

@@ -35,8 +35,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.playback.QueueEntry
 import com.novcloud.echo.ui.components.Artwork
@@ -52,9 +54,9 @@ fun QueueView(modifier: Modifier = Modifier) {
     LaunchedEffect(state.currentIndex) { listState.scrollToItem(0) }
     Column(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("接下来", style = MaterialTheme.typography.titleMedium, color = Color.White, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.queue_up_next), style = MaterialTheme.typography.titleMedium, color = Color.White, modifier = Modifier.weight(1f))
             if (upcoming.isNotEmpty()) TextButton(onClick = { actions.player.clearQueue() }) {
-                Text("清空", color = Color.White.copy(alpha = 0.7f))
+                Text(stringResource(R.string.action_clear), color = Color.White.copy(alpha = 0.7f))
             }
         }
         LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 12.dp), modifier = Modifier.weight(1f)) {

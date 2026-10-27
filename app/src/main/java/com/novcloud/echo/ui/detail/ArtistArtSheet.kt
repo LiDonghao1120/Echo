@@ -52,17 +52,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.ArtistLogoInfo
 import com.novcloud.echo.data.ImportReport
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.ArtistNameMark
 import com.novcloud.echo.ui.components.Eyebrow
 import com.novcloud.echo.ui.components.LogoScrim
+import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.echoClick
 import com.novcloud.echo.ui.components.rememberArtistPoster
 import com.novcloud.echo.ui.theme.EchoShape
@@ -89,7 +93,7 @@ fun rememberArtistArtActions(name: String): ArtistArtActions {
     val logoFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) repo.setArtistLogo(name, uri) }
     val batch = rememberFolderImport()
     LaunchedEffect(name) {
-        repo.artFailed.collect { a -> if (a == name) Toast.makeText(context, "无法读取这张图片", Toast.LENGTH_SHORT).show() }
+        repo.artFailed.collect { a -> if (a == name) Toast.makeText(context, R.string.art_read_failed, Toast.LENGTH_SHORT).show() }
     }
     return remember(name, poster, logoGallery, logoFile, batch) {
         ArtistArtActions(
@@ -117,19 +121,19 @@ fun ArtistArtSheetContent(name: String, hasPoster: Boolean, logo: ArtistLogoInfo
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
         Eyebrow(displayArtist(name), color = p.muted)
         Spacer(Modifier.height(4.dp))
-        Text("歌手形象", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black))
+        Text(stringResource(R.string.artist_art), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black))
         Spacer(Modifier.height(16.dp))
         PosterPreview(name, logo)
         Spacer(Modifier.height(18.dp))
-        ArtRow("海报") {
-            SheetKey(Icons.Rounded.Image, if (hasPoster) "更换" else "选择", primary = true, onClick = actions.pickPoster)
-            if (hasPoster) SheetKey(Icons.Rounded.Close, "移除", onClick = actions.clearPoster)
+        ArtRow(stringResource(R.string.art_poster)) {
+            SheetKey(Icons.Rounded.Image, stringResource(if (hasPoster) R.string.action_change else R.string.action_choose), primary = true, onClick = actions.pickPoster)
+            if (hasPoster) SheetKey(Icons.Rounded.Close, stringResource(R.string.action_remove), onClick = actions.clearPoster)
         }
         Spacer(Modifier.height(12.dp))
-        ArtRow("名称标志") {
-            SheetKey(Icons.Rounded.Image, "相册", primary = logo == null, onClick = actions.pickLogoGallery)
-            SheetKey(Icons.Rounded.InsertDriveFile, "文件", onClick = actions.pickLogoFile)
-            if (logo != null) SheetKey(Icons.Rounded.Close, "移除", onClick = actions.clearLogo)
+        ArtRow(stringResource(R.string.art_logo)) {
+            SheetKey(Icons.Rounded.Image, stringResource(R.string.art_from_photos), primary = logo == null, onClick = actions.pickLogoGallery)
+            SheetKey(Icons.Rounded.InsertDriveFile, stringResource(R.string.art_from_files), onClick = actions.pickLogoFile)
+            if (logo != null) SheetKey(Icons.Rounded.Close, stringResource(R.string.action_remove), onClick = actions.clearLogo)
         }
         Spacer(Modifier.height(18.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(p.rule))
@@ -139,7 +143,7 @@ fun ArtistArtSheetContent(name: String, hasPoster: Boolean, logo: ArtistLogoInfo
         ) {
             Icon(Icons.Rounded.FolderOpen, null, tint = p.signal)
             Spacer(Modifier.width(12.dp))
-            Text("从文件夹批量导入", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.art_import_folder), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
             Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, Modifier.padding(end = 4.dp), tint = p.faint)
         }
     }
@@ -170,7 +174,7 @@ private fun PosterPreview(name: String, logo: ArtistLogoInfo?) {
 @Composable
 private fun ArtRow(label: String, content: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() }
     }
 }
@@ -185,7 +189,7 @@ private fun SheetKey(icon: androidx.compose.ui.graphics.vector.ImageVector, labe
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, Modifier.padding(end = 6.dp).width(18.dp), tint = fg)
-        Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
+        Text(label, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1)
     }
 }
 
@@ -207,7 +211,7 @@ fun rememberFolderImport(): () -> Unit {
         }
     }
     report?.let { r -> ImportReportDialog(r) { report = null } }
-    if (busy) AlertDialog(onDismissRequest = {}, confirmButton = {}, title = { Text("正在导入…") })
+    if (busy) AlertDialog(onDismissRequest = {}, confirmButton = {}, title = { Text(stringResource(R.string.art_importing)) })
     return remember(launcher) { { launcher.launch(null) } }
 }
 
@@ -216,17 +220,17 @@ fun ImportReportDialog(r: ImportReport, onDismiss: () -> Unit) {
     val p = palette
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("好") } },
-        title = { Text("导入完成") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) } },
+        title = { Text(stringResource(R.string.art_import_done)) },
         text = {
             Column {
                 Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                    Figure(r.logos.toLong(), "个名称标志", size = 34.dp)
-                    Figure(r.posters.toLong(), "张海报", size = 34.dp)
+                    Figure(r.logos.toLong(), pluralStringResource(R.plurals.label_logos, r.logos), size = 34.dp)
+                    Figure(r.posters.toLong(), pluralStringResource(R.plurals.label_posters, r.posters), size = 34.dp)
                 }
                 if (r.unmatched.isNotEmpty()) {
                     Spacer(Modifier.height(16.dp))
-                    Text("未匹配 ${r.unmatched.size}", style = MaterialTheme.typography.labelLarge, color = p.muted)
+                    Text(count(R.plurals.art_unmatched, r.unmatched.size), style = MaterialTheme.typography.labelLarge, color = p.muted)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         r.unmatched.take(12).joinToString("\n"), style = MaterialTheme.typography.bodySmall, color = p.faint,

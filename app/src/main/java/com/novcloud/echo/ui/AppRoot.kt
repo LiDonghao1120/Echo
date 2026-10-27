@@ -1,43 +1,32 @@
 package com.novcloud.echo.ui
 
-import com.novcloud.echo.ui.theme.EchoMotion
-
 import android.net.Uri
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.text.font.FontWeight
-import com.novcloud.echo.ui.theme.palette
-import com.novcloud.echo.ui.theme.EchoTheme
-import com.novcloud.echo.ui.theme.LocalMotion
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -48,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -59,20 +49,24 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavBackStackEntry
-import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NamedNavArgument
-import androidx.compose.runtime.rememberCoroutineScope
-import com.novcloud.echo.ui.components.NavMotion
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -80,10 +74,12 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.ui.components.AppActions
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.LocalBottomInset
+import com.novcloud.echo.ui.components.NavMotion
 import com.novcloud.echo.ui.components.SongMenuContext
 import com.novcloud.echo.ui.components.SongMenuSheet
 import com.novcloud.echo.ui.detail.AlbumScreen
@@ -98,11 +94,17 @@ import com.novcloud.echo.ui.search.SearchScreen
 import com.novcloud.echo.ui.settings.ScanFoldersScreen
 import com.novcloud.echo.ui.settings.SettingsScreen
 import com.novcloud.echo.ui.stats.StatsScreen
+import com.novcloud.echo.ui.theme.EchoMotion
+import com.novcloud.echo.ui.theme.EchoTheme
+import com.novcloud.echo.ui.theme.LocalMotion
+import com.novcloud.echo.ui.theme.palette
 import kotlinx.coroutines.flow.StateFlow
 
-private data class Tab(val route: String, val label: String)
+private data class Tab(val route: String, val label: Int)
 
-private val tabs = listOf(Tab("home", "首页"), Tab("library", "曲库"), Tab("search", "搜索"), Tab("stats", "统计"))
+private val tabs = listOf(
+    Tab("home", R.string.tab_home), Tab("library", R.string.tab_library), Tab("search", R.string.tab_search), Tab("stats", R.string.tab_stats),
+)
 private val tabRoutes = tabs.map { it.route }.toSet()
 
 @Composable
@@ -285,10 +287,11 @@ private fun BottomBar(nav: androidx.navigation.NavHostController, actions: AppAc
                         verticalArrangement = Arrangement.Center,
                     ) {
                         Text(
-                            t.label,
+                            androidx.compose.ui.res.stringResource(t.label),
                             Modifier.graphicsLayer { translationY = -lift * 2.dp.toPx(); scaleX = 1f + lift * 0.06f; scaleY = 1f + lift * 0.06f },
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (selected) FontWeight.Black else FontWeight.Medium),
                             color = tint,
+                            maxLines = 1,
                         )
                     }
                 }

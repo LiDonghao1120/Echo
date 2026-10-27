@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,42 +52,48 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.novcloud.echo.EchoApp
+import com.novcloud.echo.R
 import com.novcloud.echo.data.Album
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.domain.Mix
+import com.novcloud.echo.domain.MixKind
 import com.novcloud.echo.ui.components.ArtistAvatar
+import com.novcloud.echo.ui.components.ArtistCard
 import com.novcloud.echo.ui.components.Artwork
 import com.novcloud.echo.ui.components.Collage
 import com.novcloud.echo.ui.components.EmptyState
+import com.novcloud.echo.ui.components.Eyebrow
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.LocalBottomInset
 import com.novcloud.echo.ui.components.SectionHeader
+import com.novcloud.echo.ui.components.SolidButton
 import com.novcloud.echo.ui.components.artistModel
 import com.novcloud.echo.ui.components.bouncyClick
-import com.novcloud.echo.ui.player.rememberArtColors
-import com.novcloud.echo.ui.theme.seededGradient
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.ui.graphics.lerp
-import com.novcloud.echo.ui.components.ArtistCard
-import com.novcloud.echo.ui.components.Eyebrow
-import com.novcloud.echo.ui.components.SolidButton
+import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.echoClick
+import com.novcloud.echo.ui.components.formatDate
+import com.novcloud.echo.ui.components.number
 import com.novcloud.echo.ui.components.reveal
+import com.novcloud.echo.ui.player.rememberArtColors
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
 import com.novcloud.echo.ui.theme.Ink
 import com.novcloud.echo.ui.theme.Paper
 import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.seededColor
+import com.novcloud.echo.ui.theme.seededGradient
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -107,7 +115,7 @@ fun HomeScreen() {
                 Column(Modifier.weight(1f)) {
                     Eyebrow(dateLine(home.day))
                     Spacer(Modifier.height(4.dp))
-                    Text(greeting(), style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp))
+                    Text(greeting(), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp))
                 }
                 IconButton(onClick = { actions.openSettings() }) {
                     Icon(Icons.Rounded.Tune, null, tint = p.muted)
@@ -125,10 +133,10 @@ fun HomeScreen() {
         }
         if (lib.songs.isEmpty()) {
             item(key = "empty") {
-                EmptyState(null, "未找到本地音乐", Modifier.padding(top = 60.dp)) {
+                EmptyState(null, stringResource(R.string.home_empty), Modifier.padding(top = 60.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SolidButton("扫描文件夹") { actions.openScanFolders() }
-                        SolidButton("重新扫描", primary = false) { if (!scanning) container.library.refresh() }
+                        SolidButton(stringResource(R.string.action_choose_folders)) { actions.openScanFolders() }
+                        SolidButton(stringResource(R.string.action_rescan), primary = false) { if (!scanning) container.library.refresh() }
                     }
                 }
             }
@@ -140,7 +148,7 @@ fun HomeScreen() {
         }
         if (home.mixes.isNotEmpty()) {
             val i = ++n
-            item(key = "mixes_h") { SectionHeader("为你推荐", Modifier.reveal(2), index = i) }
+            item(key = "mixes_h") { SectionHeader(stringResource(R.string.home_for_you), Modifier.reveal(2), index = i) }
             item(key = "mixes") {
                 LazyRow(Modifier.reveal(3), contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(home.mixes, key = { it.id }) { MixCard(it) }
@@ -149,7 +157,7 @@ fun HomeScreen() {
         }
         if (home.recent.isNotEmpty()) {
             val i = ++n
-            item(key = "recent_h") { SectionHeader("最近播放", index = i, onMore = { actions.openList("recent") }) }
+            item(key = "recent_h") { SectionHeader(stringResource(R.string.recently_played), index = i, onMore = { actions.openList("recent") }) }
             item(key = "recent") {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(home.recent, key = { it.id }) { s -> SongTile(s) { actions.player.playSong(s, home.recent) } }
@@ -158,7 +166,7 @@ fun HomeScreen() {
         }
         if (home.artists.isNotEmpty()) {
             val i = ++n
-            item(key = "artists_h") { SectionHeader(if (home.hasHistory) "常听歌手" else "歌手", index = i) }
+            item(key = "artists_h") { SectionHeader(stringResource(if (home.hasHistory) R.string.home_top_artists else R.string.artists), index = i) }
             item(key = "artists") {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(home.artists, key = { it.name }) { a ->
@@ -169,14 +177,14 @@ fun HomeScreen() {
         }
         if (home.mostPlayed.isNotEmpty()) {
             val i = ++n
-            item(key = "most_h") { SectionHeader("最常播放", index = i, onMore = { actions.openList("most") }) }
+            item(key = "most_h") { SectionHeader(stringResource(R.string.most_played), index = i, onMore = { actions.openList("most") }) }
             itemsIndexed(home.mostPlayed.take(5), key = { _, pr -> "most_${pr.first.id}" }) { idx, (s, c) ->
                 RankRow(idx + 1, s, c) { actions.player.playSong(s, home.mostPlayed.map { it.first }) }
             }
         }
         if (home.recentlyAdded.isNotEmpty()) {
             val i = ++n
-            item(key = "added_h") { SectionHeader("最近添加", index = i, onMore = { actions.openList("added") }) }
+            item(key = "added_h") { SectionHeader(stringResource(R.string.recently_added), index = i, onMore = { actions.openList("added") }) }
             item(key = "added") {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(home.recentlyAdded, key = { it.id }) { AlbumTile(it) }
@@ -186,19 +194,38 @@ fun HomeScreen() {
     }
 }
 
-private val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+@Composable
+private fun dateLine(d: LocalDate): String = formatDate(d, R.string.date_home)
 
-private fun dateLine(d: LocalDate) = "${d.monthValue}月${d.dayOfMonth}日 · ${weekdays[d.dayOfWeek.value - 1]}"
-
-private fun greeting(): String = when (LocalTime.now().hour) {
-    in 5..10 -> "早上好"
-    in 11..13 -> "中午好"
-    in 14..17 -> "下午好"
-    in 18..22 -> "晚上好"
-    else -> "夜深了"
+/** Greetings change at the hours in greeting_from (each language draws its own lines); before the first, the last one holds. */
+@Composable
+private fun greeting(): String {
+    val res = LocalContext.current.resources
+    val hour = LocalTime.now().hour
+    val from = res.getIntArray(R.array.greeting_from)
+    val lines = res.getStringArray(R.array.greetings)
+    val i = from.indexOfLast { hour >= it }
+    return lines[if (i < 0) lines.size - 1 else i]
 }
 
-private val months = listOf("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+@Composable
+fun mixTitle(mix: Mix): String = when (mix.kind) {
+    MixKind.Daily -> stringResource(R.string.mix_daily)
+    MixKind.Rediscover -> stringResource(R.string.mix_rediscover)
+    MixKind.Fresh -> stringResource(R.string.mix_fresh)
+    MixKind.Moment -> stringArrayResource(R.array.mix_moments)[mix.slot]
+    else -> displayArtist(mix.title)
+}
+
+@Composable
+fun mixSubtitle(mix: Mix): String = when (mix.kind) {
+    MixKind.Genre -> stringResource(R.string.mix_genre_sub)
+    MixKind.Artist -> stringResource(R.string.mix_artist_sub)
+    MixKind.Rediscover -> stringResource(R.string.mix_rediscover_sub)
+    MixKind.Moment -> stringResource(R.string.mix_moment_sub)
+    MixKind.Fresh -> stringResource(R.string.mix_fresh_sub)
+    else -> ""
+}
 
 @Composable
 private fun DailyPoster(mix: Mix, day: LocalDate) {
@@ -231,7 +258,7 @@ private fun DailyPoster(mix: Mix, day: LocalDate) {
             }
         }
         Column(Modifier.align(Alignment.TopStart).padding(start = 20.dp, top = 18.dp)) {
-            Text(months[day.monthValue - 1], style = EchoType.labelBold.copy(fontSize = 12.sp, letterSpacing = 3.sp), color = Paper.copy(alpha = 0.7f))
+            Text(stringArrayResource(R.array.month_marks)[day.monthValue - 1], style = EchoType.labelBold.copy(fontSize = 12.sp, letterSpacing = 3.sp), color = Paper.copy(alpha = 0.7f))
             Text("%02d".format(day.dayOfMonth), style = EchoType.poster(104.sp), color = Paper)
         }
         Row(Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -242,8 +269,8 @@ private fun DailyPoster(mix: Mix, day: LocalDate) {
             ) { Icon(Icons.Rounded.PlayArrow, null, tint = Ink, modifier = Modifier.size(28.dp)) }
             Spacer(Modifier.width(14.dp))
             Column {
-                Text(mix.title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black), color = Paper)
-                Text("${mix.songs.size} 首", style = EchoType.label, color = Paper.copy(alpha = 0.65f))
+                Text(mixTitle(mix), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black), color = Paper)
+                Text(count(R.plurals.songs_short, mix.songs.size), style = EchoType.label, color = Paper.copy(alpha = 0.65f))
             }
         }
     }
@@ -263,9 +290,9 @@ private fun MixCard(mix: Mix) {
             Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(tone))
         }
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Eyebrow(mix.subtitle, color = tone)
+            Eyebrow(mixSubtitle(mix), color = tone)
             Spacer(Modifier.height(2.dp))
-            Text(displayArtist(mix.title), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(mixTitle(mix), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -313,7 +340,7 @@ private fun RankRow(rank: Int, song: Song, plays: Int, onClick: () -> Unit) {
             Text(song.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
             Text(displayArtist(song.artist), style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1)
         }
-        Text("$plays", style = EchoType.numeral(16.sp))
-        Text(" 次", style = MaterialTheme.typography.labelSmall, color = p.muted)
+        Text(number(plays), style = EchoType.numeral(16.sp))
+        Text(pluralStringResource(R.plurals.unit_plays, plays), style = MaterialTheme.typography.labelSmall, color = p.muted)
     }
 }
