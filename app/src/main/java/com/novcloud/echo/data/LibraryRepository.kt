@@ -82,13 +82,15 @@ class LibraryRepository(
     val favorites: StateFlow<Set<Long>> = favoriteOrder.map { it.toSet() }
         .stateIn(scope, SharingStarted.Eagerly, emptySet())
     val playlists = db.playlists().all().stateIn(scope, SharingStarted.Eagerly, emptyList())
+    /** Custom posters by [Names.key] of the artist; look up with [forName]. */
     val artistImages: StateFlow<Map<String, String>> = db.artistImages().all()
-        .map { l -> l.filter { File(it.path).exists() }.associate { it.artist to it.path } }
+        .map { l -> ArtistArtRows.latestByKey(l.filter { File(it.path).exists() }, { it.artist }, { it.updatedAt }).mapValues { it.value.path } }
         .flowOn(Dispatchers.IO)
         .stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
+    /** Name logos by [Names.key] of the artist; look up with [forName]. */
     val artistLogos: StateFlow<Map<String, ArtistLogoInfo>> = db.artistLogos().all()
-        .map { l -> l.filter { File(it.path).exists() }.associate { it.artist to ArtistLogoInfo(File(it.path), it.aspect, it.luma) } }
+        .map { l -> ArtistArtRows.latestByKey(l.filter { File(it.path).exists() }, { it.artist }, { it.updatedAt }).mapValues { ArtistLogoInfo(File(it.value.path), it.value.aspect, it.value.luma) } }
         .flowOn(Dispatchers.IO)
         .stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
@@ -100,16 +102,52 @@ class LibraryRepository(
     private var treeStamps: Map<String, Long> = emptyMap()
     private val probed = HashMap<String, Long>()
     private val restored: Deferred<Unit> = scope.async(Dispatchers.IO) {
+        mergeArtistArt()
         val snap = runCatching { snapshots.load() }.getOrNull() ?: return@async
-        treeSongs = snap.treeSongs
+        treeSongs = snap.treeSongs.map { it.cleaned() }
         treeStamps = snap.trees
         probed.putAll(snap.probed)
+        reportVariants(snap.songs)
         val lib = Library.build(snap.songs)
         if (!_library.value.loaded) {
             _library.value = lib
             reconcile(lib)
+            if (snap.songs.any { it.cleaned() !== it } || snap.treeSongs.any { it.cleaned() !== it }) {
+                DiagLog.i(TAG, "saved library had untidy tag text; normalized in place")
+                runCatching { saveSnapshot() }.onFailure { DiagLog.e(TAG, "snapshot save failed", it) }
+            }
         }
     }
+    private val reportedVariants = HashSet<String>()
+
+    /** Logs, once per process, names whose spellings differ but fold to one artist, album or genre (see [NameVariants]). */
+    private fun reportVariants(raw: List<Song>) {
+        val found = runCatching { NameVariants.find(raw) }.getOrDefault(emptyList())
+        synchronized(reportedVariants) {
+            found.filter { reportedVariants.add(it.kind + "|" + it.key + "|" + it.variants.joinToString("\u0001")) }
+        }.take(50).forEach { DiagLog.i(TAG, NameVariants.describe(it)) }
+    }
+
+    /** One poster and one logo per artist: rows saved under spellings that now fold together keep the latest. */
+    private suspend fun mergeArtistArt() = runCatching {
+        val images = db.artistImages()
+        val imageRows = images.allNow()
+        val dropImages = ArtistArtRows.superseded(imageRows, { it.artist }, { it.updatedAt })
+        dropImages.forEach { r ->
+            images.remove(r.artist)
+            if (imageRows.none { it !in dropImages && it.path == r.path }) File(r.path).delete()
+        }
+        val logos = db.artistLogos()
+        val logoRows = logos.allNow()
+        val dropLogos = ArtistArtRows.superseded(logoRows, { it.artist }, { it.updatedAt })
+        dropLogos.forEach { r ->
+            logos.remove(r.artist)
+            if (logoRows.none { it !in dropLogos && it.path == r.path }) File(r.path).delete()
+        }
+        if (dropImages.isNotEmpty() || dropLogos.isNotEmpty()) {
+            DiagLog.i(TAG, "merged artist art across spellings: dropped ${dropImages.size} older posters, ${dropLogos.size} older logos")
+        }
+    }.onFailure { DiagLog.e(TAG, "artist art merge failed", it) }
     private val started = AtomicBoolean(false)
     private var missingJob: Job? = null
 
@@ -174,7 +212,9 @@ class LibraryRepository(
                     }
                 }
                 val extra = treeSongs.filter { it.durationMs >= min && rules.accepts(it.folder, true) && it.path.lowercase() !in store.knownPaths }
-                genres.apply(SongKeys.unique(Dedupe.merge(store.songs, extra)))
+                val raw = genres.apply(SongKeys.unique(Dedupe.merge(store.songs, extra)))
+                reportVariants(raw)
+                raw.map { it.cleaned() }
             } ?: return
             val changed = LibrarySnapshot.changed(_library.value, songs)
             if (changed) {
@@ -365,15 +405,21 @@ class LibraryRepository(
     fun setArtistImage(artist: String, source: Uri) = scope.launch { withArt(artist) { putPoster(artist, source) } }
 
     fun clearArtistImage(artist: String) = scope.launch(Dispatchers.IO) {
-        artistImages.value[artist]?.let { File(it).delete() }
-        db.artistImages().remove(artist)
+        val key = Names.key(artist)
+        db.artistImages().allNow().filter { Names.key(it.artist) == key }.forEach {
+            File(it.path).delete()
+            db.artistImages().remove(it.artist)
+        }
     }
 
     fun setArtistLogo(artist: String, source: Uri) = scope.launch { withArt(artist) { putLogo(artist, source) } }
 
     fun clearArtistLogo(artist: String) = scope.launch(Dispatchers.IO) {
-        artistLogos.value[artist]?.file?.delete()
-        db.artistLogos().remove(artist)
+        val key = Names.key(artist)
+        db.artistLogos().allNow().filter { Names.key(it.artist) == key }.forEach {
+            File(it.path).delete()
+            db.artistLogos().remove(it.artist)
+        }
     }
 
     private suspend fun withArt(artist: String, block: suspend () -> Boolean) {
@@ -388,17 +434,21 @@ class LibraryRepository(
 
     private suspend fun putPoster(artist: String, source: Uri): Boolean {
         val file = runCatching { ArtistArtStore.savePoster(context, artist, source) }.getOrNull() ?: return false
-        val old = db.artistImages().get(artist)?.path
+        val key = Names.key(artist)
+        val old = db.artistImages().allNow().filter { Names.key(it.artist) == key }
+        old.filter { it.artist != artist }.forEach { db.artistImages().remove(it.artist) }
         db.artistImages().put(ArtistImage(artist, file.absolutePath, System.currentTimeMillis()))
-        if (old != null && old != file.absolutePath) File(old).delete()
+        old.filter { it.path != file.absolutePath }.forEach { File(it.path).delete() }
         return true
     }
 
     private suspend fun putLogo(artist: String, source: Uri): Boolean {
         val info = runCatching { ArtistArtStore.saveLogo(context, artist, source) }.getOrNull() ?: return false
-        val old = db.artistLogos().get(artist)?.path
+        val key = Names.key(artist)
+        val old = db.artistLogos().allNow().filter { Names.key(it.artist) == key }
+        old.filter { it.artist != artist }.forEach { db.artistLogos().remove(it.artist) }
         db.artistLogos().put(ArtistLogo(artist, info.file.absolutePath, info.aspect, info.luma, System.currentTimeMillis()))
-        if (old != null && old != info.file.absolutePath) File(old).delete()
+        old.filter { it.path != info.file.absolutePath }.forEach { File(it.path).delete() }
         return true
     }
 

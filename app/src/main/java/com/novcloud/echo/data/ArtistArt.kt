@@ -29,7 +29,7 @@ object ArtistFileMatcher {
     private val logoSuffix = Regex("""(?i)[\s_\-.]*(logo|wordmark|name|标志)$""")
     private val hashSuffix = Regex("""-[0-9a-f]{8,}$""")
 
-    fun key(name: String): String = name.lowercase().filter { it.isLetterOrDigit() }
+    fun key(name: String): String = Names.key(name).filter { it.isLetterOrDigit() }
 
     fun index(artists: Collection<String>): Map<String, String> {
         val out = HashMap<String, String>()
@@ -47,6 +47,27 @@ object ArtistFileMatcher {
         val resolved = kind ?: if (ext in transparentExt) ArtKind.Logo else ArtKind.Poster
         val artist = index[key(stem)] ?: index[key(stem.replace(hashSuffix, ""))] ?: return null
         return ArtMatch(artist, resolved)
+    }
+}
+
+/**
+ * Saved posters and logos are rows keyed by the artist name as it was spelled when the image was set. Spellings that
+ * fold to one [Names.key] are the same artist: the most recently set row wins, the rest are superseded.
+ */
+object ArtistArtRows {
+    fun <T> latestByKey(rows: List<T>, name: (T) -> String, updatedAt: (T) -> Long): Map<String, T> {
+        val out = HashMap<String, T>()
+        for (r in rows) {
+            val k = Names.key(name(r))
+            val cur = out[k]
+            if (cur == null || updatedAt(r) > updatedAt(cur) || (updatedAt(r) == updatedAt(cur) && name(r) < name(cur))) out[k] = r
+        }
+        return out
+    }
+
+    fun <T> superseded(rows: List<T>, name: (T) -> String, updatedAt: (T) -> Long): List<T> {
+        val keep = latestByKey(rows, name, updatedAt).values.toSet()
+        return rows.filter { it !in keep }
     }
 }
 

@@ -12,7 +12,7 @@ class ArtistArtTest {
         Song(1, "a", "X", "Al1", 10, "X", "", 1000, 1, 1, 2020, 0, "/m/1.mp3", "/m", "", 1, mediaId = 1),
         Song(2, "b", "X", "Al2", 20, "X", "", 1000, 1, 1, 2021, 0, "/m/2.mp3", "/m", "", 1, mediaId = 2),
     )
-    private val artist = Library.build(songs).artistByName.getValue("X")
+    private val artist = Library.build(songs).artist("X")!!
 
     @Test
     fun replacedPosterGetsANewFileName() {
@@ -29,8 +29,8 @@ class ArtistArtTest {
         val first = File(dir, ArtFiles.name(ArtKind.Poster, "X", 1)).apply { writeText("1") }
         val second = File(dir, ArtFiles.name(ArtKind.Poster, "X", 2)).apply { writeText("2") }
         val src = LocalArtistImageSource()
-        val m1 = src.image(artist, mapOf("X" to first.path), emptyMap())
-        val m2 = src.image(artist, mapOf("X" to second.path), emptyMap())
+        val m1 = src.image(artist, mapOf(Names.key("X") to first.path), emptyMap())
+        val m2 = src.image(artist, mapOf(Names.key("X") to second.path), emptyMap())
         assertEquals(first, m1)
         assertEquals(second, m2)
         assertNotEquals(m1, m2)
@@ -39,7 +39,7 @@ class ArtistArtTest {
     @Test
     fun missingPosterFallsBackToMostPlayedAlbum() {
         val src = LocalArtistImageSource()
-        val m = src.image(artist, mapOf("X" to "/nope/p.jpg"), mapOf(2L to 5))
+        val m = src.image(artist, mapOf(Names.key("X") to "/nope/p.jpg"), mapOf(2L to 5))
         assertEquals(ArtRef(20, 2), m)
     }
 }

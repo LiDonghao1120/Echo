@@ -101,8 +101,6 @@ object Rematch {
 
     private fun fileName(key: String) = key.substringAfterLast('/').substringAfterLast(':')
 
-    private val spaces = Regex("\\s+")
-
     fun meta(title: String, artist: String, album: String): String =
-        listOf(title, artist, album).joinToString("|") { Normalizer.normalize(it, Normalizer.Form.NFC).trim().lowercase().replace(spaces, " ") }
+        listOf(title, artist, album).joinToString("|") { Names.key(it) }
 }

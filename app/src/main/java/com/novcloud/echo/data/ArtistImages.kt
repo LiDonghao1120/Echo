@@ -8,7 +8,7 @@ interface ArtistImageSource {
 
 class LocalArtistImageSource : ArtistImageSource {
     override fun image(artist: Artist, custom: Map<String, String>, playCounts: Map<Long, Int>): Any? {
-        custom[artist.name]?.let { p -> File(p).takeIf { it.exists() }?.let { return it } }
+        custom.forName(artist.name)?.let { p -> File(p).takeIf { it.exists() }?.let { return it } }
         val best = artist.albums.maxByOrNull { al -> al.songs.sumOf { playCounts[it.id] ?: 0 } * 1000 + al.songs.size }
         return best?.art ?: artist.art
     }

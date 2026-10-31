@@ -1,5 +1,7 @@
 package com.novcloud.echo.ui.detail
 
+import com.novcloud.echo.data.Names
+import com.novcloud.echo.data.forName
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -106,7 +108,7 @@ fun ArtistScreen(name: String) {
     LightSystemIcons()
     var editing by rememberSaveable { mutableStateOf(false) }
     val artActions = rememberArtistArtActions(name)
-    val artist = lib.artistByName[name]
+    val artist = lib.artist(name)
     if (artist == null) {
         if (lib.loaded) Box(Modifier.fillMaxSize()) {
             com.novcloud.echo.ui.components.EmptyState(null, displayArtist(name), Modifier.align(Alignment.Center))
@@ -114,14 +116,15 @@ fun ArtistScreen(name: String) {
         }
         return
     }
-    val logo = logos[name]
-    val model = remember(artist, custom[name], home.playCounts) { ArtistImages.source.image(artist, custom, home.playCounts) }
+    val logo = logos.forName(name)
+    val model = remember(artist, custom.forName(name), home.playCounts) { ArtistImages.source.image(artist, custom, home.playCounts) }
     val colors = rememberArtColors(model)
     val topSongs = remember(artist, home.playCounts) {
         artist.songs.sortedWith(compareByDescending<Song> { home.playCounts[it.id] ?: 0 }.thenByDescending { it.year }).take(5)
     }
     val mine = remember(events, name) {
-        val l = events.filter { name in splitArtists(it.artist) }
+        val key = Names.key(name)
+        val l = events.filter { e -> splitArtists(e.artist).any { Names.key(it) == key } }
         l.size to l.sumOf { it.listenedMs } / 60_000
     }
     val p = palette
@@ -260,7 +263,7 @@ fun ArtistScreen(name: String) {
             BarIcon { IconButton(onClick = { editing = true }) { Icon(Icons.Rounded.AutoFixHigh, null, tint = Paper) } }
         }
     }
-    if (editing) ArtistArtSheet(name, custom[name], logo, artActions) { editing = false }
+    if (editing) ArtistArtSheet(name, custom.forName(name), logo, artActions) { editing = false }
 }
 
 @Composable

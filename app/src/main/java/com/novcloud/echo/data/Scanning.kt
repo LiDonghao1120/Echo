@@ -93,7 +93,7 @@ object Dedupe {
     }
 
     fun fingerprint(s: Song): String =
-        "${s.title.trim().lowercase()}|${s.artist.trim().lowercase()}|${s.durationMs / 1000}|${s.size}"
+        "${Names.key(s.title)}|${Names.key(s.artist)}|${s.durationMs / 1000}|${s.size}"
 }
 
 object TagProbe {

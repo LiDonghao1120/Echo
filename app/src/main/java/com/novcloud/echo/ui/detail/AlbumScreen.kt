@@ -84,7 +84,7 @@ fun AlbumScreen(id: Long) {
     }
     var addAll by remember { mutableStateOf(false) }
     val multiDisc = album.songs.map { it.disc }.distinct().size > 1
-    val more = lib.artistByName[album.artist]?.albums?.filter { it.id != album.id }.orEmpty()
+    val more = lib.artist(album.artist)?.albums?.filter { it.id != album.id }.orEmpty()
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 24.dp)) {

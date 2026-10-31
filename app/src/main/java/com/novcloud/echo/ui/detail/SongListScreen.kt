@@ -114,7 +114,7 @@ fun SongListScreen(source: ListSource) {
         when (source) {
             is ListSource.MixSrc -> Triple(mixName, mixEyebrow, mixNow?.songs.orEmpty())
             is ListSource.PlaylistSrc -> Triple(playlist?.name ?: "", playlistLabel, playlistIds.mapNotNull { lib.songById[it] })
-            is ListSource.GenreSrc -> Triple(source.name, genreLabel, lib.genres.firstOrNull { it.name == source.name }?.songs.orEmpty())
+            is ListSource.GenreSrc -> Triple(source.name, genreLabel, lib.genre(source.name)?.songs.orEmpty())
             is ListSource.FolderSrc -> Triple(lib.folders.firstOrNull { it.path == source.path }?.name ?: "", folderLabel, lib.folders.firstOrNull { it.path == source.path }?.songs.orEmpty())
             is ListSource.Kind -> when {
                 source.kind == "recent" -> {
@@ -127,7 +127,7 @@ fun SongListScreen(source: ListSource) {
                 source.kind == "favorites" -> Triple(likedLabel, "", favorites.mapNotNull { lib.songById[it] })
                 source.kind.startsWith("artist:") -> {
                     val n = source.kind.removePrefix("artist:")
-                    Triple(displayArtist(n), allSongsLabel, lib.artistByName[n]?.songs.orEmpty().sortedByDescending { home.playCounts[it.id] ?: 0 })
+                    Triple(displayArtist(n), allSongsLabel, lib.artist(n)?.songs.orEmpty().sortedByDescending { home.playCounts[it.id] ?: 0 })
                 }
                 else -> Triple("", "", emptyList<Song>())
             }

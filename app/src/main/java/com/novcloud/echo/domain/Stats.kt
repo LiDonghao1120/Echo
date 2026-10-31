@@ -3,6 +3,8 @@ package com.novcloud.echo.domain
 import androidx.compose.runtime.Immutable
 import com.novcloud.echo.data.ArtRef
 import com.novcloud.echo.data.Library
+import com.novcloud.echo.data.Names
+import com.novcloud.echo.data.mostCommon
 import com.novcloud.echo.data.UNKNOWN
 import com.novcloud.echo.data.db.PlayEvent
 import com.novcloud.echo.data.displayAlbum
@@ -77,27 +79,32 @@ object StatsEngine {
         val songAgg = events.groupBy { it.songId }.map { (id, l) ->
             val e = l.last()
             val s = lib.songById[id]
-            Ranked(id.toString(), s?.title ?: e.title, s?.artist ?: e.artist, s?.art ?: ArtRef(e.albumId, -1), l.sumOf { it.listenedMs }, l.size)
+            Ranked(id.toString(), s?.title ?: Names.clean(e.title), s?.artist ?: Names.clean(e.artist), s?.art ?: ArtRef(e.albumId, -1), l.sumOf { it.listenedMs }, l.size)
         }.sortedWith(compareByDescending<Ranked> { it.plays }.thenByDescending { it.ms }).take(10)
 
         val artistMs = HashMap<String, Long>()
         val artistPlays = HashMap<String, Int>()
+        val artistSpellings = HashMap<String, MutableList<String>>()
         events.forEach { e ->
-            splitArtists(e.artist).filter { it != UNKNOWN }.forEach {
-                artistMs.merge(it, e.listenedMs, Long::plus)
-                artistPlays.merge(it, 1, Int::plus)
+            splitArtists(Names.clean(e.artist)).filter { it != UNKNOWN }.map { it to Names.key(it) }.distinctBy { it.second }.forEach { (name, key) ->
+                if (key.isEmpty()) return@forEach
+                artistMs.merge(key, e.listenedMs, Long::plus)
+                artistPlays.merge(key, 1, Int::plus)
+                artistSpellings.getOrPut(key) { mutableListOf() }.add(name)
             }
         }
-        val artistAgg = artistMs.entries.sortedByDescending { it.value }.take(10).map { (name, ms) ->
-            Ranked(name, name, "", name, ms, artistPlays[name] ?: 0)
+        val artistAgg = artistMs.entries.sortedByDescending { it.value }.take(10).map { (key, ms) ->
+            val name = lib.artistByKey[key]?.name ?: mostCommon(artistSpellings[key].orEmpty())
+            Ranked(name, name, "", name, ms, artistPlays[key] ?: 0)
         }
 
-        val albumAgg = events.groupBy { it.albumId }.map { (id, l) ->
+        val albumAgg = events.groupBy { lib.albumById[it.albumId]?.id ?: it.albumId }.map { (id, l) ->
             val al = lib.albumById[id]
-            Ranked(id.toString(), displayAlbum(al?.title ?: l.last().album), al?.artist ?: l.last().artist, al?.art ?: ArtRef(id, -1), l.sumOf { it.listenedMs }, l.size)
+            Ranked(id.toString(), displayAlbum(al?.title ?: Names.clean(l.last().album)), al?.artist ?: Names.clean(l.last().artist), al?.art ?: ArtRef(id, -1), l.sumOf { it.listenedMs }, l.size)
         }.sortedByDescending { it.ms }.take(10)
 
-        val genreAgg = events.groupBy { lib.songById[it.songId]?.genre?.ifBlank { null } ?: it.genre }.filterKeys { it.isNotBlank() }.map { (g, l) ->
+        val genreAgg = events.groupBy { Names.key(lib.songById[it.songId]?.genre?.ifBlank { null } ?: it.genre) }.filterKeys { it.isNotBlank() }.map { (k, l) ->
+            val g = lib.genreByKey[k]?.name ?: Names.clean(l.last().genre)
             Ranked(g, g, "", null, l.sumOf { it.listenedMs }, l.size)
         }.sortedByDescending { it.ms }.take(6)
 

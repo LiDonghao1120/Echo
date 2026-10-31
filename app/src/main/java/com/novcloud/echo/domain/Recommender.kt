@@ -5,6 +5,7 @@ import com.novcloud.echo.data.Album
 import com.novcloud.echo.data.Artist
 import com.novcloud.echo.data.Library
 import com.novcloud.echo.data.Song
+import com.novcloud.echo.data.Names
 import com.novcloud.echo.data.UNKNOWN
 import com.novcloud.echo.data.db.PlayEvent
 import java.io.File
@@ -51,9 +52,9 @@ class Affinity(events: List<PlayEvent>, now: Long, genreOf: (PlayEvent) -> Strin
             val decay = 0.5.pow(age / 30.0)
             val ratio = if (e.songDurationMs > 0) min(1.0, e.listenedMs.toDouble() / e.songDurationMs) else 0.5
             val w = decay * (if (e.completed) 1.0 else 0.4 + 0.6 * ratio)
-            com.novcloud.echo.data.splitArtists(e.artist).forEach { if (it != UNKNOWN) artist.merge(it, w, Double::plus) }
+            com.novcloud.echo.data.splitArtists(e.artist).map { Names.key(it) }.distinct().forEach { if (it != UNKNOWN && it.isNotEmpty()) artist.merge(it, w, Double::plus) }
             val g = genreOf(e)
-            if (g.isNotBlank()) genre.merge(g, w, Double::plus)
+            if (g.isNotBlank()) genre.merge(Names.key(g), w, Double::plus)
             album.merge(e.albumId, w, Double::plus)
             song.merge(e.songId, w, Double::plus)
             if (e.completed || e.listenedMs >= 30_000) plays.merge(e.songId, 1, Int::plus)
@@ -89,23 +90,24 @@ object Recommender {
 
         val mixes = ArrayList<Mix>()
         val genres = if (aff.genre.isNotEmpty()) aff.genre.entries.sortedByDescending { it.value }.map { it.key }
-        else lib.genres.map { it.name }
-        genres.take(3).forEachIndexed { i, g ->
-            val pool = lib.genres.firstOrNull { it.name == g }?.songs.orEmpty()
+        else lib.genres.map { Names.key(it.name) }
+        genres.mapNotNull { lib.genre(it) }.take(3).forEachIndexed { i, genre ->
+            val g = genre.name
+            val pool = genre.songs
             val picked = diverse(pool.sortedByDescending { scoreOf(it, aff, dayStart, seed * 31 + i + 1, 0.6) }, 25, 3)
             if (picked.size >= 5) mixes += Mix("genre:$g", g, MixKind.Genre, picked)
         }
         val topArtists = if (aff.artist.isNotEmpty()) aff.artist.entries.sortedByDescending { it.value }.map { it.key }
-        else lib.artists.filter { it.name != UNKNOWN }.sortedByDescending { it.songs.size }.map { it.name }
-        topArtists.take(3).forEachIndexed { i, name ->
-            val artist = lib.artistByName[name] ?: return@forEachIndexed
+        else lib.artists.filter { it.name != UNKNOWN }.sortedByDescending { it.songs.size }.map { Names.key(it.name) }
+        topArtists.mapNotNull { lib.artist(it) }.take(3).forEachIndexed { i, artist ->
+            val name = artist.name
             val r = Random(seed * 17 + i)
             val own = artist.songs.shuffled(r).take(12)
             val artistGenres = artist.songs.map { it.genre }.filter { it.isNotBlank() }.toSet()
             val similarArtists = lib.artists.filter { a -> a.name != name && a.songs.any { it.genre in artistGenres } }
-                .sortedByDescending { aff.artist[it.name] ?: 0.0 }
-                .take(8).map { it.name }.toSet()
-            val similar = lib.songs.filter { s -> s.artists.any { it in similarArtists } && s.genre in artistGenres }
+                .sortedByDescending { aff.artist[Names.key(it.name)] ?: 0.0 }
+                .take(8).map { Names.key(it.name) }.toSet()
+            val similar = lib.songs.filter { s -> s.artists.any { Names.key(it) in similarArtists } && s.genre in artistGenres }
                 .shuffled(r).let { diverse(it, 13, 2) }
             val songs = interleave(own, similar)
             if (songs.size >= 5) mixes += Mix("artist:$name", name, MixKind.Artist, songs)
@@ -140,7 +142,7 @@ object Recommender {
         val most = live.plays.entries.sortedByDescending { it.value }.take(10).mapNotNull { (id, c) -> lib.songById[id]?.let { it to c } }
         val added = lib.albums.sortedByDescending { it.dateAdded }.take(12)
         val artistOrder = if (live.artist.isNotEmpty()) live.artist.entries.sortedByDescending { it.value }.map { it.key } else topArtists
-        val artists = artistOrder.mapNotNull { lib.artistByName[it] }.filter { it.name != UNKNOWN }.take(12)
+        val artists = artistOrder.mapNotNull { lib.artist(it) }.filter { it.name != UNKNOWN }.distinctBy { it.name }.take(12)
 
         return HomeData(today, daily, mixes, recent, most, added, artists, hasHistory, live.plays, ready = true)
     }
@@ -160,8 +162,8 @@ object Recommender {
     }
 
     private fun scoreOf(s: Song, aff: Affinity, now: Long, salt: Long, noise: Double): Double {
-        val a = s.artists.maxOf { aff.artist[it] ?: 0.0 }
-        val g = aff.genre[s.genre] ?: 0.0
+        val a = s.artists.maxOf { aff.artist[Names.key(it)] ?: 0.0 }
+        val g = aff.genre[Names.key(s.genre)] ?: 0.0
         val al = aff.album[s.albumId] ?: 0.0
         val last = aff.lastPlayed[s.id]
         val recentPenalty = if (last != null && now - last < 36 * 3_600_000L) 0.5 else 0.0
@@ -176,7 +178,7 @@ object Recommender {
         val byAlbum = HashMap<Long, Int>()
         for (s in songs) {
             if (out.size >= limit) break
-            val a = s.artists.first()
+            val a = Names.key(s.artists.first())
             if ((byArtist[a] ?: 0) >= artistCap || (byAlbum[s.albumId] ?: 0) >= albumCap) continue
             out += s
             byArtist.merge(a, 1, Int::plus)

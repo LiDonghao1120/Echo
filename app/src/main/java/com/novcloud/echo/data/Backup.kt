@@ -236,10 +236,15 @@ object BackupMerge {
         val cs = cur.settings
         val ins = inc.settings
         val artists = LinkedHashMap<String, BackupArtist>()
-        cur.artists.forEach { artists[it.artist] = it }
+        cur.artists.forEach { a ->
+            val k = Names.key(a.artist)
+            val c = artists[k]
+            artists[k] = if (c == null) a else c.copy(poster = c.poster ?: a.poster, logo = c.logo ?: a.logo)
+        }
         inc.artists.forEach { a ->
-            val c = artists[a.artist]
-            artists[a.artist] = if (c == null) a else c.copy(poster = c.poster ?: a.poster, logo = c.logo ?: a.logo)
+            val k = Names.key(a.artist)
+            val c = artists[k]
+            artists[k] = if (c == null) a else c.copy(poster = c.poster ?: a.poster, logo = c.logo ?: a.logo)
         }
         return cur.copy(
             favorites = cur.favorites + inc.favorites.filter { favKeys.add(it.songKey) },

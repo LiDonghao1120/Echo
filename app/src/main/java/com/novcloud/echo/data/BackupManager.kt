@@ -54,11 +54,12 @@ class BackupManager(
             repo.reconcile()
             val base = current()
             val art = LinkedHashMap<String, File>()
-            val posters = db.artistImages().allNow().associate { it.artist to File(it.path) }.filterValues { it.exists() }
-            val logos = db.artistLogos().allNow().associate { it.artist to File(it.path) }.filterValues { it.exists() }
-            val artists = (posters.keys + logos.keys).sorted().mapIndexed { i, name ->
-                val p = posters[name]?.let { f -> "poster_$i.${f.extension.ifEmpty { "jpg" }}".also { art[it] = f } }
-                val l = logos[name]?.let { f -> "logo_$i.${f.extension.ifEmpty { "png" }}".also { art[it] = f } }
+            val posterRows = ArtistArtRows.latestByKey(db.artistImages().allNow().filter { File(it.path).exists() }, { it.artist }, { it.updatedAt })
+            val logoRows = ArtistArtRows.latestByKey(db.artistLogos().allNow().filter { File(it.path).exists() }, { it.artist }, { it.updatedAt })
+            val names = (posterRows.keys + logoRows.keys).associateWith { k -> posterRows[k]?.artist ?: logoRows.getValue(k).artist }
+            val artists = names.entries.sortedBy { it.value }.mapIndexed { i, (key, name) ->
+                val p = posterRows[key]?.let { File(it.path) }?.let { f -> "poster_$i.${f.extension.ifEmpty { "jpg" }}".also { art[it] = f } }
+                val l = logoRows[key]?.let { File(it.path) }?.let { f -> "logo_$i.${f.extension.ifEmpty { "png" }}".also { art[it] = f } }
                 BackupArtist(name, p, l)
             }
             val data = base.copy(artists = artists)
@@ -132,17 +133,22 @@ class BackupManager(
         }
         var count = 0
         val now = System.currentTimeMillis()
+        val havePoster = images.allNow().mapTo(HashSet()) { Names.key(it.artist) }
+        val haveLogo = logos.allNow().mapTo(HashSet()) { Names.key(it.artist) }
         for (a in pending.data.artists) {
             var done = false
-            a.poster?.let { File(pending.artDir, it) }?.takeIf { it.exists() && images.get(a.artist) == null }?.let { f ->
+            val key = Names.key(a.artist)
+            a.poster?.let { File(pending.artDir, it) }?.takeIf { it.exists() && key !in havePoster }?.let { f ->
                 ArtistArtStore.savePoster(context, a.artist, Uri.fromFile(f))?.let {
                     images.put(ArtistImage(a.artist, it.absolutePath, now))
+                    havePoster += key
                     done = true
                 }
             }
-            a.logo?.let { File(pending.artDir, it) }?.takeIf { it.exists() && logos.get(a.artist) == null }?.let { f ->
+            a.logo?.let { File(pending.artDir, it) }?.takeIf { it.exists() && key !in haveLogo }?.let { f ->
                 ArtistArtStore.saveLogo(context, a.artist, Uri.fromFile(f))?.let {
                     logos.put(ArtistLogo(a.artist, it.file.absolutePath, it.aspect, it.luma, now))
+                    haveLogo += key
                     done = true
                 }
             }

@@ -1,5 +1,6 @@
 package com.novcloud.echo.ui.components
 
+import com.novcloud.echo.data.forName
 import android.net.Uri
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -127,8 +128,8 @@ class AppActions(
 
     fun openAlbum(id: Long) = go("album/$id")
     fun openArtist(name: String) {
-        val known = repo.library.value.artistByName
-        val target = if (name in known) name else splitArtists(name).firstOrNull { it in known } ?: name
+        val lib = repo.library.value
+        val target = (lib.artist(name) ?: splitArtists(name).firstNotNullOfOrNull { lib.artist(it) })?.name ?: name
         go("artist/${Uri.encode(target)}")
     }
     fun openMix(id: String) = go("mix/${Uri.encode(id)}")
@@ -194,8 +195,8 @@ fun Artwork(
 
 @Composable
 fun artistModel(name: String, lib: Library, custom: Map<String, String>, playCounts: Map<Long, Int>): Any? {
-    val artist = lib.artistByName[name] ?: return null
-    return remember(artist, custom[name], playCounts.size) { ArtistImages.source.image(artist, custom, playCounts) }
+    val artist = lib.artist(name) ?: return null
+    return remember(artist, custom.forName(name), playCounts.size) { ArtistImages.source.image(artist, custom, playCounts) }
 }
 
 @Composable
@@ -210,7 +211,7 @@ fun rememberArtistPoster(name: String): Any? {
 @Composable
 fun rememberArtistLogo(name: String): ArtistLogoInfo? {
     val logos by LocalActions.current.repo.artistLogos.collectAsState()
-    return logos[name]
+    return logos.forName(name)
 }
 
 @Composable

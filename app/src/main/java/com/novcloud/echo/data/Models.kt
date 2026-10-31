@@ -77,41 +77,69 @@ data class Library(
     val loaded: Boolean = false,
 ) {
     val songById: Map<Long, Song> by lazy { songs.associateBy { it.id } }
-    val albumById: Map<Long, Album> by lazy { albums.associateBy { it.id } }
-    val artistByName: Map<String, Artist> by lazy { artists.associateBy { it.name } }
+    /** Includes the ids of albums that were folded into another (same title and artist under several ids). */
+    val albumById: Map<Long, Album> by lazy {
+        HashMap<Long, Album>().apply { albums.forEach { a -> a.songs.forEach { s -> putIfAbsent(s.albumId, a) }; put(a.id, a) } }
+    }
+    /** By [Names.key]; look artists up with [artist] so any spelling of the name finds them. */
+    val artistByKey: Map<String, Artist> by lazy { artists.associateBy { Names.key(it.name) } }
+    val genreByKey: Map<String, Genre> by lazy { genres.associateBy { Names.key(it.name) } }
     val songByKey: Map<String, Song> by lazy { songs.associateBy { it.key } }
     val search: LibrarySearch by lazy { LibrarySearch(this) }
     /** Ids this library's files had before 0.7 (MediaStore _ID, or the hash SAF songs used), for one-time conversion. */
     val songByLegacyId: Map<Long, Song> by lazy { songs.associateBy { SongKeys.legacyId(it) } }
 
+    fun artist(name: String): Artist? = artistByKey.forName(name)
+    fun genre(name: String): Genre? = genreByKey.forName(name)
+
     companion object {
-        fun build(songs: List<Song>): Library {
-            val albums = songs.groupBy { it.albumId }.map { (id, list) ->
+        fun build(input: List<Song>): Library {
+            val songs = input.map { it.cleaned() }
+
+            val artistSpellings = HashMap<String, MutableList<String>>()
+            val songsByArtist = LinkedHashMap<String, MutableList<Song>>()
+            songs.forEach { s ->
+                s.artists.map { it to Names.key(it) }.distinctBy { it.second }.forEach { (a, k) ->
+                    songsByArtist.getOrPut(k) { mutableListOf() }.add(s)
+                    artistSpellings.getOrPut(k) { mutableListOf() }.add(a)
+                }
+            }
+            val artistName = artistSpellings.mapValues { mostCommon(it.value) }
+            fun artistDisplay(raw: String) = artistName[Names.key(raw)] ?: raw
+
+            val albumGroups = LinkedHashMap<String, MutableList<List<Song>>>()
+            songs.groupBy { it.albumId }.forEach { (id, list) ->
+                val title = mostCommon(list.map { it.album })
+                val artist = mostCommon(list.map { it.albumArtist }.filter { it.isNotBlank() }).ifEmpty { mostCommon(list.map { it.artist }) }
+                val key = if (title == UNKNOWN || title.isBlank()) "id:$id" else Names.key(title) + "\u0000" + Names.key(artist)
+                albumGroups.getOrPut(key) { mutableListOf() }.add(list)
+            }
+            val albums = albumGroups.values.map { groups ->
+                val main = groups.maxWith(compareBy<List<Song>> { it.size }.thenByDescending { it.first().albumId })
+                val list = groups.flatten()
                 val sorted = list.sortedWith(compareBy({ it.disc }, { it.track }, { it.title }))
-                val first = sorted.first()
+                val albumArtist = mostCommon(list.map { it.albumArtist }.filter { it.isNotBlank() })
                 Album(
-                    id = id,
-                    title = first.album,
-                    artist = first.albumArtist.ifBlank { mostCommon(list.map { it.artist }) },
+                    id = main.first().albumId,
+                    title = mostCommon(list.map { it.album }),
+                    artist = artistDisplay(albumArtist.ifBlank { mostCommon(list.map { it.artist }) }),
                     year = list.maxOf { it.year },
                     songs = sorted,
                 )
             }.sortedByKey { sortKey(it.title) }
-            val albumMap = albums.associateBy { it.id }
-            val albumsByArtist = albums.groupBy { it.artist }
-            val songsByArtist = HashMap<String, MutableList<Song>>()
-            songs.forEach { s -> s.artists.forEach { a -> songsByArtist.getOrPut(a) { mutableListOf() }.add(s) } }
-            val artists = songsByArtist.map { (name, list) ->
-                val own = albumsByArtist[name].orEmpty()
-                val featured = list.map { it.albumId }.distinct().mapNotNull { albumMap[it] }
+            val albumOfSong = HashMap<Long, Album>().apply { albums.forEach { a -> a.songs.forEach { put(it.id, a) } } }
+            val albumsByArtist = albums.groupBy { Names.key(it.artist) }
+            val artists = songsByArtist.map { (key, list) ->
+                val own = albumsByArtist[key].orEmpty()
+                val featured = list.mapNotNull { albumOfSong[it.id] }.distinctBy { it.id }
                 Artist(
-                    name = name,
+                    name = artistName.getValue(key),
                     songs = list.sortedByKey { it.titleKey },
                     albums = (own + featured).distinctBy { it.id }.sortedByDescending { it.year },
                 )
             }.sortedByKey { nameSortKey(it.name) }
-            val genres = songs.filter { it.genre.isNotBlank() }.groupBy { it.genre }
-                .map { (g, l) -> Genre(g, l) }.sortedByDescending { it.songs.size }
+            val genres = songs.filter { it.genre.isNotBlank() }.groupBy { Names.key(it.genre) }
+                .map { (_, l) -> Genre(mostCommon(l.map { it.genre }), l) }.sortedByDescending { it.songs.size }
             val folders = songs.groupBy { it.folder }.map { (p, l) -> Folder(p, l.sortedByKey { it.titleKey }) }
                 .sortedByKey { sortKey(it.name) }
             return Library(songs.sortedByKey { it.titleKey }, albums, artists, genres, folders, loaded = true)
@@ -121,7 +149,7 @@ data class Library(
 
 const val UNKNOWN = "<unknown>"
 
-private val ARTIST_SEPARATORS = Regex("\\s*(?:/|、|;|；|&|＆| feat\\. | ft\\. | x )\\s*", RegexOption.IGNORE_CASE)
+private val ARTIST_SEPARATORS = Regex("(?U)\\s*(?:/|／|、|;|；|&|＆|\\s(?:feat|ft)\\.\\s|\\s[xX×]\\s)\\s*", RegexOption.IGNORE_CASE)
 
 fun splitArtists(raw: String): List<String> {
     val parts = raw.split(ARTIST_SEPARATORS)
@@ -129,8 +157,9 @@ fun splitArtists(raw: String): List<String> {
     return parts.ifEmpty { listOf(raw) }.distinct()
 }
 
+/** The most frequent value; ties go to the one that sorts first, so the choice does not depend on scan order. */
 fun mostCommon(values: List<String>): String =
-    values.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: ""
+    values.groupingBy { it }.eachCount().entries.minWithOrNull(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })?.key ?: ""
 
 inline fun <T> List<T>.sortedByKey(key: (T) -> String): List<T> =
     map { it to key(it) }.sortedBy { it.second }.map { it.first }
