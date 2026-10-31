@@ -52,7 +52,7 @@ class Affinity(events: List<PlayEvent>, now: Long, genreOf: (PlayEvent) -> Strin
             val decay = 0.5.pow(age / 30.0)
             val ratio = if (e.songDurationMs > 0) min(1.0, e.listenedMs.toDouble() / e.songDurationMs) else 0.5
             val w = decay * (if (e.completed) 1.0 else 0.4 + 0.6 * ratio)
-            com.novcloud.echo.data.splitArtists(e.artist).map { Names.key(it) }.distinct().forEach { if (it != UNKNOWN && it.isNotEmpty()) artist.merge(it, w, Double::plus) }
+            com.novcloud.echo.data.artistsOf(e.artist).map { Names.key(it) }.distinct().forEach { if (it != UNKNOWN && it.isNotEmpty()) artist.merge(it, w, Double::plus) }
             val g = genreOf(e)
             if (g.isNotBlank()) genre.merge(Names.key(g), w, Double::plus)
             album.merge(e.albumId, w, Double::plus)

@@ -104,6 +104,16 @@ class SnapshotStore(dir: File) {
 
     fun load(): LibrarySnapshot? = if (file.exists()) file.inputStream().use { LibrarySnapshot.read(it) } else null
 
+    /** Sets a snapshot that could not be restored aside (kept once for diagnosis); the next scan writes a fresh one. */
+    @Synchronized
+    fun discard() {
+        if (file.exists()) {
+            val bad = File(file.parentFile, file.name + ".bad")
+            bad.delete()
+            if (!file.renameTo(bad)) file.delete()
+        }
+    }
+
     @Synchronized
     fun save(s: LibrarySnapshot) {
         val tmp = File(file.parentFile, file.name + ".tmp")

@@ -63,8 +63,15 @@ object DiagLog {
         val l = RollingLog(File(context.filesDir, "logs"), MAX_BYTES)
         log = l
         val previous = Thread.getDefaultUncaughtExceptionHandler()
+        val marker = File(context.filesDir, "logs/crashed")
+        if (marker.exists()) {
+            marker.delete()
+            l.append(line('W', "Crash", "previous launch ended in a crash (stack trace above)"))
+        }
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching { if (Thread.currentThread().name != "echo-diag") writer.submit {}.get(500, java.util.concurrent.TimeUnit.MILLISECONDS) }
             l.append(line('F', "Crash", "uncaught on ${t.name}\n${stack(e)}"))
+            runCatching { marker.parentFile?.mkdirs(); marker.createNewFile() }
             previous?.uncaughtException(t, e)
         }
     }
@@ -74,10 +81,12 @@ object DiagLog {
     fun e(tag: String, msg: String, e: Throwable? = null) = write('E', tag, msg, e)
 
     private fun write(level: Char, tag: String, msg: String, e: Throwable?) {
-        when (level) {
-            'I' -> Log.i(tag, msg)
-            'W' -> Log.w(tag, msg, e)
-            else -> Log.e(tag, msg, e)
+        runCatching {
+            when (level) {
+                'I' -> Log.i(tag, msg)
+                'W' -> Log.w(tag, msg, e)
+                else -> Log.e(tag, msg, e)
+            }
         }
         val l = log ?: return
         val text = if (e == null) msg else "$msg\n${stack(e)}"

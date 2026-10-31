@@ -149,7 +149,12 @@ data class Library(
 
 const val UNKNOWN = "<unknown>"
 
-private val ARTIST_SEPARATORS = Regex("(?U)\\s*(?:/|／|、|;|；|&|＆|\\s(?:feat|ft)\\.\\s|\\s[xX×]\\s)\\s*", RegexOption.IGNORE_CASE)
+/**
+ * Android compiles patterns with ICU, which rejects Java-only inline flags such as U (PatternSyntaxException at class
+ * init, so every caller of this file fails). Spaces are spelled out (\s plus Unicode spaces) so the JVM and ICU agree.
+ */
+private const val SP = "[\\s\\p{Z}]"
+private val ARTIST_SEPARATORS = Regex("$SP*(?:/|／|、|;|；|&|＆|$SP(?:feat|ft)\\.$SP|$SP[xX×]$SP)$SP*", RegexOption.IGNORE_CASE)
 
 fun splitArtists(raw: String): List<String> {
     val parts = raw.split(ARTIST_SEPARATORS)

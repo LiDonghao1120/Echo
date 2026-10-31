@@ -98,9 +98,9 @@ class EchoApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        DiagLog.init(this)
         Languages.applyLegacy(this)
         loadNames()
-        DiagLog.init(this)
         Pinyin.install { assets.open("pinyin.bin") }
         container = AppContainer(this)
     }

@@ -73,7 +73,6 @@ import com.novcloud.echo.data.ArtistImages
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
-import com.novcloud.echo.data.splitArtists
 import com.novcloud.echo.ui.components.AnimatedNumber
 import com.novcloud.echo.ui.components.ArtistNameMark
 import com.novcloud.echo.ui.components.LocalActions
@@ -124,7 +123,7 @@ fun ArtistScreen(name: String) {
     }
     val mine = remember(events, name) {
         val key = Names.key(name)
-        val l = events.filter { e -> splitArtists(e.artist).any { Names.key(it) == key } }
+        val l = events.filter { e -> com.novcloud.echo.data.artistsOf(e.artist).any { Names.key(it) == key } }
         l.size to l.sumOf { it.listenedMs } / 60_000
     }
     val p = palette

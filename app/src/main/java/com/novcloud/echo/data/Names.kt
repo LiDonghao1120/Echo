@@ -15,7 +15,7 @@ import java.util.Locale
  * variation selectors, bracket shapes, spaces next to brackets, and letter case.
  */
 object Names {
-    private val spaces = Regex("\\s+")
+    private val spaces = Regex("[\\s\\p{Z}]+")
     private val interiorNul = Regex("\u0000+(?=[^\u0000])")
 
     /** ID3v2.4 and Vorbis-style multiple values arrive NUL-separated; a trailing NUL is just a terminator. */
@@ -122,6 +122,10 @@ object Names {
     private val OPEN = intArrayOf('('.code, '['.code, '{'.code, 0x3010, 0x3014, 0x3016, 0x3018, 0x301A, 0x2985, 0x27E6, 0x2768, 0x276A, 0x2770, 0x2772).toSet()
     private val CLOSE = intArrayOf(')'.code, ']'.code, '}'.code, 0x3011, 0x3015, 0x3017, 0x3019, 0x301B, 0x2986, 0x27E7, 0x2769, 0x276B, 0x2771, 0x2773).toSet()
 }
+
+/** Artists named by raw tag or play-history text, split the way [Song.cleaned] + [Song.artists] split them (NUL values too). */
+fun artistsOf(raw: String): List<String> =
+    Names.values(raw).flatMap { splitArtists(Names.clean(it)) }.filter { it.isNotEmpty() }.distinct()
 
 /** The artist, album or genre a lookup by any spelling of [name] should find. */
 fun <V> Map<String, V>.forName(name: String): V? = this[Names.key(name)]

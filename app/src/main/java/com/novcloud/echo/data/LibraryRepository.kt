@@ -101,18 +101,25 @@ class LibraryRepository(
     private val snapshots = SnapshotStore(context.filesDir)
     private var treeStamps: Map<String, Long> = emptyMap()
     private val probed = HashMap<String, Long>()
+    private val steps = com.novcloud.echo.diag.StartupSteps.of(context)
     private val restored: Deferred<Unit> = scope.async(Dispatchers.IO) {
-        mergeArtistArt()
-        val snap = runCatching { snapshots.load() }.getOrNull() ?: return@async
-        treeSongs = snap.treeSongs.map { it.cleaned() }
+        steps.once("merge_artist_art_v1") { mergeArtistArt() }
+        steps.every("restore_snapshot", recover = { snapshots.discard() }) { restoreSnapshot() }
+    }
+
+    private suspend fun restoreSnapshot() {
+        val snap = runCatching { snapshots.load() }.onFailure { DiagLog.e(TAG, "snapshot unreadable", it) }.getOrNull() ?: return
+        val songs = snap.songs.map { it.cleaned() }
+        val tree = snap.treeSongs.map { it.cleaned() }
+        reportVariants(snap.songs)
+        val lib = Library.build(songs)
+        treeSongs = tree
         treeStamps = snap.trees
         probed.putAll(snap.probed)
-        reportVariants(snap.songs)
-        val lib = Library.build(snap.songs)
         if (!_library.value.loaded) {
             _library.value = lib
             reconcile(lib)
-            if (snap.songs.any { it.cleaned() !== it } || snap.treeSongs.any { it.cleaned() !== it }) {
+            if (songs.indices.any { songs[it] !== snap.songs[it] } || tree.indices.any { tree[it] !== snap.treeSongs[it] }) {
                 DiagLog.i(TAG, "saved library had untidy tag text; normalized in place")
                 runCatching { saveSnapshot() }.onFailure { DiagLog.e(TAG, "snapshot save failed", it) }
             }
@@ -129,7 +136,7 @@ class LibraryRepository(
     }
 
     /** One poster and one logo per artist: rows saved under spellings that now fold together keep the latest. */
-    private suspend fun mergeArtistArt() = runCatching {
+    internal suspend fun mergeArtistArt() {
         val images = db.artistImages()
         val imageRows = images.allNow()
         val dropImages = ArtistArtRows.superseded(imageRows, { it.artist }, { it.updatedAt })
@@ -147,7 +154,7 @@ class LibraryRepository(
         if (dropImages.isNotEmpty() || dropLogos.isNotEmpty()) {
             DiagLog.i(TAG, "merged artist art across spellings: dropped ${dropImages.size} older posters, ${dropLogos.size} older logos")
         }
-    }.onFailure { DiagLog.e(TAG, "artist art merge failed", it) }
+    }
     private val started = AtomicBoolean(false)
     private var missingJob: Job? = null
 

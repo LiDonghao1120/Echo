@@ -8,7 +8,6 @@ import com.novcloud.echo.data.mostCommon
 import com.novcloud.echo.data.UNKNOWN
 import com.novcloud.echo.data.db.PlayEvent
 import com.novcloud.echo.data.displayAlbum
-import com.novcloud.echo.data.splitArtists
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -86,7 +85,7 @@ object StatsEngine {
         val artistPlays = HashMap<String, Int>()
         val artistSpellings = HashMap<String, MutableList<String>>()
         events.forEach { e ->
-            splitArtists(Names.clean(e.artist)).filter { it != UNKNOWN }.map { it to Names.key(it) }.distinctBy { it.second }.forEach { (name, key) ->
+            com.novcloud.echo.data.artistsOf(e.artist).filter { it != UNKNOWN }.map { it to Names.key(it) }.distinctBy { it.second }.forEach { (name, key) ->
                 if (key.isEmpty()) return@forEach
                 artistMs.merge(key, e.listenedMs, Long::plus)
                 artistPlays.merge(key, 1, Int::plus)
