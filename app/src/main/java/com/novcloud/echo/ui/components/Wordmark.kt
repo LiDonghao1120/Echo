@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicText
@@ -101,6 +102,9 @@ object LogoAlpha {
     fun tint(color: Color): ColorFilter = ColorFilter.colorMatrix(tintMatrix(color))
 }
 
+/** Room around a logo for its blurred halo to fade out in (a 10dp blur reaches about 19dp). */
+private val HALO_ROOM = 20.dp
+
 fun markText(name: String): String = displayArtist(name).let { if (isCjk(it)) it else it.uppercase() }
 
 @Composable
@@ -120,9 +124,13 @@ fun ArtistNameMark(
         val (w, h) = logoSize(logo, maxWidth, maxHeight)
         Box(modifier.size(w, h)) {
             if (halo && Build.VERSION.SDK_INT >= 31) {
+                // The halo's layer is the logo plus HALO_ROOM on every side, so the blur fades out inside it instead of
+                // being cut along the logo's own edges (a trimmed logo's letters touch them), which read as a box.
                 AsyncImage(
                     logo.file, null,
-                    Modifier.fillMaxSize().graphicsLayer { alpha = 0.55f }.blur(10.dp, BlurredEdgeTreatment.Unbounded),
+                    Modifier.requiredSize(w + HALO_ROOM * 2, h + HALO_ROOM * 2)
+                        .graphicsLayer { alpha = 0.55f }.blur(10.dp, BlurredEdgeTreatment.Unbounded)
+                        .padding(HALO_ROOM),
                     contentScale = ContentScale.Fit,
                     colorFilter = LogoAlpha.halo(if (logo.dark) Color.White else Ink),
                 )

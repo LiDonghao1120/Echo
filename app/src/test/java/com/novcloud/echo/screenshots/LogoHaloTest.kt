@@ -114,6 +114,17 @@ class LogoHaloTest : ScreenshotBase() {
         assertTrue("logo on the page shows a box between its letters (off by $onPage)", onPage <= 2)
         assertTrue("logo on grey shows a box between its letters (off by $onPhoto)", onPhoto <= 2)
         if (!dark) assertTrue("the plain drawing should show the matte box this test looks for (off by $plain)", plain >= 4)
+        if (!dark) {
+            // Above the block, whose top edge is inside the logo, the halo fades smoothly across the logo's top
+            // edge: no step where its layer would end (it used to be cut there, a straight line along the box).
+            val b = compose.onNodeWithTag("mark").getBoundsInRoot()
+            val scale = (b.right - b.left).value * density / boxW
+            val x = (b.left.value * density + (330 + (boxW - 330) / 2) * scale).toInt()
+            val top = (b.top.value * density).toInt()
+            val inside = android.graphics.Color.red(bmp.getPixel(x, top + 2))
+            val outside = android.graphics.Color.red(bmp.getPixel(x, top - 2))
+            assertTrue("halo is cut along the logo's top edge ($outside outside, $inside inside)", abs(inside - outside) <= 6)
+        }
     }
 
     @Test fun matteLogoLight() = check(dark = false)
