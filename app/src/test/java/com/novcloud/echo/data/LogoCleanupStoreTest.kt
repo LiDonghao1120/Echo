@@ -103,7 +103,8 @@ class LogoCleanupStoreTest {
     @Test fun theLibraryCleansLogosButNotPosters() = runBlocking {
         val matte = file("Wren Hollow_logo.png", SyntheticLogos.matte(0x202020, 30, matteRgb = 0xFFFFFF))
         val jpeg = file("Ash Meridian_logo.jpg", SyntheticLogos.opaque(0xF0F0F0, 0x000000), Bitmap.CompressFormat.JPEG)
-        val poster = file("Ash Meridian_poster.jpg", SyntheticLogos.opaque(0xF0F0F0, 0x000000), Bitmap.CompressFormat.JPEG)
+        // a different picture from the logo: the same pixels would be the same file, skipped by its hash
+        val poster = file("Ash Meridian_poster.jpg", SyntheticLogos.opaque(0x202020, 0xE8E8E8), Bitmap.CompressFormat.JPEG)
         assertEquals(3, c.artLibrary.add(listOf(Uri.fromFile(matte), Uri.fromFile(jpeg), Uri.fromFile(poster))).added)
         val items = c.db.artAssets().allNow()
         val m = items.single { it.name == "Wren Hollow" }
