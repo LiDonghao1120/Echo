@@ -89,6 +89,26 @@ data class ArtistLogo(
     val updatedAt: Long,
 )
 
+/**
+ * An image in the artist artwork library: a copy in app storage ([path]), so the original on the phone can go.
+ * [kind] is an [com.novcloud.echo.data.ArtKind] name; [hash] is the SHA-256 of the file the user picked.
+ */
+@Entity(tableName = "art_asset")
+data class ArtAsset(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val kind: String,
+    val path: String,
+    val width: Int,
+    val height: Int,
+    val luma: Float,
+    val hash: String,
+    val addedAt: Long,
+    val updatedAt: Long,
+)
+
+val ArtAsset.aspect: Float get() = if (height <= 0) 1f else width.toFloat() / height
+
 data class PlaylistWithCount(val id: Long, val name: String, val createdAt: Long, val count: Int, val firstSongKey: String?)
 
 @Dao
@@ -340,9 +360,36 @@ interface ArtistLogoDao {
     suspend fun remove(artist: String)
 }
 
+@Dao
+interface ArtAssetDao {
+    @Query("SELECT * FROM art_asset ORDER BY updatedAt DESC, id DESC")
+    fun all(): Flow<List<ArtAsset>>
+
+    @Query("SELECT * FROM art_asset ORDER BY updatedAt DESC, id DESC")
+    suspend fun allNow(): List<ArtAsset>
+
+    @Query("SELECT * FROM art_asset WHERE id = :id")
+    suspend fun get(id: Long): ArtAsset?
+
+    @Insert
+    suspend fun insert(a: ArtAsset): Long
+
+    @Query("UPDATE art_asset SET name = :name, kind = :kind, updatedAt = :at WHERE id = :id")
+    suspend fun edit(id: Long, name: String, kind: String, at: Long)
+
+    @Query("DELETE FROM art_asset WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM art_asset")
+    suspend fun clear()
+}
+
 @Database(
-    entities = [PlayEvent::class, Playlist::class, PlaylistEntry::class, Favorite::class, ArtistImage::class, ArtistLogo::class, SongRef::class, SongAlias::class, LyricOverride::class],
-    version = 4,
+    entities = [
+        PlayEvent::class, Playlist::class, PlaylistEntry::class, Favorite::class, ArtistImage::class, ArtistLogo::class, SongRef::class,
+        SongAlias::class, LyricOverride::class, ArtAsset::class,
+    ],
+    version = 5,
     exportSchema = true,
 )
 abstract class EchoDatabase : RoomDatabase() {
@@ -353,6 +400,7 @@ abstract class EchoDatabase : RoomDatabase() {
     abstract fun artistLogos(): ArtistLogoDao
     abstract fun identity(): IdentityDao
     abstract fun lyricOverrides(): LyricOverrideDao
+    abstract fun artAssets(): ArtAssetDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -417,7 +465,18 @@ abstract class EchoDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `art_asset` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, " +
+                        "`kind` TEXT NOT NULL, `path` TEXT NOT NULL, `width` INTEGER NOT NULL, `height` INTEGER NOT NULL, `luma` REAL NOT NULL, " +
+                        "`hash` TEXT NOT NULL, `addedAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)",
+                )
+            }
+        }
+
         fun create(context: Context, name: String = "echo.db") =
-            Room.databaseBuilder(context, EchoDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+            Room.databaseBuilder(context, EchoDatabase::class.java, name)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
     }
 }

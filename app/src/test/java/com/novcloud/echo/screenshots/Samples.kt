@@ -129,6 +129,22 @@ object Samples {
         c.library.publish(library)
     }
 
+    /** Placeholder wordmarks and a poster for fictional artists (resources/samples/library), added the way the picker adds them. */
+    val libraryFiles = listOf(
+        "Nova_Lark_logo.png", "Marlow & the Tides - Logo.png", "Pale Orchid (2).png", "Otis Fenwick_wordmark.png", "温屿_logo.png",
+        "Juniper Vale_poster.jpg",
+    )
+
+    fun seedArtLibrary(context: Context) {
+        val dir = File(context.cacheDir, "picked").apply { mkdirs() }
+        fun copy(resource: String, name: String) = File(dir, name).also { f ->
+            Samples::class.java.classLoader!!.getResourceAsStream(resource)!!.use { input -> f.outputStream().use { input.copyTo(it) } }
+        }
+        val files = libraryFiles.map { copy("samples/library/$it", it) } +
+            copy("samples/logo_ivy.png", "Ivy Calder_logo.png") + copy("samples/logo_kira.png", "Kira Nox.png")
+        runBlocking { app(context).artLibrary.add(files.map { Uri.fromFile(it) }) }
+    }
+
     fun playing(context: Context, songTitle: String = "Paper Satellites") {
         val s = songs.first { it.title == songTitle }
         val queue = songs.take(12).mapIndexed { i, x -> QueueEntry(i, x) }

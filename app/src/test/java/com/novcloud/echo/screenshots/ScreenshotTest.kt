@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -90,11 +92,13 @@ abstract class ScreenshotBase {
         tall: Int? = null,
         withArt: Boolean = true,
         sleep: SleepState? = null,
+        artLibrary: Boolean = false,
         before: () -> Unit = {},
     ) {
         if (tall != null) RuntimeEnvironment.setQualifiers("+h${tall}dp")
         compose.mainClock.autoAdvance = false
         Samples.seed(ctx, withArt)
+        if (artLibrary) Samples.seedArtLibrary(ctx)
         if (playing) Samples.playing(ctx)
         sleep?.let { Samples.app(ctx).player.previewSleep(it) }
         waitForHome()
@@ -165,6 +169,49 @@ abstract class ScreenshotBase {
         }
         settle(1)
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+    }
+
+    /** A bottom sheet's content on its own, the way the sheet shows it. */
+    protected fun sheet(name: String, dark: Boolean = true, seed: () -> Unit = {}, content: @Composable () -> Unit) {
+        compose.mainClock.autoAdvance = false
+        Samples.seed(ctx)
+        seed()
+        val c = Samples.app(ctx)
+        compose.setContent {
+            EchoTheme(dark, motion = false) {
+                val nav = androidx.navigation.compose.rememberNavController()
+                val actions = AppActions(nav, c.player, c.library, c.home, { _, _ -> }, {}, {})
+                androidx.compose.runtime.CompositionLocalProvider(LocalActions provides actions) {
+                    Box(Modifier.fillMaxSize().background(Color(0xFF000000)), contentAlignment = Alignment.BottomCenter) {
+                        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = EchoShape.card) {
+                            Box(Modifier.padding(top = 20.dp)) { content() }
+                        }
+                    }
+                }
+            }
+        }
+        settle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+    }
+
+    /** The artwork library picker on an artist without a logo: the artist's own wordmark first. */
+    protected fun picker(name: String) = sheet(name, seed = { Samples.seedArtLibrary(ctx) }) {
+        val c = Samples.app(ctx)
+        val assets by c.artLibrary.assets.collectAsState()
+        val linked = com.novcloud.echo.ui.settings.rememberLinkedArtists()
+        com.novcloud.echo.ui.detail.ArtLibraryPickerContent(
+            "Otis Fenwick", com.novcloud.echo.data.ArtKind.Logo, assets, linked.keys, {}, {}, {},
+        )
+    }
+
+    /** Editing one library image: name, kind, the jump to its artist. */
+    protected fun assetSheet(name: String) = sheet(name, seed = { Samples.seedArtLibrary(ctx) }) {
+        val c = Samples.app(ctx)
+        val assets by c.artLibrary.assets.collectAsState()
+        val linked = com.novcloud.echo.ui.settings.rememberLinkedArtists()
+        assets.firstOrNull { it.name == "温屿" }?.let { a ->
+            com.novcloud.echo.ui.settings.AssetSheetContent(a, linked[com.novcloud.echo.data.ArtLibraryMatch.key(a.name)]) {}
+        }
     }
 
     protected fun primeEffects() {
@@ -298,8 +345,8 @@ class ScreenshotTest : ScreenshotBase() {
                         Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = EchoShape.card) {
                             Box(Modifier.padding(top = 20.dp)) {
                                 ArtistArtSheetContent(
-                                    "Ivy Calder", true, c.library.artistLogos.value["Ivy Calder"],
-                                    ArtistArtActions({}, {}, {}, {}, {}, {}),
+                                    "Ivy Calder", true, c.library.artistLogos.value[com.novcloud.echo.data.Names.key("Ivy Calder")],
+                                    ArtistArtActions({}, {}, {}, {}, {}, {}), onLibrary = {},
                                 )
                             }
                         }
@@ -310,6 +357,15 @@ class ScreenshotTest : ScreenshotBase() {
         settle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/artist_sheet_dark.png")
     }
+
+    @Test fun art_library_dark() = app("art_library_dark", route = "settings/art-library", artLibrary = true)
+    @Test fun art_library_light() = app("art_library_light", dark = false, route = "settings/art-library", artLibrary = true)
+    @Test fun art_library_empty_dark() = app("art_library_empty_dark", route = "settings/art-library")
+    @Test fun art_library_search_dark() = app("art_library_search_dark", route = "settings/art-library", artLibrary = true) {
+        compose.onNode(hasSetTextAction()).performTextInput("wy")
+    }
+    @Test fun art_picker_dark() = picker("art_picker_dark")
+    @Test fun art_asset_sheet_dark() = assetSheet("art_asset_sheet_dark")
 
     @Test fun icon() {
         compose.mainClock.autoAdvance = false

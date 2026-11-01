@@ -71,6 +71,11 @@ class EnglishScreenshotTest : ScreenshotBase() {
         app("effects_en", route = "settings/effects", tall = 1400)
     }
 
+    @Test fun art_library_en() = app("art_library_en", route = "settings/art-library", artLibrary = true)
+    @Test fun art_picker_en() = picker("art_picker_en")
+    @Test fun art_asset_sheet_en() = assetSheet("art_asset_sheet_en")
+    @Test fun settings_art_en() = app("settings_art_en", route = "settings", tall = 2400)
+
     @Test fun widgets_en() = widgets(
         "widgets_en",
         WidgetState("Paper Satellites", "Ivy Calder", playing = true),

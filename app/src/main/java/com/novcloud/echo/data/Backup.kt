@@ -28,10 +28,24 @@ data class BackupSettings(
     val scanTrees: Set<String> = emptySet(),
     val lyricsTree: String? = null,
     val lyricsByWord: Boolean? = null,
+    val artAutoApply: Boolean? = null,
 )
 
 /** [poster] and [logo] are file names inside the backup's art/ folder. */
 data class BackupArtist(val artist: String, val poster: String? = null, val logo: String? = null)
+
+/** An artwork library image; [file] is its name inside the backup's art/ folder. */
+data class BackupAsset(
+    val name: String,
+    val kind: String,
+    val file: String,
+    val width: Int = 0,
+    val height: Int = 0,
+    val luma: Float = 1f,
+    val hash: String = "",
+    val addedAt: Long = 0,
+    val updatedAt: Long = 0,
+)
 
 data class BackupData(
     val createdAt: Long = 0,
@@ -44,6 +58,7 @@ data class BackupData(
     val settings: BackupSettings = BackupSettings(),
     val artists: List<BackupArtist> = emptyList(),
     val lyrics: List<LyricOverride> = emptyList(),
+    val library: List<BackupAsset> = emptyList(),
 )
 
 class BackupException(val reason: Reason) : Exception(reason.name) {
@@ -137,6 +152,7 @@ object BackupCodec {
             s.songSort?.let { put("songSort", it) }
             s.keepScreenOnLyrics?.let { put("keepScreenOnLyrics", it) }
             s.lyricsByWord?.let { put("lyricsByWord", it) }
+            s.artAutoApply?.let { put("artAutoApply", it) }
             s.lyricsTree?.let { put("lyricsTree", it) }
             put("scanIncluded", JSONArray(s.scanIncluded.sorted()))
             put("scanExcluded", JSONArray(s.scanExcluded.sorted()))
@@ -144,6 +160,14 @@ object BackupCodec {
         })
         .put("artists", JSONArray().apply {
             b.artists.forEach { a -> put(JSONObject().put("name", a.artist).apply { a.poster?.let { put("poster", it) }; a.logo?.let { put("logo", it) } }) }
+        })
+        .put("library", JSONArray().apply {
+            b.library.forEach { a ->
+                put(
+                    JSONObject().put("name", a.name).put("kind", a.kind).put("file", a.file).put("width", a.width).put("height", a.height)
+                        .put("luma", a.luma.toDouble()).put("hash", a.hash).put("addedAt", a.addedAt).put("updatedAt", a.updatedAt),
+                )
+            }
         })
         .put("lyrics", JSONArray().apply {
             b.lyrics.forEach { l ->
@@ -193,6 +217,7 @@ object BackupCodec {
                 songSort = s.strOrNull("songSort"),
                 keepScreenOnLyrics = if (s.has("keepScreenOnLyrics")) s.getBoolean("keepScreenOnLyrics") else null,
                 lyricsByWord = if (s.has("lyricsByWord")) s.getBoolean("lyricsByWord") else null,
+                artAutoApply = if (s.has("artAutoApply")) s.getBoolean("artAutoApply") else null,
                 scanIncluded = s.optJSONArray("scanIncluded").strings(),
                 scanExcluded = s.optJSONArray("scanExcluded").strings(),
                 scanTrees = s.optJSONArray("scanTrees").strings(),
@@ -201,6 +226,13 @@ object BackupCodec {
             artists = d.optJSONArray("artists").objects().map { BackupArtist(it.getString("name"), it.strOrNull("poster"), it.strOrNull("logo")) },
             lyrics = d.optJSONArray("lyrics").objects().map {
                 LyricOverride(it.getString("key"), it.optLong("offsetMs"), it.strOrNull("file"), it.strOrNull("text"), it.optLong("updatedAt"))
+            },
+            library = d.optJSONArray("library").objects().mapNotNull {
+                val file = it.strOrNull("file") ?: return@mapNotNull null
+                BackupAsset(
+                    it.optString("name"), it.optString("kind", ArtKind.Logo.name), file, it.optInt("width"), it.optInt("height"),
+                    it.optDouble("luma", 1.0).toFloat(), it.optString("hash"), it.optLong("addedAt"), it.optLong("updatedAt"),
+                )
             },
         )
     }
@@ -213,11 +245,18 @@ enum class ImportMode { Merge, Replace }
  * everything here and adds what is missing: favorites and song tags by key, listening history by (start time,
  * title, artist) so importing the same file twice adds nothing, playlists by name with new songs appended, folder
  * rules where they do not contradict a local rule, artist images only for artists without one, and lyric
- * offsets/picked lyric files only for songs without their own.
+ * offsets/picked lyric files only for songs without their own, and artwork library images that are not already in
+ * the library (same file content).
  */
 object BackupMerge {
     fun combine(current: BackupData, incoming: BackupData, mode: ImportMode): BackupData =
-        if (mode == ImportMode.Replace) incoming else merge(current, incoming)
+        if (mode == ImportMode.Replace) incoming.copy(library = libraryToAdd(emptyList(), incoming.library)) else merge(current, incoming)
+
+    /** Library images from [incoming] to add next to [current]: one per file content, none that is already here. */
+    fun libraryToAdd(current: List<BackupAsset>, incoming: List<BackupAsset>): List<BackupAsset> {
+        val have = current.mapNotNullTo(HashSet()) { it.hash.takeIf(String::isNotEmpty) }
+        return incoming.filter { it.hash.isEmpty() || have.add(it.hash) }
+    }
 
     private fun merge(cur: BackupData, inc: BackupData): BackupData {
         val favKeys = cur.favorites.mapTo(HashSet()) { it.songKey }
@@ -260,6 +299,7 @@ object BackupMerge {
             ),
             artists = artists.values.toList(),
             lyrics = cur.lyrics + inc.lyrics.filter { lyricKeys.add(it.songKey) },
+            library = cur.library + libraryToAdd(cur.library, inc.library),
         )
     }
 }

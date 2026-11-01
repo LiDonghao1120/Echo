@@ -45,6 +45,9 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 - A full-bleed poster with parallax and the artist's wordmark on top. As you scroll, the wordmark shrinks into the top bar.
 - Set a **poster** and a transparent PNG **wordmark** for any artist, from the photo picker or from files.
 - **Batch import**: choose a folder and Echo matches images to artists by filename. `Artist_Name.png` becomes the wordmark and `Artist_Name_poster.jpg` the poster.
+- **Artwork library** (Settings → Artist art → Artwork library): keep wordmarks and posters for artists you haven't added music for yet. Add many at once from the photo picker or Files; PNG transparency is kept. Echo copies each image into its own storage, so you can delete the originals. Names come from the file name (`Nova_Lark_logo.png` → Nova Lark) and can be edited, each image is a logo or a poster, and images whose artist is already in your music are marked. Search works with pinyin too.
+- **Choose from the library** on any artist page, next to Photos and Files: images with the artist's name come first. The artist gets its own copy, so deleting the library image later changes nothing.
+- **Fill in automatically** (on by default): an artist without a logo or poster gets the library image with its name, now or whenever a scan brings the artist in. Art you set yourself is never replaced, and a logo you remove isn't put back.
 - Artists without a wordmark get their name set in large type.
 - Posters and wordmarks also appear on Home, in the artist grid, in search and in your listening report.
 
@@ -82,7 +85,7 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 - Favourites, playlists and listening history follow your files: they are tied to each file's path, and a song that was moved or renamed is found again by its tags.
 
 ### Backup and diagnostics
-- **Backup**: export favourites, playlists, listening history, settings, scan folder rules, lyric offsets and picked lyric files, and artist posters and wordmarks to one file you save wherever you like. When importing, choose to merge with what's on the phone or replace it.
+- **Backup**: export favourites, playlists, listening history, settings, scan folder rules, lyric offsets and picked lyric files, artist posters and wordmarks, and the artwork library to one file you save wherever you like. When importing, choose to merge with what's on the phone or replace it.
 - **Diagnostic log**: Echo keeps a small log on the device (playback recovery, scan times, errors and crashes) that you can save from Settings and attach to a bug report. It is never sent anywhere.
 
 ### Sound
@@ -133,7 +136,7 @@ Get the latest APK from **[Releases](https://github.com/LiDonghao1120/Echo/relea
 
 ## Privacy
 
-Echo has no internet permission, so it cannot send anything anywhere. It reads the audio files on your device and keeps its own data (listening history, playlists, favourites, artist posters and wordmarks) in app storage. Nothing leaves your phone unless you export a backup or a diagnostic log yourself, or Android's own device backup is turned on, in which case the database is included like any other app's.
+Echo has no internet permission, so it cannot send anything anywhere. It reads the audio files on your device and keeps its own data (listening history, playlists, favourites, artist posters and wordmarks, the artwork library) in app storage. Nothing leaves your phone unless you export a backup or a diagnostic log yourself, or Android's own device backup is turned on, in which case the database is included like any other app's.
 
 ## Building from source
 

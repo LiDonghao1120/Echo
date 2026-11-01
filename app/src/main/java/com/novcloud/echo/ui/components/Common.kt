@@ -140,6 +140,7 @@ class AppActions(
     fun openSettings() = go("settings")
     fun openScanFolders() = go("settings/folders")
     fun openEffects() = go("settings/effects")
+    fun openArtLibrary() = go("settings/art-library")
     fun back() {
         val entry = nav.currentBackStackEntry ?: return
         if (nav.previousBackStackEntry == null) return

@@ -20,15 +20,17 @@ class PendingImport(val data: BackupData, internal val artDir: File) {
     val playlists get() = data.playlists.size
     val events get() = data.events.size
     val artists get() = data.artists.size
+    val library get() = data.library.size
 }
 
-data class ImportResult(val favorites: Int, val playlists: Int, val events: Int, val artists: Int, val lyrics: Int = 0)
+data class ImportResult(val favorites: Int, val playlists: Int, val events: Int, val artists: Int, val lyrics: Int = 0, val library: Int = 0)
 
 class BackupManager(
     private val context: Context,
     private val db: EchoDatabase,
     private val prefs: Prefs,
     private val repo: LibraryRepository,
+    private val artLibrary: ArtLibraryRepository,
 ) {
     private val work get() = File(context.cacheDir, "backup")
 
@@ -46,6 +48,7 @@ class BackupManager(
             aliases = db.identity().aliases(),
             settings = prefs.backupSettings(),
             lyrics = db.lyricOverrides().all(),
+            library = artLibrary.backupItems().map { it.first },
         )
     }
 
@@ -62,10 +65,11 @@ class BackupManager(
                 val l = logoRows[key]?.let { File(it.path) }?.let { f -> "logo_$i.${f.extension.ifEmpty { "png" }}".also { art[it] = f } }
                 BackupArtist(name, p, l)
             }
+            artLibrary.backupItems().forEach { (b, f) -> art[b.file] = f }
             val data = base.copy(artists = artists)
             val out = context.contentResolver.openOutputStream(target, "wt") ?: error("cannot open $target")
             out.use { BackupCodec.write(data, art, it) }
-            DiagLog.i(TAG, "exported backup: ${data.favorites.size} favorites, ${data.playlists.size} playlists, ${data.events.size} plays, ${artists.size} artists, ${art.size} images")
+            DiagLog.i(TAG, "exported backup: ${data.favorites.size} favorites, ${data.playlists.size} playlists, ${data.events.size} plays, ${artists.size} artists, ${data.library.size} library images, ${art.size} images")
             data
         }.onFailure { DiagLog.e(TAG, "backup export failed", it) }
     }
@@ -105,6 +109,8 @@ class BackupManager(
             val granted = context.contentResolver.persistedUriPermissions.filter { it.isReadPermission }.map { it.uri.toString() }.toSet()
             prefs.restoreSettings(final.settings) { it in granted }
             val artists = restoreArt(pending, mode)
+            if (mode == ImportMode.Replace) artLibrary.clearAll()
+            val libraryAdded = artLibrary.restore(BackupMerge.libraryToAdd(if (mode == ImportMode.Merge) cur.library else emptyList(), pending.data.library), pending.artDir)
             repo.reconcile()
             val after = prefs.backupSettings()
             if (after.scanIncluded != before.scanIncluded || after.scanExcluded != before.scanExcluded ||
@@ -117,6 +123,7 @@ class BackupManager(
                 final.events.size - base.events.size,
                 artists,
                 final.lyrics.size - base.lyrics.size,
+                libraryAdded,
             )
             DiagLog.i(TAG, "imported backup ($mode): $result")
             work.deleteRecursively()

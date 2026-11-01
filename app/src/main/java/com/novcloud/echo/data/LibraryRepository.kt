@@ -72,6 +72,7 @@ class LibraryRepository(
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
     private val mutex = Mutex()
     private val identityLock = Mutex()
+    private val artLock = Mutex()
     @Volatile private var aliases: Map<String, String> = emptyMap()
     private var observerRegistered = false
     private var pending: Job? = null
@@ -429,10 +430,42 @@ class LibraryRepository(
         }
     }
 
+    /** Puts a copy of [file] (an artwork library image) on [artist]; the library image can be deleted afterwards. */
+    fun setArtistArt(artist: String, kind: ArtKind, file: File) = scope.launch {
+        withArt(artist) { if (kind == ArtKind.Logo) putLogo(artist, Uri.fromFile(file)) else putPoster(artist, Uri.fromFile(file)) }
+    }
+
+    private suspend fun hasArt(artist: String, kind: ArtKind): Boolean {
+        val key = Names.key(artist)
+        return if (kind == ArtKind.Logo) db.artistLogos().allNow().any { Names.key(it.artist) == key && File(it.path).exists() }
+        else db.artistImages().allNow().any { Names.key(it.artist) == key && File(it.path).exists() }
+    }
+
+    /** Like [setArtistArt] but only while [artist] has no [kind] of its own, checked again after the copy is made. */
+    internal suspend fun fillArt(artist: String, kind: ArtKind, file: File): Boolean = withContext(Dispatchers.IO) {
+        artLock.withLock {
+            if (hasArt(artist, kind)) return@withLock false
+            val source = Uri.fromFile(file)
+            when (kind) {
+                ArtKind.Logo -> {
+                    val info = runCatching { ArtistArtStore.saveLogo(context, artist, source) }.getOrNull() ?: return@withLock false
+                    if (hasArt(artist, kind)) { info.file.delete(); return@withLock false }
+                    db.artistLogos().put(ArtistLogo(artist, info.file.absolutePath, info.aspect, info.luma, System.currentTimeMillis()))
+                }
+                ArtKind.Poster -> {
+                    val out = runCatching { ArtistArtStore.savePoster(context, artist, source) }.getOrNull() ?: return@withLock false
+                    if (hasArt(artist, kind)) { out.delete(); return@withLock false }
+                    db.artistImages().put(ArtistImage(artist, out.absolutePath, System.currentTimeMillis()))
+                }
+            }
+            true
+        }
+    }
+
     private suspend fun withArt(artist: String, block: suspend () -> Boolean) {
         _artBusy.value = _artBusy.value + artist
         try {
-            val ok = withContext(Dispatchers.IO) { runCatching { block() }.getOrDefault(false) }
+            val ok = withContext(Dispatchers.IO) { artLock.withLock { runCatching { block() }.getOrDefault(false) } }
             if (!ok) _artFailed.tryEmit(artist)
         } finally {
             _artBusy.value = _artBusy.value - artist

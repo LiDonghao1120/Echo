@@ -163,6 +163,23 @@ fun SettingsScreen() {
                 }
             }
             Group(stringResource(R.string.artist_art)) {
+                val libAssets by container.artLibrary.assets.collectAsState()
+                val auto by container.artLibrary.autoApply.collectAsState()
+                NavRow(stringResource(R.string.art_library), libAssets.size.takeIf { it > 0 }?.let { count(R.plurals.art_library_count, it) }) { actions.openArtLibrary() }
+                Rule()
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { scope.launch { container.artLibrary.setAutoApply(!auto) } }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(stringResource(R.string.art_auto_apply), style = MaterialTheme.typography.bodyLarge)
+                        Spacer(Modifier.height(2.dp))
+                        Text(stringResource(R.string.art_auto_apply_detail), style = MaterialTheme.typography.bodySmall, color = palette.muted)
+                    }
+                    Switch(auto, { v -> scope.launch { container.artLibrary.setAutoApply(v) } })
+                }
+                Rule()
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { importFolder() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.art_import_folder), style = MaterialTheme.typography.bodyLarge)

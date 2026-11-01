@@ -124,8 +124,10 @@ class MigrationTest {
     }
 
     /** Version 3 as Room created it, straight from the exported schema. */
-    private fun v3(): List<String> {
-        val json = org.json.JSONObject(java.io.File("schemas/com.novcloud.echo.data.db.EchoDatabase/3.json").readText()).getJSONObject("database")
+    private fun v3(): List<String> = schema(3)
+
+    private fun schema(version: Int): List<String> {
+        val json = org.json.JSONObject(java.io.File("schemas/com.novcloud.echo.data.db.EchoDatabase/$version.json").readText()).getJSONObject("database")
         val out = ArrayList<String>()
         val entities = json.getJSONArray("entities")
         for (i in 0 until entities.length()) {
@@ -170,6 +172,34 @@ class MigrationTest {
         lyrics.setFile(moved.key, null, null)
         lyrics.setOffset(moved.key, 0)
         assertEquals(null, lyrics.get(moved.key))
+        db.close()
+    }
+
+    @Test
+    fun v4ToV5AddsTheArtworkLibraryAndKeepsEverythingElse() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        context.deleteDatabase("migrate5.db")
+        val file = context.getDatabasePath("migrate5.db").apply { parentFile?.mkdirs() }
+        val s = song("/storage/emulated/0/Music/Low Tide.flac", "Low Tide", 9)
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schema(4).forEach { db.execSQL(it) }
+            db.execSQL("INSERT INTO favorite (songKey,addedAt) VALUES ('${s.key}',9)")
+            db.execSQL("INSERT INTO artist_logo (artist,path,aspect,luma,updatedAt) VALUES ('Nova Lark','/l.png',3.0,0.9,1)")
+            db.execSQL("INSERT INTO lyric_override (songKey,offsetMs,fileName,text,updatedAt) VALUES ('${s.key}',300,NULL,NULL,1)")
+            db.version = 4
+        }
+        val db = EchoDatabase.create(context, "migrate5.db")
+        assertEquals(listOf(s.key), db.favorites().keys().first())
+        assertEquals("/l.png", db.artistLogos().allNow().single().path)
+        assertEquals(300L, db.lyricOverrides().get(s.key)!!.offsetMs)
+        assertTrue(db.artAssets().allNow().isEmpty())
+        val dao = db.artAssets()
+        val id = dao.insert(com.novcloud.echo.data.db.ArtAsset(name = "Nova Lark", kind = "Logo", path = "/a.png", width = 772, height = 287, luma = 0.9f, hash = "aa", addedAt = 1, updatedAt = 1))
+        dao.edit(id, "Nova Lark", "Poster", 2)
+        assertEquals("Poster", dao.get(id)!!.kind)
+        assertEquals(listOf(id), dao.all().first().map { it.id })
+        dao.delete(id)
+        assertTrue(dao.allNow().isEmpty())
         db.close()
     }
 }

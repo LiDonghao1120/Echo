@@ -84,6 +84,26 @@
     <string name="art_importing">正在导入…</string>
     <string name="art_import_done">导入完成</string>
     <string name="art_read_failed">无法读取这张图片</string>
+    <string name="art_library">艺人素材库</string>
+    <string name="art_library_empty">素材库还是空的</string>
+    <string name="art_library_search">搜索艺人</string>
+    <string name="art_library_add">添加图片</string>
+    <string name="art_kind_all">全部</string>
+    <string name="art_kind_logo">标志</string>
+    <string name="art_kind_poster">海报</string>
+    <string name="art_in_library">已在曲库</string>
+    <string name="art_name_match">同名</string>
+    <string name="art_from_library">素材库</string>
+    <string name="art_choose_from_library">从素材库选择</string>
+    <string name="art_manage_library">管理素材库</string>
+    <string name="art_asset_name">艺人名</string>
+    <string name="art_asset_kind">用作</string>
+    <string name="art_asset_delete_confirm">从素材库删除「%1$s」？</string>
+    <string name="art_asset_delete_note">已经用在歌手页上的图片会保留。</string>
+    <string name="art_open_artist">打开歌手页</string>
+    <string name="art_auto_apply">自动套用</string>
+    <string name="art_auto_apply_detail">歌手没有标志或海报时，使用素材库里同名的图片</string>
+    <string name="art_no_results">没有找到</string>
     <string name="menu_play_next">下一首播放</string>
     <string name="menu_add_to_queue">添加到播放队列</string>
     <string name="menu_like">喜欢</string>
@@ -230,6 +250,9 @@
     <string name="diag_file_name">回响诊断-%1$s.txt</string>
     <string name="diag_library">曲库 %1$s</string>
     <string name="diag_exported_at">导出于 %1$s</string>
+    <string name="diag_art_library">素材库 %1$s · %2$s · 自动套用 %3$s</string>
+    <string name="diag_on">开</string>
+    <string name="diag_off">关</string>
     <string name="duration_hours_minutes">%1$s 小时 %2$s 分钟</string>
     <string name="duration_minutes">%1$s 分钟</string>
     <string name="language_chinese" translatable="false">简体中文</string>
@@ -310,6 +333,30 @@
     </plurals>
     <plurals name="art_unmatched">
         <item quantity="other">未匹配 %1$s</item>
+    </plurals>
+    <plurals name="art_library_count">
+        <item quantity="other">%1$s 张</item>
+    </plurals>
+    <plurals name="label_images">
+        <item quantity="other">张</item>
+    </plurals>
+    <plurals name="art_library_linked">
+        <item quantity="other">%1$s 位在曲库</item>
+    </plurals>
+    <plurals name="art_logos_count">
+        <item quantity="other">%1$s 个标志</item>
+    </plurals>
+    <plurals name="art_posters_count">
+        <item quantity="other">%1$s 张海报</item>
+    </plurals>
+    <plurals name="art_added">
+        <item quantity="other">已添加 %1$s 张</item>
+    </plurals>
+    <plurals name="art_duplicates">
+        <item quantity="other">%1$s 张已在素材库</item>
+    </plurals>
+    <plurals name="art_unreadable">
+        <item quantity="other">%1$s 张无法读取</item>
     </plurals>
     <plurals name="folders_added_count">
         <item quantity="other">已添加 %1$s</item>

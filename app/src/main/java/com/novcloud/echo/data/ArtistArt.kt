@@ -86,7 +86,7 @@ object ArtistArtStore {
 
     fun dir(context: Context) = File(context.filesDir, "artists").apply { mkdirs() }
 
-    private fun decode(context: Context, uri: Uri, maxW: Int, maxH: Int): Bitmap? {
+    internal fun decode(context: Context, uri: Uri, maxW: Int, maxH: Int): Bitmap? {
         if (Build.VERSION.SDK_INT >= 28) {
             runCatching {
                 val src = ImageDecoder.createSource(context.contentResolver, uri)
@@ -134,7 +134,7 @@ object ArtistArtStore {
         return if (ok) ArtistLogoInfo(file, aspect, luma) else null
     }
 
-    private fun trim(bmp: Bitmap): Bitmap {
+    internal fun trim(bmp: Bitmap): Bitmap {
         if (!bmp.hasAlpha()) return bmp
         val w = bmp.width
         val h = bmp.height
@@ -154,7 +154,7 @@ object ArtistArtStore {
         return Bitmap.createBitmap(bmp, l, t, r - l + 1, b - t + 1)
     }
 
-    private fun luma(bmp: Bitmap): Float {
+    internal fun luma(bmp: Bitmap): Float {
         val step = max(1, max(bmp.width, bmp.height) / 160)
         var sum = 0.0
         var weight = 0.0

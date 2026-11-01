@@ -114,6 +114,13 @@ fun rememberDataTools(): DataTools {
                 res.getString(R.string.app_version_line, res.getString(R.string.app_name), BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
                 DiagLog.device(),
                 res.getString(R.string.diag_library, librarySummary(res, lib)),
+                container.artLibrary.assets.value.let { a ->
+                    val logos = a.count { com.novcloud.echo.data.ArtLibraryMatch.kindOf(it) == com.novcloud.echo.data.ArtKind.Logo }
+                    res.getString(
+                        R.string.diag_art_library, res.count(R.plurals.art_logos_count, logos), res.count(R.plurals.art_posters_count, a.size - logos),
+                        res.getString(if (container.artLibrary.autoApply.value) R.string.diag_on else R.string.diag_off),
+                    )
+                },
                 res.getString(R.string.diag_exported_at, SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date())),
             ).joinToString("\n")
             val ok = withContext(Dispatchers.IO) {

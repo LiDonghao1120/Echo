@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Collections
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.InsertDriveFile
@@ -60,7 +61,17 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.novcloud.echo.EchoApp
 import com.novcloud.echo.R
+import com.novcloud.echo.data.ArtKind
 import com.novcloud.echo.data.ArtistLogoInfo
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.novcloud.echo.ui.theme.EchoMotion
 import com.novcloud.echo.data.ImportReport
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.ArtistNameMark
@@ -82,6 +93,7 @@ class ArtistArtActions(
     val pickLogoFile: () -> Unit,
     val clearLogo: () -> Unit,
     val batch: () -> Unit,
+    val useLibrary: (com.novcloud.echo.data.db.ArtAsset, ArtKind) -> Unit = { _, _ -> },
 )
 
 @Composable
@@ -95,14 +107,16 @@ fun rememberArtistArtActions(name: String): ArtistArtActions {
     LaunchedEffect(name) {
         repo.artFailed.collect { a -> if (a == name) Toast.makeText(context, R.string.art_read_failed, Toast.LENGTH_SHORT).show() }
     }
+    val container = (context.applicationContext as EchoApp).container
     return remember(name, poster, logoGallery, logoFile, batch) {
         ArtistArtActions(
             pickPoster = { poster.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-            clearPoster = { repo.clearArtistImage(name) },
+            clearPoster = { container.appScope.launch { container.artLibrary.clearArt(name, ArtKind.Poster) } },
             pickLogoGallery = { logoGallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             pickLogoFile = { logoFile.launch(arrayOf("image/png", "image/webp", "image/*")) },
-            clearLogo = { repo.clearArtistLogo(name) },
+            clearLogo = { container.appScope.launch { container.artLibrary.clearArt(name, ArtKind.Logo) } },
             batch = batch,
+            useLibrary = { asset, kind -> container.artLibrary.use(asset, name, kind) },
         )
     }
 }
@@ -110,13 +124,44 @@ fun rememberArtistArtActions(name: String): ArtistArtActions {
 @Composable
 fun ArtistArtSheet(name: String, customPoster: String?, logo: ArtistLogoInfo?, actions: ArtistArtActions, onDismiss: () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val container = (LocalContext.current.applicationContext as EchoApp).container
+    val nav = com.novcloud.echo.ui.components.LocalActions.current
+    val assets by container.artLibrary.assets.collectAsState()
+    val linked = com.novcloud.echo.ui.settings.rememberLinkedArtists()
+    var picking by rememberSaveable(name) { mutableStateOf<ArtKind?>(null) }
     ModalBottomSheet(onDismiss, sheetState = state, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, shape = EchoShape.card) {
-        ArtistArtSheetContent(name, customPoster != null, logo, actions)
+        AnimatedContent(
+            picking,
+            transitionSpec = {
+                val forward = targetState != null
+                (fadeIn(tween(EchoMotion.Standard)) + slideInHorizontally(tween(EchoMotion.Medium)) { if (forward) it / 4 else -it / 4 }) togetherWith
+                    fadeOut(tween(EchoMotion.Quick)) using SizeTransform(clip = false)
+            },
+            label = "art-sheet",
+        ) { kind ->
+            if (kind == null) {
+                ArtistArtSheetContent(name, customPoster != null, logo, actions) { picking = it }
+            } else {
+                androidx.activity.compose.BackHandler { picking = null }
+                ArtLibraryPickerContent(
+                    name, kind, assets, linked.keys,
+                    onPick = { a -> actions.useLibrary(a, kind); picking = null },
+                    onBack = { picking = null },
+                    onManage = { onDismiss(); nav.openArtLibrary() },
+                )
+            }
+        }
     }
 }
 
 @Composable
-fun ArtistArtSheetContent(name: String, hasPoster: Boolean, logo: ArtistLogoInfo?, actions: ArtistArtActions) {
+fun ArtistArtSheetContent(
+    name: String,
+    hasPoster: Boolean,
+    logo: ArtistLogoInfo?,
+    actions: ArtistArtActions,
+    onLibrary: ((ArtKind) -> Unit)? = null,
+) {
     val p = palette
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
         Eyebrow(displayArtist(name), color = p.muted)
@@ -127,12 +172,14 @@ fun ArtistArtSheetContent(name: String, hasPoster: Boolean, logo: ArtistLogoInfo
         Spacer(Modifier.height(18.dp))
         ArtRow(stringResource(R.string.art_poster)) {
             SheetKey(Icons.Rounded.Image, stringResource(if (hasPoster) R.string.action_change else R.string.action_choose), primary = true, onClick = actions.pickPoster)
+            if (onLibrary != null) SheetKey(Icons.Rounded.Collections, stringResource(R.string.art_from_library)) { onLibrary(ArtKind.Poster) }
             if (hasPoster) SheetKey(Icons.Rounded.Close, stringResource(R.string.action_remove), onClick = actions.clearPoster)
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(14.dp))
         ArtRow(stringResource(R.string.art_logo)) {
             SheetKey(Icons.Rounded.Image, stringResource(R.string.art_from_photos), primary = logo == null, onClick = actions.pickLogoGallery)
             SheetKey(Icons.Rounded.InsertDriveFile, stringResource(R.string.art_from_files), onClick = actions.pickLogoFile)
+            if (onLibrary != null) SheetKey(Icons.Rounded.Collections, stringResource(R.string.art_from_library)) { onLibrary(ArtKind.Logo) }
             if (logo != null) SheetKey(Icons.Rounded.Close, stringResource(R.string.action_remove), onClick = actions.clearLogo)
         }
         Spacer(Modifier.height(18.dp))
@@ -171,11 +218,13 @@ private fun PosterPreview(name: String, logo: ArtistLogoInfo?) {
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ArtRow(label: String, content: @Composable () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+    Column(Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Spacer(Modifier.height(8.dp))
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
     }
 }
 

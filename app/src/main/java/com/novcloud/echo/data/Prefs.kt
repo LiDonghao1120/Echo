@@ -38,7 +38,14 @@ class Prefs(private val context: Context) {
         val scanExcluded = stringSetPreferencesKey("scan_excluded")
         val scanTrees = stringSetPreferencesKey("scan_trees")
         val audioFx = stringPreferencesKey("audio_fx")
+        val artAutoApply = booleanPreferencesKey("art_auto_apply")
+        val artDeclined = stringSetPreferencesKey("art_declined")
     }
+
+    val artAutoApply: Flow<Boolean> = ds.data.map { it[K.artAutoApply] ?: true }
+    val artDeclined: Flow<Set<String>> = ds.data.map { it[K.artDeclined].orEmpty() }
+    suspend fun setArtAutoApply(v: Boolean) = edit { it[K.artAutoApply] = v }
+    suspend fun addArtDeclined(tokens: Collection<String>) = edit { it[K.artDeclined] = it[K.artDeclined].orEmpty() + tokens }
 
     suspend fun audioFx(): String? = ds.data.first()[K.audioFx]
     suspend fun setAudioFx(json: String) = edit { it[K.audioFx] = json }
@@ -91,7 +98,7 @@ class Prefs(private val context: Context) {
         val p = ds.data.first()
         return BackupSettings(
             theme = p[K.theme], minDurationSec = p[K.minDuration], songSort = p[K.songSort], keepScreenOnLyrics = p[K.keepScreenLyrics],
-            lyricsByWord = p[K.lyricsByWord],
+            lyricsByWord = p[K.lyricsByWord], artAutoApply = p[K.artAutoApply],
             scanIncluded = p[K.scanIncluded].orEmpty(), scanExcluded = p[K.scanExcluded].orEmpty(), scanTrees = p[K.scanTrees].orEmpty(),
             lyricsTree = p[K.lyricsTree],
         )
@@ -105,6 +112,7 @@ class Prefs(private val context: Context) {
         put(K.songSort, s.songSort)
         put(K.keepScreenLyrics, s.keepScreenOnLyrics)
         put(K.lyricsByWord, s.lyricsByWord)
+        put(K.artAutoApply, s.artAutoApply)
         it[K.scanIncluded] = s.scanIncluded
         it[K.scanExcluded] = s.scanExcluded
         it[K.scanTrees] = s.scanTrees.filter(usable).toSet()
