@@ -380,6 +380,10 @@ interface ArtAssetDao {
     @Query("DELETE FROM art_asset WHERE id = :id")
     suspend fun delete(id: Long)
 
+    /** Points an image at a re-encoded copy of its file (logo cleanup); name, kind, hash and dates stay. */
+    @Query("UPDATE art_asset SET path = :path, width = :width, height = :height, luma = :luma WHERE id = :id")
+    suspend fun replaceFile(id: Long, path: String, width: Int, height: Int, luma: Float)
+
     @Query("DELETE FROM art_asset")
     suspend fun clear()
 }

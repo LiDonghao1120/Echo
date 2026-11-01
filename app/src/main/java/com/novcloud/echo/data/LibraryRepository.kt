@@ -282,6 +282,46 @@ class LibraryRepository(
         }
     }
 
+    init {
+        scope.launch(Dispatchers.IO) {
+            restored.await()
+            delay(LOGO_CLEANUP_DELAY_MS)
+            steps.once(LOGO_CLEANUP_STEP) { cleanStoredLogos() }
+        }
+    }
+
+    /**
+     * One-time pass (v0.11.3) over artist logos saved before [ArtistArtStore.cleanLogo] existed: a faint matte across
+     * the canvas showed as a box behind the logo on the artist page. A changed logo is written to a new file (so no
+     * image cache keeps the old one) with its aspect and brightness worked out again; its date stays. Returns how many.
+     */
+    internal suspend fun cleanStoredLogos(): Int = withContext(Dispatchers.IO) {
+        artLock.withLock {
+            val started = System.currentTimeMillis()
+            val rows = db.artistLogos().allNow()
+            val replaced = HashMap<String, ArtistLogoInfo?>()
+            var cleaned = 0
+            var failed = 0
+            for (row in rows) {
+                val old = File(row.path)
+                if (!old.exists()) continue
+                val info = if (replaced.containsKey(row.path)) replaced[row.path] else runCatching {
+                    val bmp = ArtistArtStore.decodeFile(old) ?: return@runCatching null
+                    val out = ArtistArtStore.cleanLogo(bmp)
+                    if (out === bmp) { bmp.recycle(); return@runCatching null }
+                    bmp.recycle()
+                    ArtistArtStore.writeLogo(context, row.artist, out).also { out.recycle() } ?: run { failed++; null }
+                }.onFailure { failed++; DiagLog.w(TAG, "could not clean up an artist logo", it) }.getOrNull().also { replaced[row.path] = it }
+                if (info == null) continue
+                db.artistLogos().put(row.copy(path = info.file.absolutePath, aspect = info.aspect, luma = info.luma))
+                cleaned++
+            }
+            replaced.forEach { (path, info) -> if (info != null) File(path).delete() }
+            DiagLog.i(TAG, "logo cleanup: ${rows.size} artist logos, cleaned $cleaned, unreadable $failed (${System.currentTimeMillis() - started} ms)")
+            cleaned
+        }
+    }
+
     private fun hasAudioPermission(): Boolean {
         val perm = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
         return ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
@@ -408,6 +448,8 @@ class LibraryRepository(
 
     companion object {
         const val TAG = "EchoLibrary"
+        private const val LOGO_CLEANUP_STEP = "artist_logo_cleanup_v1"
+        private const val LOGO_CLEANUP_DELAY_MS = 2_500L
     }
 
     /**

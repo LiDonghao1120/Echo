@@ -79,7 +79,7 @@ fun ArtAssetImage(asset: ArtAsset, modifier: Modifier = Modifier, ratio: Float =
         if (poster) {
             AsyncImage(File(asset.path), asset.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         } else {
-            AsyncImage(File(asset.path), asset.name, Modifier.fillMaxSize().padding(inset.dp), contentScale = ContentScale.Fit)
+            AsyncImage(File(asset.path), asset.name, Modifier.fillMaxSize().padding(inset.dp), contentScale = ContentScale.Fit, colorFilter = LogoAlpha.image)
         }
     }
 }

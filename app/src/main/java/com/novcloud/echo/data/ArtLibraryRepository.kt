@@ -62,19 +62,23 @@ object ArtLibraryStore {
 
     /**
      * Decodes [uri] (longest side at most [MAX_SIDE]), trims transparent edges and writes it as PNG when it has any
-     * transparency or came from a lossless format, otherwise as JPEG. Alpha is kept as is.
+     * transparency or came from a lossless format, otherwise as JPEG. A [logo] is cleaned up first
+     * ([ArtistArtStore.cleanLogo]: faint matte, specks, flat white or black background); a poster keeps its alpha as is.
      */
-    fun save(context: Context, uri: Uri, lossless: Boolean): Saved? {
+    fun save(context: Context, uri: Uri, lossless: Boolean, logo: Boolean = false): Saved? {
         val decoded = ArtistArtStore.decode(context, uri, MAX_SIDE, MAX_SIDE) ?: return null
-        val bmp = ArtistArtStore.trim(decoded)
+        val bmp = if (logo) ArtistArtStore.cleanLogo(decoded) else ArtistArtStore.trim(decoded)
         if (bmp !== decoded) decoded.recycle()
+        return write(context, bmp, lossless).also { bmp.recycle() }
+    }
+
+    internal fun write(context: Context, bmp: Bitmap, lossless: Boolean): Saved? {
         val png = lossless || hasTransparency(bmp)
         val file = File(dir(context), "a_${System.nanoTime().toString(36)}.${if (png) "png" else "jpg"}")
         val ok = runCatching {
             file.outputStream().use { bmp.compress(if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, if (png) 100 else 92, it) }
         }.getOrDefault(false)
         val saved = Saved(file, bmp.width, bmp.height, ArtistArtStore.luma(bmp))
-        bmp.recycle()
         if (!ok) file.delete()
         return saved.takeIf { ok }
     }
@@ -89,14 +93,21 @@ object ArtLibraryStore {
     /** Longest side images are decoded at for [fingerprint]. */
     const val PRINT_SIDE = 1024
 
-    /** [ArtFingerprint] of the image at [uri], or null when it cannot be read. */
-    fun fingerprint(context: Context, uri: Uri): ArtFingerprint? {
+    /**
+     * [ArtFingerprint] of the image at [uri], or null when it cannot be read. A [logo] is fingerprinted the way it is
+     * stored, after [LogoCleanup], so the original file and the cleaned library copy still come out the same.
+     */
+    fun fingerprint(context: Context, uri: Uri, logo: Boolean = false): ArtFingerprint? {
         val bmp = ArtistArtStore.decode(context, uri, PRINT_SIDE, PRINT_SIDE) ?: return null
         val px = IntArray(bmp.width * bmp.height)
         bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
         val w = bmp.width
         val h = bmp.height
         bmp.recycle()
+        if (logo) {
+            val r = runCatching { LogoCleanup.clean(px, w, h) }.getOrNull()
+            if (r != null) return ArtFingerprint.of(r.argb, r.width, r.height)
+        }
         return ArtFingerprint.of(px, w, h)
     }
 
@@ -216,9 +227,49 @@ class ArtLibraryRepository(
         }
         scope.launch {
             library.library.first { it.loaded }
-            delay(BACKFILL_DELAY_MS)
+            delay(LOGO_CLEANUP_DELAY_MS)
+            runLogoCleanup()
+            delay(BACKFILL_DELAY_MS - LOGO_CLEANUP_DELAY_MS)
             syncFromArtist.first { it }
             runBackfill()
+        }
+    }
+
+    /**
+     * One-time pass (v0.11.3) over logos already in the library: [LogoCleanup] takes off faint mattes, specks and
+     * flat backgrounds that showed as a box behind the logo. Guarded like startup work; each file on its own.
+     */
+    internal suspend fun runLogoCleanup() {
+        steps.once(LOGO_CLEANUP_STEP) { cleanLogosNow() }
+    }
+
+    /** Re-cleans every library logo; a changed one gets a new file (so no image cache shows the old one). Returns how many. */
+    internal suspend fun cleanLogosNow(): Int = withContext(Dispatchers.IO) {
+        lock.withLock {
+            val started = System.currentTimeMillis()
+            var cleaned = 0
+            var failed = 0
+            val logos = dao.allNow().filter { ArtLibraryMatch.kindOf(it) == ArtKind.Logo && File(it.path).exists() }
+            for (a in logos) {
+                val ok = runCatching {
+                    val old = File(a.path)
+                    val bmp = ArtistArtStore.decodeFile(old) ?: return@runCatching false
+                    val out = ArtistArtStore.cleanLogo(bmp)
+                    if (out === bmp) { bmp.recycle(); return@runCatching true }
+                    bmp.recycle()
+                    val saved = ArtLibraryStore.write(context, out, lossless = true)
+                    out.recycle()
+                    saved ?: return@runCatching false
+                    dao.replaceFile(a.id, saved.file.absolutePath, saved.width, saved.height, saved.luma)
+                    old.delete()
+                    cleaned++
+                    true
+                }.onFailure { DiagLog.w(TAG, "could not clean up a library logo", it) }.getOrDefault(false)
+                if (!ok) failed++
+            }
+            if (cleaned > 0) prints.retain(dao.allNow().mapTo(HashSet()) { File(it.path).name })
+            DiagLog.i(TAG, "logo cleanup: ${logos.size} library logos, cleaned $cleaned, unreadable $failed (${System.currentTimeMillis() - started} ms)")
+            cleaned
         }
     }
 
@@ -246,9 +297,10 @@ class ArtLibraryRepository(
                         val hash = context.contentResolver.openInputStream(uri)?.use(ArtLibraryStore::hash) ?: return@runCatching false
                         if (!hashes.add(hash)) return@runCatching null
                         val lossless = ArtLibraryStore.lossless(runCatching { context.contentResolver.getType(uri) }.getOrNull(), name)
-                        val saved = ArtLibraryStore.save(context, uri, lossless) ?: run { hashes.remove(hash); return@runCatching false }
                         val parsed = ArtLibraryNames.parse(name)
-                        ArtLibraryStore.fingerprint(context, Uri.fromFile(saved.file))?.let { prints.put(saved.file.name, it) }
+                        val logo = parsed.kind == ArtKind.Logo
+                        val saved = ArtLibraryStore.save(context, uri, lossless, logo) ?: run { hashes.remove(hash); return@runCatching false }
+                        ArtLibraryStore.fingerprint(context, Uri.fromFile(saved.file), logo)?.let { prints.put(saved.file.name, it) }
                         val now = System.currentTimeMillis()
                         dao.insert(
                             ArtAsset(
@@ -293,7 +345,7 @@ class ArtLibraryRepository(
     private fun printOf(a: ArtAsset): ArtFingerprint? {
         val f = File(a.path)
         prints.get(f.name)?.let { return it }
-        val p = runCatching { ArtLibraryStore.fingerprint(context, Uri.fromFile(f)) }.getOrNull() ?: return null
+        val p = runCatching { ArtLibraryStore.fingerprint(context, Uri.fromFile(f), ArtLibraryMatch.kindOf(a) == ArtKind.Logo) }.getOrNull() ?: return null
         prints.put(f.name, p)
         return p
     }
@@ -327,10 +379,11 @@ class ArtLibraryRepository(
         val hash = context.contentResolver.openInputStream(source)?.use(ArtLibraryStore::hash) ?: return Mirror.Failed
         val items = dao.allNow().filter { File(it.path).exists() }
         if (items.any { it.hash == hash }) return Mirror.Duplicate
-        val print = ArtLibraryStore.fingerprint(context, source) ?: return Mirror.Failed
+        val logo = kind == ArtKind.Logo
+        val print = ArtLibraryStore.fingerprint(context, source, logo) ?: return Mirror.Failed
         if (findDuplicate(items, null, print) != null) return Mirror.Duplicate
         val type = runCatching { context.contentResolver.getType(source) }.getOrNull()
-        val saved = ArtLibraryStore.save(context, source, ArtLibraryStore.lossless(type, source.lastPathSegment.orEmpty())) ?: return Mirror.Failed
+        val saved = ArtLibraryStore.save(context, source, ArtLibraryStore.lossless(type, source.lastPathSegment.orEmpty()), logo) ?: return Mirror.Failed
         prints.put(saved.file.name, print)
         val now = System.currentTimeMillis()
         dao.insert(
@@ -444,15 +497,22 @@ class ArtLibraryRepository(
             var n = 0
             for (b in items) {
                 val src = File(dir, b.file).takeIf { it.exists() } ?: continue
-                val f = ArtLibraryStore.adopt(context, src) ?: continue
-                val (w, h) = if (b.width > 0 && b.height > 0) b.width to b.height else ArtLibraryStore.size(f)
+                val logo = b.kind != ArtKind.Poster.name
+                val cleaned = if (logo) runCatching { cleanedCopy(src) }.getOrNull() else null
+                val f = cleaned?.file ?: ArtLibraryStore.adopt(context, src) ?: continue
+                val (w, h) = when {
+                    cleaned != null -> cleaned.width to cleaned.height
+                    b.width > 0 && b.height > 0 -> b.width to b.height
+                    else -> ArtLibraryStore.size(f)
+                }
+                val luma = cleaned?.luma ?: b.luma
                 val hash = b.hash.ifEmpty { f.inputStream().use(ArtLibraryStore::hash) }
                 val now = System.currentTimeMillis()
                 dao.insert(
                     ArtAsset(
                         name = Names.clean(b.name).ifEmpty { ArtLibraryNames.parse(b.file).name },
                         kind = if (b.kind == ArtKind.Poster.name) ArtKind.Poster.name else ArtKind.Logo.name,
-                        path = f.absolutePath, width = w, height = h, luma = b.luma, hash = hash,
+                        path = f.absolutePath, width = w, height = h, luma = luma, hash = hash,
                         addedAt = b.addedAt.takeIf { it > 0 } ?: now, updatedAt = b.updatedAt.takeIf { it > 0 } ?: now,
                     ),
                 )
@@ -462,11 +522,22 @@ class ArtLibraryRepository(
         }
     }
 
+    /** A cleaned copy of a backed-up logo from before v0.11.3, or null when it was already clean. */
+    private fun cleanedCopy(src: File): ArtLibraryStore.Saved? {
+        val bmp = ArtistArtStore.decodeFile(src) ?: return null
+        val out = ArtistArtStore.cleanLogo(bmp)
+        if (out === bmp) { bmp.recycle(); return null }
+        bmp.recycle()
+        return ArtLibraryStore.write(context, out, lossless = true).also { out.recycle() }
+    }
+
     companion object {
         const val TAG = "EchoArtLibrary"
         private const val AUTO_STEP = "art_library_auto"
         private const val AUTO_OFF = "art_library_auto_off"
         private const val BACKFILL_STEP = "art_library_backfill_v1"
         private const val BACKFILL_DELAY_MS = 6_000L
+        private const val LOGO_CLEANUP_STEP = "art_library_logo_cleanup_v1"
+        private const val LOGO_CLEANUP_DELAY_MS = 3_000L
     }
 }

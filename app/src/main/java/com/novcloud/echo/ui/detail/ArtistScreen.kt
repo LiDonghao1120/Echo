@@ -49,10 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
@@ -77,6 +75,7 @@ import com.novcloud.echo.ui.components.AnimatedNumber
 import com.novcloud.echo.ui.components.ArtistNameMark
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.LocalBottomInset
+import com.novcloud.echo.ui.components.LogoAlpha
 import com.novcloud.echo.ui.components.LogoScrim
 import com.novcloud.echo.ui.components.SectionHeader
 import com.novcloud.echo.ui.components.SongRow
@@ -251,7 +250,7 @@ fun ArtistScreen(name: String) {
                     val (w, h) = logoSize(logo, markMaxW, markMaxH)
                     AsyncImage(
                         logo.file, null, Modifier.size(w, h).graphicsLayer { alpha = eased },
-                        contentScale = ContentScale.Fit, colorFilter = ColorFilter.tint(Paper, BlendMode.SrcIn),
+                        contentScale = ContentScale.Fit, colorFilter = LogoAlpha.tint(Paper),
                     )
                 }
             }

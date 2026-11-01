@@ -137,11 +137,13 @@ abstract class ScreenshotBase {
         sleep: SleepState? = null,
         artLibrary: Boolean = false,
         insets: Boolean = false,
+        seedMore: () -> Unit = {},
         before: () -> Unit = {},
     ) {
         if (tall != null) RuntimeEnvironment.setQualifiers("+h${tall}dp")
         compose.mainClock.autoAdvance = false
         Samples.seed(ctx, withArt)
+        seedMore()
         if (artLibrary) Samples.seedArtLibrary(ctx)
         if (playing) Samples.playing(ctx)
         sleep?.let { Samples.app(ctx).player.previewSleep(it) }
@@ -288,6 +290,10 @@ class ScreenshotTest : ScreenshotBase() {
     @Test fun artist_velvet_light() = app("artist_velvet_light", dark = false, route = "artist/The%20Velvet%20Static")
     @Test fun artist_text_dark() = app("artist_text_dark", route = "artist/%E6%B8%A9%E5%B1%BF")
     @Test fun artist_latin_text_dark() = app("artist_latin_text_dark", route = "artist/Otis%20Fenwick")
+    /** A logo with a faint dark matte stored by an older version and never cleaned: no box behind it on the photo. */
+    @Test fun artist_matte_raw_dark() = app("artist_matte_raw_dark", route = "artist/Ivy%20Calder", seedMore = { Samples.matteLogo(ctx, "Ivy Calder", cleaned = false) })
+    /** The same kind of logo (a stronger white matte) set on the artist page now: stored clean. */
+    @Test fun artist_matte_light() = app("artist_matte_light", dark = false, route = "artist/Ivy%20Calder", seedMore = { Samples.matteLogo(ctx, "Ivy Calder", cleaned = true) })
     @Test fun artist_ivy_tall() = app("artist_ivy_tall", route = "artist/Ivy%20Calder", tall = 1700)
 
     @Test fun artist_ivy_collapsed() = app("artist_ivy_collapsed", route = "artist/Ivy%20Calder") {

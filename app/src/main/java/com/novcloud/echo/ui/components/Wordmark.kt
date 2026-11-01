@@ -18,10 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -47,6 +47,60 @@ fun logoSize(logo: ArtistLogoInfo, maxWidth: Dp, maxHeight: Dp): Pair<Dp, Dp> {
     return w.dp to (w / a).dp
 }
 
+/**
+ * Colour filters every stored logo is drawn through. They work on the logo's alpha, so an image that still carries a
+ * faint matte (a few percent of alpha across its whole canvas, see [com.novcloud.echo.data.LogoCleanup]) can never
+ * show as a box: [image] drops alpha up to [CLEAR] and stretches the rest back to full; [halo] and [tint] build their
+ * flat colour from a thresholded mask, never from "every pixel with any alpha" the way a SrcIn tint does.
+ */
+object LogoAlpha {
+    /** Alpha (0..255) at or below which a pixel of a logo is never drawn. */
+    const val CLEAR = 16f
+
+    /** The halo is built only from pixels above this alpha, reaching full strength at [HALO_FULL]. */
+    const val HALO_FROM = 76f
+    const val HALO_FULL = 153f
+
+    /** Alpha row (scale, offset in 0..255) mapping [from]..[full] onto 0..255. */
+    private fun alphaRow(from: Float, full: Float): Pair<Float, Float> {
+        val s = 255f / (full - from)
+        return s to -from * s
+    }
+
+    fun imageMatrix(): ColorMatrix {
+        val (s, o) = alphaRow(CLEAR, 255f)
+        return ColorMatrix(
+            floatArrayOf(
+                1f, 0f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f, 0f,
+                0f, 0f, 1f, 0f, 0f,
+                0f, 0f, 0f, s, o,
+            ),
+        )
+    }
+
+    private fun flat(color: Color, from: Float, full: Float): ColorMatrix {
+        val (s, o) = alphaRow(from, full)
+        return ColorMatrix(
+            floatArrayOf(
+                0f, 0f, 0f, 0f, color.red * 255f,
+                0f, 0f, 0f, 0f, color.green * 255f,
+                0f, 0f, 0f, 0f, color.blue * 255f,
+                0f, 0f, 0f, s * color.alpha, o * color.alpha,
+            ),
+        )
+    }
+
+    fun haloMatrix(color: Color): ColorMatrix = flat(color, HALO_FROM, HALO_FULL)
+
+    /** The logo in one flat [color] with its anti-aliased edges, minus anything at or below [CLEAR]. */
+    fun tintMatrix(color: Color): ColorMatrix = flat(color, CLEAR, 255f)
+
+    val image: ColorFilter = ColorFilter.colorMatrix(imageMatrix())
+    fun halo(color: Color): ColorFilter = ColorFilter.colorMatrix(haloMatrix(color))
+    fun tint(color: Color): ColorFilter = ColorFilter.colorMatrix(tintMatrix(color))
+}
+
 fun markText(name: String): String = displayArtist(name).let { if (isCjk(it)) it else it.uppercase() }
 
 @Composable
@@ -70,10 +124,10 @@ fun ArtistNameMark(
                     logo.file, null,
                     Modifier.fillMaxSize().graphicsLayer { alpha = 0.55f }.blur(10.dp, BlurredEdgeTreatment.Unbounded),
                     contentScale = ContentScale.Fit,
-                    colorFilter = ColorFilter.tint(if (logo.dark) Color.White else Ink, BlendMode.SrcIn),
+                    colorFilter = LogoAlpha.halo(if (logo.dark) Color.White else Ink),
                 )
             }
-            AsyncImage(logo.file, displayArtist(name), Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            AsyncImage(logo.file, displayArtist(name), Modifier.fillMaxSize(), contentScale = ContentScale.Fit, colorFilter = LogoAlpha.image)
         }
     } else {
         val text = markText(name)
@@ -149,7 +203,7 @@ fun ArtistRowMark(name: String, logo: ArtistLogoInfo?, modifier: Modifier = Modi
         val (w, h) = logoSize(logo, 180.dp, 26.dp)
         AsyncImage(
             logo.file, displayArtist(name), modifier.size(w, h), contentScale = ContentScale.Fit,
-            colorFilter = ColorFilter.tint(color, BlendMode.SrcIn),
+            colorFilter = LogoAlpha.tint(color),
         )
     } else {
         androidx.compose.material3.Text(

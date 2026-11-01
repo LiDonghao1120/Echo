@@ -122,17 +122,39 @@ object ArtistArtStore {
         return file.takeIf { ok }
     }
 
+    /** Saves [uri] as [artist]'s logo: decoded, cleaned up ([cleanLogo]: matte, specks, flat background, edges), PNG. */
     fun saveLogo(context: Context, artist: String, uri: Uri): ArtistLogoInfo? {
         val decoded = decode(context, uri, LOGO_MAX_W, LOGO_MAX_H) ?: return null
-        val bmp = trim(decoded)
+        val bmp = cleanLogo(decoded)
         if (bmp !== decoded) decoded.recycle()
+        return writeLogo(context, artist, bmp).also { bmp.recycle() }
+    }
+
+    internal fun writeLogo(context: Context, artist: String, bmp: Bitmap): ArtistLogoInfo? {
         val luma = luma(bmp)
         val file = File(dir(context), ArtFiles.name(ArtKind.Logo, artist, System.nanoTime()))
         val ok = runCatching { file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) } }.getOrDefault(false)
-        val aspect = bmp.width.toFloat() / bmp.height
-        bmp.recycle()
-        return if (ok) ArtistLogoInfo(file, aspect, luma) else null
+        if (!ok) file.delete()
+        return if (ok) ArtistLogoInfo(file, bmp.width.toFloat() / bmp.height, luma) else null
     }
+
+    /**
+     * [LogoCleanup] on a bitmap: a new bitmap when anything changed, otherwise [bmp] itself. Falls back to the old
+     * transparent-edge trim when the pixels cannot be worked on (out of memory on a huge image).
+     */
+    internal fun cleanLogo(bmp: Bitmap): Bitmap = runCatching {
+        val w = bmp.width
+        val h = bmp.height
+        val px = IntArray(w * h)
+        bmp.getPixels(px, 0, w, 0, 0, w, h)
+        val r = LogoCleanup.clean(px, w, h)
+        if (!r.changed) bmp else Bitmap.createBitmap(r.argb, r.width, r.height, Bitmap.Config.ARGB_8888)
+    }.getOrElse { trim(bmp) }
+
+    /** Decodes a stored file for re-cleaning, full size and in software. */
+    internal fun decodeFile(file: File): Bitmap? = runCatching {
+        BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 })
+    }.getOrNull()
 
     internal fun trim(bmp: Bitmap): Bitmap {
         if (!bmp.hasAlpha()) return bmp

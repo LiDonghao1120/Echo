@@ -129,6 +129,33 @@ object Samples {
         c.library.publish(library)
     }
 
+    /**
+     * Gives [artist] a generated wordmark with a faint matte ([com.novcloud.echo.data.SyntheticLogos]): stored as an
+     * older version left it (dark matte inside the old trim, the startup cleanup held back), or saved the current way.
+     */
+    fun matteLogo(context: Context, artist: String, cleaned: Boolean) {
+        val s = com.novcloud.echo.data.SyntheticLogos
+        context.getSharedPreferences("startup", Context.MODE_PRIVATE).edit().putString("artist_logo_cleanup_v1", "done").commit()
+        val c = app(context)
+        runBlocking {
+            if (cleaned) {
+                val raw = s.matte(0xFFFFFF, 30, matteRgb = 0xFFFFFF, noise = 3)
+                val f = File(context.cacheDir, "matte_logo.png")
+                f.outputStream().use { android.graphics.Bitmap.createBitmap(raw, s.W, s.H, android.graphics.Bitmap.Config.ARGB_8888).compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                val l = ArtistArtStore.saveLogo(context, artist, Uri.fromFile(f))!!
+                c.db.artistLogos().put(ArtistLogo(artist, l.file.absolutePath, l.aspect, l.luma, 2))
+            } else {
+                val bw = s.box[2] - s.box[0]
+                val bh = s.box[3] - s.box[1]
+                val raw = s.matte(0xFFFFFF, 10, matteRgb = 0x000000, noise = 1)
+                val px = IntArray(bw * bh) { raw[(it / bw + s.box[1]) * s.W + it % bw + s.box[0]] }
+                val f = File(ArtistArtStore.dir(context), "l_matte_raw.png")
+                f.outputStream().use { android.graphics.Bitmap.createBitmap(px, bw, bh, android.graphics.Bitmap.Config.ARGB_8888).compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                c.db.artistLogos().put(ArtistLogo(artist, f.absolutePath, bw.toFloat() / bh, 1f, 2))
+            }
+        }
+    }
+
     /** Placeholder wordmarks and a poster for fictional artists (resources/samples/library), added the way the picker adds them. */
     val libraryFiles = listOf(
         "Nova_Lark_logo.png", "Marlow & the Tides - Logo.png", "Pale Orchid (2).png", "Otis Fenwick_wordmark.png", "温屿_logo.png",
