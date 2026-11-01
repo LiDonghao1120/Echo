@@ -123,7 +123,9 @@ class LogoHaloTest : ScreenshotBase() {
             val top = (b.top.value * density).toInt()
             val inside = android.graphics.Color.red(bmp.getPixel(x, top + 2))
             val outside = android.graphics.Color.red(bmp.getPixel(x, top - 2))
-            assertTrue("halo is cut along the logo's top edge ($outside outside, $inside inside)", abs(inside - outside) <= 6)
+            val pageRed = android.graphics.Color.red(page.toArgb())
+            // a cut halo leaves the page untouched right outside the edge; a whole one is still shading it there
+            assertTrue("halo is cut along the logo's top edge ($outside outside, $inside inside, page $pageRed)", outside <= pageRed - 4 && outside >= inside)
         }
     }
 
