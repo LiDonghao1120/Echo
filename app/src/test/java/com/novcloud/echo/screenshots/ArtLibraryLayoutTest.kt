@@ -3,9 +3,8 @@ package com.novcloud.echo.screenshots
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.test.captureToImage
+import com.github.takahirom.roborazzi.captureRoboImage
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
@@ -58,7 +57,13 @@ class ArtLibraryLayoutTest : ScreenshotBase() {
 
     /** Every sampled pixel in rows [fromPx, toPx) is the page colour: nothing drawn or showing through there. */
     private fun assertPlain(fromPx: Int, toPx: Int, surface: Color, what: String) {
-        val bmp = compose.onRoot().captureToImage().asAndroidBitmap()
+        // Through Roborazzi like the screenshots: compose-test's captureToImage waits for a redraw that never comes
+        // with the paused clock these tests run on.
+        val file = java.io.File("build/outputs/roborazzi/layout_check/${what.replace(' ', '_')}-${System.nanoTime()}.png").apply { parentFile?.mkdirs() }
+        compose.onRoot().captureRoboImage(file.path)
+        org.junit.Assume.assumeTrue("pixels are only written in Roborazzi record mode", file.exists())
+        val bmp = android.graphics.BitmapFactory.decodeFile(file.path)
+        file.delete()
         val want = surface.toArgb()
         for (y in fromPx until toPx.coerceAtMost(bmp.height) step 2) for (x in 0 until bmp.width step 3) {
             val c = bmp.getPixel(x, y)
