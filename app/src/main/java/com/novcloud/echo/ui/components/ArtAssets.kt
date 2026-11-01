@@ -51,8 +51,13 @@ import com.novcloud.echo.ui.theme.Paper
 import com.novcloud.echo.ui.theme.palette
 import java.io.File
 
-/** Dark logos sit on paper, light ones on ink; posters fill the frame. */
-private fun ArtAsset.ground(): Color = if (ArtLibraryMatch.kindOf(this) == ArtKind.Logo && luma < 0.38f) Paper else Ink
+/** Dark logos sit on paper, light ones on ink (a raised ink in the dark theme, so the tile keeps its edge); posters fill the frame. */
+@Composable
+private fun ArtAsset.ground(): Color = when {
+    ArtLibraryMatch.kindOf(this) == ArtKind.Logo && luma < 0.38f -> Paper
+    com.novcloud.echo.ui.theme.LocalDarkTheme.current -> palette.cardHigh
+    else -> Ink
+}
 
 @Composable
 fun kindLabel(kind: ArtKind): String = stringResource(if (kind == ArtKind.Poster) R.string.art_kind_poster else R.string.art_kind_logo)
