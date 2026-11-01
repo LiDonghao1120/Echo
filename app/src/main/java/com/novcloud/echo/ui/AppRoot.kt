@@ -279,7 +279,7 @@ private fun BottomBar(nav: androidx.navigation.NavHostController, actions: AppAc
                     Column(
                         Modifier.weight(1f).fillMaxSize().clickable(remember { MutableInteractionSource() }, null) {
                             when {
-                                current == t.route -> Unit
+                                current == t.route -> actions.reselectTab(t.route)
                                 selectedRoute == t.route -> actions.popToTab(t.route)
                                 else -> actions.switchTab(t.route)
                             }

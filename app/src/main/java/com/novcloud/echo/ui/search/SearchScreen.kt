@@ -64,6 +64,7 @@ import com.novcloud.echo.ui.components.SongRow
 import com.novcloud.echo.ui.components.artistModel
 import com.novcloud.echo.ui.components.bouncyClick
 import com.novcloud.echo.ui.components.reveal
+import com.novcloud.echo.ui.components.scrollToTopFast
 import com.novcloud.echo.ui.home.AlbumTile
 import com.novcloud.echo.ui.library.GenreTile
 import com.novcloud.echo.ui.theme.palette
@@ -119,7 +120,9 @@ fun SearchScreen(initialQuery: String = "") {
         Box(Modifier.padding(horizontal = 20.dp).fillMaxWidth().height(2.dp).background(line))
         Spacer(Modifier.height(8.dp))
         val r = results
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 16.dp)) {
+        val list = androidx.compose.foundation.lazy.rememberLazyListState()
+        com.novcloud.echo.ui.components.OnTabReselect("search") { list.scrollToTopFast() }
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomInset.current + 16.dp)) {
             if (r == null) {
                 if (lib.genres.isNotEmpty()) {
                     item { SectionHeader(stringResource(R.string.genres)) }

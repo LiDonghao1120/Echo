@@ -72,6 +72,10 @@ class EnglishScreenshotTest : ScreenshotBase() {
     }
 
     @Test fun art_library_en() = app("art_library_en", route = "settings/art-library", artLibrary = true)
+    @Test fun art_library_scrolled_en() {
+        Samples.seedLargeArtLibrary(ctx)
+        app("art_library_scrolled_en", route = "settings/art-library") { scrollArtLibrary() }
+    }
     @Test fun art_picker_en() = picker("art_picker_en")
     @Test fun art_asset_sheet_en() = assetSheet("art_asset_sheet_en")
     @Test fun settings_art_en() = app("settings_art_en", route = "settings", tall = 2400)

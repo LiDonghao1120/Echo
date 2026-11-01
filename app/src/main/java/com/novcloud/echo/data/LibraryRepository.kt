@@ -2,15 +2,16 @@ package com.novcloud.echo.data
 
 import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.core.content.ContextCompat
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.MediaStore
+import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.novcloud.echo.data.db.ArtistImage
 import com.novcloud.echo.data.db.ArtistLogo
@@ -19,33 +20,32 @@ import com.novcloud.echo.data.db.Favorite
 import com.novcloud.echo.data.db.Playlist
 import com.novcloud.echo.data.db.SongRef
 import com.novcloud.echo.diag.DiagLog
-import android.os.SystemClock
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.Flow
+import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.util.concurrent.atomic.AtomicBoolean
 
 class LibraryRepository(
     private val context: Context,
@@ -410,7 +410,25 @@ class LibraryRepository(
         const val TAG = "EchoLibrary"
     }
 
-    fun setArtistImage(artist: String, source: Uri) = scope.launch { withArt(artist) { putPoster(artist, source) } }
+    /**
+     * Called after a logo or poster from the phone (not from the artwork library) was put on an artist; [single] is
+     * false for folder imports. The artwork library uses it to keep a copy.
+     */
+    @Volatile var onUserArt: (suspend (artist: String, kind: ArtKind, source: Uri, single: Boolean) -> Unit)? = null
+
+    private suspend fun userArt(artist: String, kind: ArtKind, source: Uri, single: Boolean) {
+        val hook = onUserArt ?: return
+        runCatching { hook(artist, kind, source, single) }.onFailure { DiagLog.w(TAG, "artist image hook failed", it) }
+    }
+
+    /** Puts a picked image on [artist] as its [kind]; returns false when it could not be read. */
+    suspend fun setArtFromPhone(artist: String, kind: ArtKind, source: Uri): Boolean {
+        val ok = withArt(artist) { if (kind == ArtKind.Logo) putLogo(artist, source) else putPoster(artist, source) }
+        if (ok) userArt(artist, kind, source, single = true)
+        return ok
+    }
+
+    fun setArtistImage(artist: String, source: Uri) = scope.launch { setArtFromPhone(artist, ArtKind.Poster, source) }
 
     fun clearArtistImage(artist: String) = scope.launch(Dispatchers.IO) {
         val key = Names.key(artist)
@@ -420,7 +438,7 @@ class LibraryRepository(
         }
     }
 
-    fun setArtistLogo(artist: String, source: Uri) = scope.launch { withArt(artist) { putLogo(artist, source) } }
+    fun setArtistLogo(artist: String, source: Uri) = scope.launch { setArtFromPhone(artist, ArtKind.Logo, source) }
 
     fun clearArtistLogo(artist: String) = scope.launch(Dispatchers.IO) {
         val key = Names.key(artist)
@@ -462,11 +480,12 @@ class LibraryRepository(
         }
     }
 
-    private suspend fun withArt(artist: String, block: suspend () -> Boolean) {
+    private suspend fun withArt(artist: String, block: suspend () -> Boolean): Boolean {
         _artBusy.value = _artBusy.value + artist
         try {
             val ok = withContext(Dispatchers.IO) { artLock.withLock { runCatching { block() }.getOrDefault(false) } }
             if (!ok) _artFailed.tryEmit(artist)
+            return ok
         } finally {
             _artBusy.value = _artBusy.value - artist
         }
@@ -505,10 +524,11 @@ class LibraryRepository(
                 if (name.substringAfterLast('.', "").lowercase() in setOf("png", "jpg", "jpeg", "webp")) unmatched += name
                 return@forEach
             }
-            when (m.kind) {
-                ArtKind.Logo -> if (putLogo(m.artist, f.uri)) logos++
-                ArtKind.Poster -> if (putPoster(m.artist, f.uri)) posters++
+            val ok = when (m.kind) {
+                ArtKind.Logo -> putLogo(m.artist, f.uri).also { if (it) logos++ }
+                ArtKind.Poster -> putPoster(m.artist, f.uri).also { if (it) posters++ }
             }
+            if (ok) userArt(m.artist, m.kind, f.uri, single = false)
         }
         ImportReport(logos, posters, unmatched)
     }

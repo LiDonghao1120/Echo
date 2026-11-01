@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
@@ -34,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,12 +46,14 @@ import com.novcloud.echo.data.Pinyin
 import com.novcloud.echo.data.db.ArtAsset
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.ArtAssetTile
+import com.novcloud.echo.ui.components.EchoMark
 import com.novcloud.echo.ui.components.Eyebrow
+import com.novcloud.echo.ui.components.ScrollTopButton
 import com.novcloud.echo.ui.components.SearchLine
 import com.novcloud.echo.ui.components.SolidButton
 import com.novcloud.echo.ui.components.echoClick
 import com.novcloud.echo.ui.components.kindLabel
-import com.novcloud.echo.ui.components.EchoMark
+import com.novcloud.echo.ui.components.rememberScrollTop
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.palette
 
@@ -100,14 +104,19 @@ fun ArtLibraryPickerContent(
         if (shown.isEmpty()) {
             Text(stringResource(R.string.art_no_results), Modifier.padding(horizontal = 20.dp, vertical = 24.dp), style = MaterialTheme.typography.titleMedium, color = p.muted)
         } else {
+            val grid = rememberLazyGridState()
+            val top = rememberScrollTop(grid)
+            Box {
             LazyVerticalGrid(
-                GridCells.Fixed(2), Modifier.fillMaxWidth().heightIn(max = 470.dp),
+                GridCells.Fixed(2), Modifier.fillMaxWidth().heightIn(max = 470.dp).testTag("art_picker_grid"), state = grid,
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 items(shown, key = { it.first.id }) { (a, same) ->
                     ArtAssetTile(a, ArtLibraryMatch.key(a.name) in linked, sameName = same) { onPick(a) }
                 }
+            }
+            ScrollTopButton(top, bottom = 14.dp, end = 26.dp)
             }
         }
         Box(Modifier.padding(horizontal = 20.dp).fillMaxWidth().height(1.dp).background(p.rule))

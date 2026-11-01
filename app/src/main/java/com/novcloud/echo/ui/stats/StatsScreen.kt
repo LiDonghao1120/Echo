@@ -106,13 +106,21 @@ fun StatsScreen() {
     val stats by produceState<Stats?>(null, events, lib, range) {
         value = withContext(Dispatchers.Default) { StatsEngine.compute(events, lib, range) }
     }
-    StatsReport(stats, range) { range = it }
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    com.novcloud.echo.ui.components.OnTabReselect("stats") { list.animateScrollToItem(0) }
+    StatsReport(stats, range, list = list) { range = it }
 }
 
 @Composable
-fun StatsReport(stats: Stats?, range: StatsRange, today: LocalDate = LocalDate.now(), onRange: (StatsRange) -> Unit) {
+fun StatsReport(
+    stats: Stats?,
+    range: StatsRange,
+    today: LocalDate = LocalDate.now(),
+    list: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
+    onRange: (StatsRange) -> Unit,
+) {
     val p = palette
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 28.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomInset.current + 28.dp)) {
         item(key = "mast") {
             Column(Modifier.statusBarsPadding().padding(start = 20.dp, end = 20.dp, top = 16.dp).reveal(0)) {
                 Eyebrow(rangeLine(range, today))

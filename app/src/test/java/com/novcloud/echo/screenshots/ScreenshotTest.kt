@@ -27,6 +27,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
@@ -80,6 +82,13 @@ abstract class ScreenshotBase {
         val c = Samples.app(ctx)
         val deadline = System.currentTimeMillis() + 15_000
         while (System.currentTimeMillis() < deadline && !(c.home.value.hasHistory && c.home.value.daily != null)) Thread.sleep(100)
+    }
+
+    /** Far down the artwork library: the search bar pinned under the title and the back-to-top key showing. */
+    protected fun scrollArtLibrary() {
+        compose.onNodeWithTag("art_library_grid").performScrollToIndex(44)
+        settle(2)
+        compose.onNodeWithTag("art_library_grid").performScrollToIndex(46)
     }
 
     protected fun app(
@@ -363,6 +372,14 @@ class ScreenshotTest : ScreenshotBase() {
     @Test fun art_library_empty_dark() = app("art_library_empty_dark", route = "settings/art-library")
     @Test fun art_library_search_dark() = app("art_library_search_dark", route = "settings/art-library", artLibrary = true) {
         compose.onNode(hasSetTextAction()).performTextInput("wy")
+    }
+    @Test fun art_library_scrolled_dark() {
+        Samples.seedLargeArtLibrary(ctx)
+        app("art_library_scrolled_dark", route = "settings/art-library") { scrollArtLibrary() }
+    }
+    @Test fun art_library_scrolled_light() {
+        Samples.seedLargeArtLibrary(ctx)
+        app("art_library_scrolled_light", dark = false, route = "settings/art-library") { scrollArtLibrary() }
     }
     @Test fun art_picker_dark() = picker("art_picker_dark")
     @Test fun art_asset_sheet_dark() = assetSheet("art_asset_sheet_dark")

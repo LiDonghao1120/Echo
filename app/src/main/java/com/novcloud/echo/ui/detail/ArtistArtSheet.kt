@@ -6,6 +6,13 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,15 +71,6 @@ import com.novcloud.echo.EchoApp
 import com.novcloud.echo.R
 import com.novcloud.echo.data.ArtKind
 import com.novcloud.echo.data.ArtistLogoInfo
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.togetherWith
-import androidx.compose.runtime.saveable.rememberSaveable
-import com.novcloud.echo.ui.theme.EchoMotion
 import com.novcloud.echo.data.ImportReport
 import com.novcloud.echo.data.displayArtist
 import com.novcloud.echo.ui.components.ArtistNameMark
@@ -80,6 +79,7 @@ import com.novcloud.echo.ui.components.LogoScrim
 import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.echoClick
 import com.novcloud.echo.ui.components.rememberArtistPoster
+import com.novcloud.echo.ui.theme.EchoMotion
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.Ink
 import com.novcloud.echo.ui.theme.palette
@@ -108,6 +108,9 @@ fun rememberArtistArtActions(name: String): ArtistArtActions {
         repo.artFailed.collect { a -> if (a == name) Toast.makeText(context, R.string.art_read_failed, Toast.LENGTH_SHORT).show() }
     }
     val container = (context.applicationContext as EchoApp).container
+    LaunchedEffect(name) {
+        container.artLibrary.mirrored.collect { a -> if (a == name) Toast.makeText(context, R.string.art_saved_to_library, Toast.LENGTH_SHORT).show() }
+    }
     return remember(name, poster, logoGallery, logoFile, batch) {
         ArtistArtActions(
             pickPoster = { poster.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },

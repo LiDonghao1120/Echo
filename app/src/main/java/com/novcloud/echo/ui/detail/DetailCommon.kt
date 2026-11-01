@@ -1,6 +1,7 @@
 package com.novcloud.echo.ui.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +20,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +38,7 @@ fun CollapsingTopBar(
     title: String,
     progress: Float,
     overImage: Boolean = false,
+    onTitleClick: (() -> Unit)? = null,
     actions: @Composable () -> Unit = {},
 ) {
     val nav = LocalActions.current
@@ -52,7 +55,12 @@ fun CollapsingTopBar(
             }
             Text(
                 title,
-                Modifier.weight(1f).padding(horizontal = 8.dp).graphicsLayer { alpha = progress; translationY = (1 - progress) * 16f },
+                Modifier.weight(1f)
+                    .then(
+                        if (onTitleClick == null) Modifier
+                        else Modifier.clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, null, onClick = onTitleClick),
+                    )
+                    .padding(horizontal = 8.dp).graphicsLayer { alpha = progress; translationY = (1 - progress) * 16f },
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Black), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
             )
             Box(

@@ -105,8 +105,10 @@ fun HomeScreen() {
     val lib by container.library.library.collectAsState()
     val scanning by container.library.scanning.collectAsState()
     val p = palette
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    com.novcloud.echo.ui.components.OnTabReselect("home") { list.animateScrollToItem(0) }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 16.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomInset.current + 16.dp)) {
         item(key = "mast") {
             Row(
                 Modifier.statusBarsPadding().padding(start = 20.dp, end = 8.dp, top = 16.dp, bottom = 4.dp).reveal(0),

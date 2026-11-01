@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
@@ -29,8 +30,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -43,20 +44,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.novcloud.echo.EchoApp
@@ -68,16 +75,19 @@ import com.novcloud.echo.data.Pinyin
 import com.novcloud.echo.data.db.ArtAsset
 import com.novcloud.echo.ui.components.ArtAssetImage
 import com.novcloud.echo.ui.components.ArtAssetTile
-import com.novcloud.echo.ui.components.Eyebrow
 import com.novcloud.echo.ui.components.EmptyState
+import com.novcloud.echo.ui.components.Eyebrow
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.LocalBottomInset
+import com.novcloud.echo.ui.components.ScrollTopButton
 import com.novcloud.echo.ui.components.SearchLine
 import com.novcloud.echo.ui.components.SolidButton
 import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.echoClick
 import com.novcloud.echo.ui.components.kindLabel
 import com.novcloud.echo.ui.components.number
+import com.novcloud.echo.ui.components.rememberScrollTop
+import com.novcloud.echo.ui.components.scrollToTopFast
 import com.novcloud.echo.ui.detail.CollapsingTopBar
 import com.novcloud.echo.ui.theme.EchoMotion
 import com.novcloud.echo.ui.theme.EchoShape
@@ -154,12 +164,24 @@ fun ArtLibraryScreen() {
         }
     }
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp
+    val topPx = with(density) { top.roundToPx() }
     val p = palette
+    val scope = rememberCoroutineScope()
+    val toTop = rememberScrollTop(grid)
+    var searchHeight by remember { mutableIntStateOf(0) }
+    val searchY by remember {
+        derivedStateOf {
+            val info = grid.layoutInfo
+            val slot = info.visibleItemsInfo.firstOrNull { it.key == "search" }
+            if (slot == null) topPx else maxOf(topPx, slot.offset.y - info.viewportStartOffset)
+        }
+    }
+    val pinned by remember { derivedStateOf { searchY <= topPx && grid.canScrollBackward } }
     val full: (androidx.compose.foundation.lazy.grid.LazyGridItemSpanScope.() -> GridItemSpan) = { GridItemSpan(maxLineSpan) }
 
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
-            GridCells.Fixed(2), Modifier.fillMaxSize(), state = grid,
+            GridCells.Fixed(2), Modifier.fillMaxSize().testTag("art_library_grid"), state = grid,
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top, bottom = LocalBottomInset.current + 24.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
@@ -198,17 +220,7 @@ fun ArtLibraryScreen() {
                 }
             }
             if (assets.isNotEmpty()) {
-                item(key = "search", span = full) {
-                    Column {
-                        SearchLine(query, { query = it }, stringResource(R.string.art_library_search), Modifier.padding(horizontal = 4.dp))
-                        Spacer(Modifier.height(12.dp))
-                        Row(Modifier.padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(KindFilter.All to R.string.art_kind_all, KindFilter.Logo to R.string.art_kind_logo, KindFilter.Poster to R.string.art_kind_poster).forEach { (k, l) ->
-                                Chip(stringResource(l), filter == k, Modifier.width(76.dp)) { filter = k }
-                            }
-                        }
-                    }
-                }
+                item(key = "search", span = full) { Spacer(Modifier.fillMaxWidth().height(with(density) { searchHeight.toDp() })) }
             }
             if (assets.isEmpty() && adding == null) {
                 item(key = "empty", span = full) { EmptyState(null, stringResource(R.string.art_library_empty)) }
@@ -221,7 +233,31 @@ fun ArtLibraryScreen() {
                 ArtAssetTile(a, ArtLibraryMatch.key(a.name) in linked, Modifier.animateItem()) { editing = a.id }
             }
         }
-        CollapsingTopBar(stringResource(R.string.art_library), collapse)
+        if (assets.isNotEmpty()) {
+            val rule by animateFloatAsState(if (pinned) 1f else 0f, tween(EchoMotion.Quick), label = "pinned")
+            Column(
+                Modifier.fillMaxWidth()
+                    .offset { IntOffset(0, searchY) }
+                    .onSizeChanged { searchHeight = it.height }
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 2.dp, bottom = 12.dp),
+            ) {
+                SearchLine(query, { query = it }, stringResource(R.string.art_library_search))
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(KindFilter.All to R.string.art_kind_all, KindFilter.Logo to R.string.art_kind_logo, KindFilter.Poster to R.string.art_kind_poster).forEach { (k, l) ->
+                        Chip(stringResource(l), filter == k, Modifier.width(76.dp)) { filter = k }
+                    }
+                }
+            }
+            Box(
+                Modifier.fillMaxWidth().offset { IntOffset(0, searchY + searchHeight) }.height(1.dp)
+                    .graphicsLayer { alpha = rule }.background(p.rule),
+            )
+        }
+        ScrollTopButton(toTop)
+        CollapsingTopBar(stringResource(R.string.art_library), collapse, onTitleClick = { scope.launch { grid.scrollToTopFast() } })
     }
     editing?.let { id ->
         val asset = assets.firstOrNull { it.id == id }

@@ -103,6 +103,10 @@
     <string name="art_open_artist">打开歌手页</string>
     <string name="art_auto_apply">自动套用</string>
     <string name="art_auto_apply_detail">歌手没有标志或海报时，使用素材库里同名的图片</string>
+    <string name="art_sync_from_artist">从歌手页添加时同步到素材库</string>
+    <string name="art_sync_from_artist_detail">在歌手页从相册或文件设置的标志和海报，以歌手名存入素材库，已有的不会重复添加</string>
+    <string name="art_saved_to_library">已存入素材库</string>
+    <string name="scroll_to_top">回到顶部</string>
     <string name="art_no_results">没有找到</string>
     <string name="menu_play_next">下一首播放</string>
     <string name="menu_add_to_queue">添加到播放队列</string>

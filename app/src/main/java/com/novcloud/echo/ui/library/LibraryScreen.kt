@@ -85,12 +85,17 @@ import com.novcloud.echo.ui.components.Eyebrow
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.LocalBottomInset
 import com.novcloud.echo.ui.components.NameDialog
+import com.novcloud.echo.ui.components.OnTabReselect
+import com.novcloud.echo.ui.components.ScrollTopButton
+import com.novcloud.echo.ui.components.ScrollTopOn
 import com.novcloud.echo.ui.components.SongRow
 import com.novcloud.echo.ui.components.artistModel
 import com.novcloud.echo.ui.components.bouncyClick
 import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.echoClick
+import com.novcloud.echo.ui.components.rememberScrollTop
 import com.novcloud.echo.ui.components.reveal
+import com.novcloud.echo.ui.components.scrollToTopFast
 import com.novcloud.echo.ui.components.sectionStarts
 import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
@@ -99,6 +104,8 @@ import com.novcloud.echo.ui.theme.Paper
 import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.seededColor
 import com.novcloud.echo.ui.theme.seededGradient
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 
 internal val tabs = listOf(R.string.songs, R.string.albums, R.string.artists, R.string.genres, R.string.folders, R.string.playlists)
@@ -109,22 +116,28 @@ fun LibraryScreen() {
     val lib by container.library.library.collectAsState()
     val pager = rememberPagerState { tabs.size }
     val scope = rememberCoroutineScope()
+    val toTop = remember { MutableSharedFlow<Int>(extraBufferCapacity = 1) }
+    OnTabReselect("library") { toTop.emit(pager.currentPage) }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.statusBarsPadding().padding(start = 20.dp, top = 16.dp, bottom = 10.dp).reveal(0)) {
             Eyebrow(com.novcloud.echo.ui.settings.librarySummary(LocalContext.current.resources, lib))
             Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.tab_library), style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp))
+            Text(
+                stringResource(R.string.tab_library),
+                Modifier.clickable(remember { MutableInteractionSource() }, null) { toTop.tryEmit(pager.currentPage) },
+                style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp),
+            )
         }
         LibraryTabs(tabs.map { stringResource(it) }, pager) { i -> scope.launch { pager.animateScrollToPage(i) } }
         Spacer(Modifier.height(6.dp))
         HorizontalPager(pager, Modifier.weight(1f), beyondViewportPageCount = 1) { page ->
             when (page) {
-                0 -> SongsTab()
-                1 -> AlbumsTab()
-                2 -> ArtistsTab()
-                3 -> GenresTab()
-                4 -> FoldersTab()
-                else -> PlaylistsTab()
+                0 -> SongsTab(toTop)
+                1 -> AlbumsTab(toTop)
+                2 -> ArtistsTab(toTop)
+                3 -> GenresTab(toTop)
+                4 -> FoldersTab(toTop)
+                else -> PlaylistsTab(toTop)
             }
         }
     }
@@ -141,7 +154,7 @@ fun sortSongs(songs: List<Song>, sort: String): List<Song> = when (sort) {
 }
 
 @Composable
-private fun SongsTab() {
+private fun SongsTab(toTop: SharedFlow<Int>) {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
@@ -160,6 +173,8 @@ private fun SongsTab() {
         }
         if (keys != null && songs.size >= RAIL_MIN) sectionStarts(keys) else emptyMap()
     }
+    val top = rememberScrollTop(list)
+    ScrollTopOn(toTop, 0) { list.scrollToTopFast() }
     val current by remember(sections) {
         derivedStateOf { sections.entries.lastOrNull { it.value + 1 <= list.firstVisibleItemIndex }?.key ?: sections.keys.firstOrNull() }
     }
@@ -191,6 +206,7 @@ private fun SongsTab() {
             }
         }
         AlphabetRail(sections, current, { i -> scope.launch { list.scrollToItem(i + 1) } })
+        if (sections.isEmpty()) ScrollTopButton(top)
     }
 }
 
@@ -213,13 +229,18 @@ fun PillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: Str
 }
 
 @Composable
-private fun AlbumsTab() {
+private fun AlbumsTab(toTop: SharedFlow<Int>) {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
+    val grid = rememberLazyGridState()
+    val top = rememberScrollTop(grid)
+    ScrollTopOn(toTop, 1) { grid.scrollToTopFast() }
+    Box(Modifier.fillMaxSize()) {
     LazyVerticalGrid(
         GridCells.Adaptive(150.dp),
         Modifier.fillMaxSize(),
+        state = grid,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -233,10 +254,12 @@ private fun AlbumsTab() {
             }
         }
     }
+    ScrollTopButton(top)
+    }
 }
 
 @Composable
-private fun ArtistsTab() {
+private fun ArtistsTab(toTop: SharedFlow<Int>) {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
@@ -246,6 +269,8 @@ private fun ArtistsTab() {
     val current by remember(sections) {
         derivedStateOf { sections.entries.lastOrNull { it.value <= grid.firstVisibleItemIndex }?.key ?: sections.keys.firstOrNull() }
     }
+    val top = rememberScrollTop(grid)
+    ScrollTopOn(toTop, 2) { grid.scrollToTopFast() }
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             GridCells.Adaptive(150.dp),
@@ -260,15 +285,18 @@ private fun ArtistsTab() {
             }
         }
         AlphabetRail(sections, current, { i -> scope.launch { grid.scrollToItem(i) } })
+        if (sections.isEmpty()) ScrollTopButton(top)
     }
 }
 
 @Composable
-private fun GenresTab() {
+private fun GenresTab(toTop: SharedFlow<Int>) {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
     val probing by container.library.genreProbing.collectAsState()
+    val grid = rememberLazyGridState()
+    ScrollTopOn(toTop, 3) { grid.scrollToTopFast() }
     if (lib.genres.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(bottom = LocalBottomInset.current), contentAlignment = Alignment.Center) {
             com.novcloud.echo.ui.components.EmptyState(null, stringResource(if (probing || !lib.loaded) R.string.genres_loading else R.string.genres_none))
@@ -276,7 +304,7 @@ private fun GenresTab() {
         return
     }
     LazyVerticalGrid(
-        GridCells.Adaptive(160.dp), Modifier.fillMaxSize(),
+        GridCells.Adaptive(160.dp), Modifier.fillMaxSize(), state = grid,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -301,11 +329,13 @@ fun GenreTile(name: String, art: Any?, onClick: () -> Unit) {
 }
 
 @Composable
-private fun FoldersTab() {
+private fun FoldersTab(toTop: SharedFlow<Int>) {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp)) {
+    val list = rememberLazyListState()
+    ScrollTopOn(toTop, 4) { list.scrollToTopFast() }
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp)) {
         item(key = "manage") {
             Row(
                 Modifier.fillMaxWidth().clickable { actions.openScanFolders() }.heightIn(min = 52.dp).padding(horizontal = 20.dp),
@@ -335,7 +365,7 @@ private fun FoldersTab() {
 }
 
 @Composable
-private fun PlaylistsTab() {
+private fun PlaylistsTab(toTop: SharedFlow<Int>) {
     val container = (LocalContext.current.applicationContext as EchoApp).container
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
@@ -343,7 +373,9 @@ private fun PlaylistsTab() {
     val favorites by container.library.favoriteOrder.collectAsState()
     var creating by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp)) {
+    val list = rememberLazyListState()
+    ScrollTopOn(toTop, 5) { list.scrollToTopFast() }
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp)) {
         item {
             Row(
                 Modifier.fillMaxWidth().clickable { actions.openList("favorites") }.padding(horizontal = 20.dp, vertical = 10.dp),

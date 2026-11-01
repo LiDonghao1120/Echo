@@ -11,12 +11,17 @@ import com.novcloud.echo.diag.DiagLog
 import com.novcloud.echo.diag.StartupSteps
 import java.io.File
 import java.security.MessageDigest
+import kotlin.math.max
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
@@ -29,7 +34,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.math.max
 
 /** Copies of picked images in app storage, so the originals on the phone can be deleted. */
 object ArtLibraryStore {
@@ -82,6 +86,20 @@ object ArtLibraryStore {
         return runCatching { source.copyTo(file, overwrite = true) }.getOrNull()
     }
 
+    /** Longest side images are decoded at for [fingerprint]. */
+    const val PRINT_SIDE = 1024
+
+    /** [ArtFingerprint] of the image at [uri], or null when it cannot be read. */
+    fun fingerprint(context: Context, uri: Uri): ArtFingerprint? {
+        val bmp = ArtistArtStore.decode(context, uri, PRINT_SIDE, PRINT_SIDE) ?: return null
+        val px = IntArray(bmp.width * bmp.height)
+        bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+        val w = bmp.width
+        val h = bmp.height
+        bmp.recycle()
+        return ArtFingerprint.of(px, w, h)
+    }
+
     fun size(file: File): Pair<Int, Int> {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, o)
@@ -100,6 +118,49 @@ object ArtLibraryStore {
 }
 
 data class LibraryAddReport(val added: Int, val duplicates: Int, val failed: Int)
+
+/** What happened to an image set on an artist page when it was offered to the library. */
+enum class Mirror { Added, Duplicate, Off, Failed }
+
+/**
+ * Fingerprints of library files by file name, kept in one text file so a library of hundreds of images is decoded
+ * once, not on every comparison. Lines are appended; stale ones are dropped when the file is rewritten.
+ */
+internal class ArtPrints(private val file: File) {
+    private var map: HashMap<String, String>? = null
+
+    private fun load(): HashMap<String, String> = map ?: HashMap<String, String>().also { m ->
+        runCatching {
+            if (file.exists()) file.forEachLine { line ->
+                val i = line.indexOf('\t')
+                if (i > 0) m[line.substring(0, i)] = line.substring(i + 1)
+            }
+        }
+        map = m
+    }
+
+    @Synchronized fun get(name: String): ArtFingerprint? = ArtFingerprint.parse(load()[name])
+
+    @Synchronized fun put(name: String, print: ArtFingerprint) {
+        val v = print.encode()
+        if (load().put(name, v) == v) return
+        runCatching { file.appendText("$name\t$v\n") }
+    }
+
+    /** Forgets files no longer in the library, rewriting the cache when it holds more stale lines than live ones. */
+    @Synchronized fun retain(names: Set<String>) {
+        val m = load()
+        val stale = m.keys.filter { it !in names }
+        if (stale.isEmpty()) return
+        stale.forEach(m::remove)
+        if (stale.size >= m.size) runCatching { file.writeText(m.entries.joinToString("") { "${it.key}\t${it.value}\n" }) }
+    }
+
+    @Synchronized fun clear() {
+        map = HashMap()
+        file.delete()
+    }
+}
 
 /**
  * The artist artwork library: logos and posters the user keeps for artists, picked from the phone and copied into
@@ -127,6 +188,16 @@ class ArtLibraryRepository(
 
     val autoApply: StateFlow<Boolean> = prefs.artAutoApply.stateIn(scope, SharingStarted.Eagerly, true)
 
+    /** Logos and posters set on an artist page from the phone are also kept in the library. */
+    val syncFromArtist: StateFlow<Boolean> = prefs.artSyncFromArtist.stateIn(scope, SharingStarted.Eagerly, true)
+
+    private val _mirrored = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    /** Artists whose newly set logo or poster was just added to the library, for a short confirmation. */
+    val mirrored: SharedFlow<String> = _mirrored.asSharedFlow()
+
+    private val prints = ArtPrints(File(context.filesDir, "art_prints.txt"))
+
     private val _adding = MutableStateFlow<ScanProgress?>(null)
     val adding: StateFlow<ScanProgress?> = _adding.asStateFlow()
 
@@ -139,6 +210,15 @@ class ArtLibraryRepository(
                 .debounce(700)
                 .conflate()
                 .collect { ready -> if (ready) runAuto() }
+        }
+        library.onUserArt = { artist, kind, source, single ->
+            if (mirror(artist, kind, source) == Mirror.Added && single) _mirrored.tryEmit(artist)
+        }
+        scope.launch {
+            library.library.first { it.loaded }
+            delay(BACKFILL_DELAY_MS)
+            syncFromArtist.first { it }
+            runBackfill()
         }
     }
 
@@ -168,6 +248,7 @@ class ArtLibraryRepository(
                         val lossless = ArtLibraryStore.lossless(runCatching { context.contentResolver.getType(uri) }.getOrNull(), name)
                         val saved = ArtLibraryStore.save(context, uri, lossless) ?: run { hashes.remove(hash); return@runCatching false }
                         val parsed = ArtLibraryNames.parse(name)
+                        ArtLibraryStore.fingerprint(context, Uri.fromFile(saved.file))?.let { prints.put(saved.file.name, it) }
                         val now = System.currentTimeMillis()
                         dao.insert(
                             ArtAsset(
@@ -204,6 +285,96 @@ class ArtLibraryRepository(
             dao.delete(id)
             File(a.path).delete()
         }
+    }
+
+    suspend fun setSyncFromArtist(on: Boolean) = prefs.setArtSyncFromArtist(on)
+
+    /** Fingerprint of a library image, from the cache or worked out from its file once. */
+    private fun printOf(a: ArtAsset): ArtFingerprint? {
+        val f = File(a.path)
+        prints.get(f.name)?.let { return it }
+        val p = runCatching { ArtLibraryStore.fingerprint(context, Uri.fromFile(f)) }.getOrNull() ?: return null
+        prints.put(f.name, p)
+        return p
+    }
+
+    /**
+     * The library already holds this image when a file has the same bytes (SHA-256 of what was picked) or looks the
+     * same once decoded ([ArtFingerprint]): the library keeps re-encoded, trimmed copies, so bytes alone miss those.
+     */
+    internal fun findDuplicate(items: List<ArtAsset>, hash: String?, print: ArtFingerprint?): ArtAsset? {
+        if (hash != null) items.firstOrNull { it.hash == hash }?.let { return it }
+        if (print == null) return null
+        return items.firstOrNull { printOf(it)?.same(print) == true }
+    }
+
+    /**
+     * Keeps a logo or poster just set on [artist]'s page in the library too, named after the artist, unless the
+     * library already has it or syncing is off. Only adds: what is on the artist stays as it is, and the artist
+     * already has art of this kind, so auto-apply has nothing to put back.
+     */
+    suspend fun mirror(artist: String, kind: ArtKind, source: Uri): Mirror = withContext(Dispatchers.IO) {
+        if (!prefs.artSyncFromArtist.first()) return@withContext Mirror.Off
+        val r = runCatching { lock.withLock { mirrorLocked(artist, kind, source) } }
+            .onFailure { DiagLog.w(TAG, "could not keep an artist image in the library", it) }
+            .getOrDefault(Mirror.Failed)
+        if (r == Mirror.Added) DiagLog.i(TAG, "kept a ${kind.name.lowercase()} set on an artist page in the library")
+        r
+    }
+
+    private suspend fun mirrorLocked(artist: String, kind: ArtKind, source: Uri): Mirror {
+        val name = Names.clean(artist).ifEmpty { return Mirror.Failed }
+        val hash = context.contentResolver.openInputStream(source)?.use(ArtLibraryStore::hash) ?: return Mirror.Failed
+        val items = dao.allNow().filter { File(it.path).exists() }
+        if (items.any { it.hash == hash }) return Mirror.Duplicate
+        val print = ArtLibraryStore.fingerprint(context, source) ?: return Mirror.Failed
+        if (findDuplicate(items, null, print) != null) return Mirror.Duplicate
+        val type = runCatching { context.contentResolver.getType(source) }.getOrNull()
+        val saved = ArtLibraryStore.save(context, source, ArtLibraryStore.lossless(type, source.lastPathSegment.orEmpty())) ?: return Mirror.Failed
+        prints.put(saved.file.name, print)
+        val now = System.currentTimeMillis()
+        dao.insert(
+            ArtAsset(
+                name = name, kind = kind.name, path = saved.file.absolutePath, width = saved.width, height = saved.height,
+                luma = saved.luma, hash = hash, addedAt = now, updatedAt = now,
+            ),
+        )
+        return Mirror.Added
+    }
+
+    /** One-time pass that keeps logos and posters set before syncing existed in the library; guarded like startup work. */
+    internal suspend fun runBackfill() {
+        steps.once(BACKFILL_STEP) { backfillNow() }
+    }
+
+    /** Offers every artist's current logo and poster to the library; returns how many were added. */
+    internal suspend fun backfillNow(): Int = withContext(Dispatchers.IO) {
+        if (!prefs.artSyncFromArtist.first()) return@withContext 0
+        val started = System.currentTimeMillis()
+        val lib = library.library.value
+        fun shown(artist: String) = lib.artist(artist)?.name ?: Names.clean(artist)
+        val logos = ArtistArtRows.latestByKey(db.artistLogos().allNow().filter { File(it.path).exists() }, { it.artist }, { it.updatedAt }).values
+            .sortedBy { it.updatedAt }.map { Triple(shown(it.artist), ArtKind.Logo, File(it.path)) }
+        val posters = ArtistArtRows.latestByKey(db.artistImages().allNow().filter { File(it.path).exists() }, { it.artist }, { it.updatedAt }).values
+            .sortedBy { it.updatedAt }.map { Triple(shown(it.artist), ArtKind.Poster, File(it.path)) }
+        var added = 0
+        var dup = 0
+        var failed = 0
+        for ((artist, kind, file) in logos + posters) {
+            when (mirror(artist, kind, Uri.fromFile(file))) {
+                Mirror.Added -> added++
+                Mirror.Duplicate -> dup++
+                Mirror.Off -> break
+                Mirror.Failed -> failed++
+            }
+        }
+        prints.retain(dao.allNow().mapTo(HashSet()) { File(it.path).name })
+        DiagLog.i(
+            TAG,
+            "backfill: ${logos.size} artist logos, ${posters.size} posters; added $added, already in library $dup, " +
+                "unreadable $failed (${System.currentTimeMillis() - started} ms)",
+        )
+        added
     }
 
     /** Puts a copy of [asset] on [artist] as its [kind]. */
@@ -263,6 +434,7 @@ class ArtLibraryRepository(
         lock.withLock {
             dao.allNow().forEach { File(it.path).delete() }
             dao.clear()
+            prints.clear()
         }
     }
 
@@ -294,5 +466,7 @@ class ArtLibraryRepository(
         const val TAG = "EchoArtLibrary"
         private const val AUTO_STEP = "art_library_auto"
         private const val AUTO_OFF = "art_library_auto_off"
+        private const val BACKFILL_STEP = "art_library_backfill_v1"
+        private const val BACKFILL_DELAY_MS = 6_000L
     }
 }

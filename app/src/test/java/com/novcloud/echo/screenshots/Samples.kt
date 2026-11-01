@@ -145,6 +145,25 @@ object Samples {
         runBlocking { app(context).artLibrary.add(files.map { Uri.fromFile(it) }) }
     }
 
+    /** A library of a few hundred-ish feel: the sample images again under more fictional names, for scrolled shots. */
+    fun seedLargeArtLibrary(context: Context) {
+        seedArtLibrary(context)
+        val c = app(context)
+        val first = listOf("Aster", "Bram", "Cleo", "Dov", "Esme", "Faro", "Gale", "Hollis", "Iris", "Juno", "Kestrel", "Lumen", "Mira", "Nell")
+        val last = listOf("Vale", "Wren", "Quill", "Harbor", "Sable", "Ember")
+        runBlocking {
+            val base = c.db.artAssets().allNow()
+            var i = 0
+            for (f in first) for (l in last.take(4)) {
+                val src = base[i % base.size]
+                val copy = File(File(src.path).parentFile, "s_$i.${File(src.path).extension}")
+                File(src.path).copyTo(copy, overwrite = true)
+                c.db.artAssets().insert(src.copy(id = 0, name = "$f $l", path = copy.absolutePath, hash = "sample$i", addedAt = i.toLong(), updatedAt = i.toLong()))
+                i++
+            }
+        }
+    }
+
     fun playing(context: Context, songTitle: String = "Paper Satellites") {
         val s = songs.first { it.title == songTitle }
         val queue = songs.take(12).mapIndexed { i, x -> QueueEntry(i, x) }

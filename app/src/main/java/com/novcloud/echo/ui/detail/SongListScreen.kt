@@ -62,10 +62,12 @@ import com.novcloud.echo.ui.components.EmptyState
 import com.novcloud.echo.ui.components.LocalActions
 import com.novcloud.echo.ui.components.LocalBottomInset
 import com.novcloud.echo.ui.components.NameDialog
+import com.novcloud.echo.ui.components.ScrollTopButton
 import com.novcloud.echo.ui.components.SongMenuContext
 import com.novcloud.echo.ui.components.SongRow
 import com.novcloud.echo.ui.components.count
 import com.novcloud.echo.ui.components.formatLong
+import com.novcloud.echo.ui.components.scrollToTopFast
 import com.novcloud.echo.ui.library.PillButton
 import com.novcloud.echo.ui.player.rememberArtColors
 import com.novcloud.echo.ui.theme.EchoShape
@@ -74,6 +76,7 @@ import com.novcloud.echo.ui.theme.Ink
 import com.novcloud.echo.ui.theme.Paper
 import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.seededGradient
+import kotlinx.coroutines.launch
 
 sealed interface ListSource {
     data class MixSrc(val id: String) : ListSource
@@ -144,6 +147,8 @@ fun SongListScreen(source: ListSource) {
             if (list.firstVisibleItemIndex > 0) 1f else (list.firstVisibleItemScrollOffset / with(density) { 260.dp.toPx() }).coerceIn(0f, 1f)
         }
     }
+    val top = com.novcloud.echo.ui.components.rememberScrollTop(list)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
@@ -204,7 +209,8 @@ fun SongListScreen(source: ListSource) {
                 )
             }
         }
-        CollapsingTopBar(title, progress) {
+        ScrollTopButton(top)
+        CollapsingTopBar(title, progress, onTitleClick = { scope.launch { list.scrollToTopFast() } }) {
             Row {
                 if (songs.isNotEmpty() && playlistId == null) IconButton(onClick = { addAll = true }) { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null) }
                 if (playlistId != null) Box {

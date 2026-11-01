@@ -1,6 +1,5 @@
 package com.novcloud.echo.ui.components
 
-import com.novcloud.echo.data.forName
 import android.net.Uri
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -65,6 +64,7 @@ import com.novcloud.echo.data.LibraryRepository
 import com.novcloud.echo.data.Song
 import com.novcloud.echo.data.displayAlbum
 import com.novcloud.echo.data.displayArtist
+import com.novcloud.echo.data.forName
 import com.novcloud.echo.data.splitArtists
 import com.novcloud.echo.domain.HomeData
 import com.novcloud.echo.playback.PlayerConnection
@@ -95,6 +95,15 @@ class AppActions(
     private val scope: CoroutineScope? = null,
 ) {
     var motion by mutableStateOf(NavMotion.Push)
+
+    private val _reselected = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 1)
+
+    /** Bottom bar tabs tapped while already showing; their screens scroll back to the top. */
+    val reselected: kotlinx.coroutines.flow.SharedFlow<String> = _reselected
+
+    fun reselectTab(route: String) {
+        _reselected.tryEmit(route)
+    }
 
     private fun go(route: String) {
         if (!isPlayerOpen()) {

@@ -180,6 +180,20 @@ fun SettingsScreen() {
                     Switch(auto, { v -> scope.launch { container.artLibrary.setAutoApply(v) } })
                 }
                 Rule()
+                val sync by container.artLibrary.syncFromArtist.collectAsState()
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { scope.launch { container.artLibrary.setSyncFromArtist(!sync) } }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(stringResource(R.string.art_sync_from_artist), style = MaterialTheme.typography.bodyLarge)
+                        Spacer(Modifier.height(2.dp))
+                        Text(stringResource(R.string.art_sync_from_artist_detail), style = MaterialTheme.typography.bodySmall, color = palette.muted)
+                    }
+                    Switch(sync, { v -> scope.launch { container.artLibrary.setSyncFromArtist(v) } })
+                }
+                Rule()
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { importFolder() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.art_import_folder), style = MaterialTheme.typography.bodyLarge)

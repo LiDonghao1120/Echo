@@ -29,6 +29,7 @@ data class BackupSettings(
     val lyricsTree: String? = null,
     val lyricsByWord: Boolean? = null,
     val artAutoApply: Boolean? = null,
+    val artSyncFromArtist: Boolean? = null,
 )
 
 /** [poster] and [logo] are file names inside the backup's art/ folder. */
@@ -153,6 +154,7 @@ object BackupCodec {
             s.keepScreenOnLyrics?.let { put("keepScreenOnLyrics", it) }
             s.lyricsByWord?.let { put("lyricsByWord", it) }
             s.artAutoApply?.let { put("artAutoApply", it) }
+            s.artSyncFromArtist?.let { put("artSyncFromArtist", it) }
             s.lyricsTree?.let { put("lyricsTree", it) }
             put("scanIncluded", JSONArray(s.scanIncluded.sorted()))
             put("scanExcluded", JSONArray(s.scanExcluded.sorted()))
@@ -218,6 +220,7 @@ object BackupCodec {
                 keepScreenOnLyrics = if (s.has("keepScreenOnLyrics")) s.getBoolean("keepScreenOnLyrics") else null,
                 lyricsByWord = if (s.has("lyricsByWord")) s.getBoolean("lyricsByWord") else null,
                 artAutoApply = if (s.has("artAutoApply")) s.getBoolean("artAutoApply") else null,
+                artSyncFromArtist = if (s.has("artSyncFromArtist")) s.getBoolean("artSyncFromArtist") else null,
                 scanIncluded = s.optJSONArray("scanIncluded").strings(),
                 scanExcluded = s.optJSONArray("scanExcluded").strings(),
                 scanTrees = s.optJSONArray("scanTrees").strings(),
