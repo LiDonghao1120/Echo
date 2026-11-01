@@ -76,6 +76,14 @@ class EnglishScreenshotTest : ScreenshotBase() {
         Samples.seedLargeArtLibrary(ctx)
         app("art_library_scrolled_en", route = "settings/art-library") { scrollArtLibrary() }
     }
+    @Test fun art_library_e2e_en() {
+        Samples.seedLargeArtLibrary(ctx)
+        app("art_library_e2e_en", route = "settings/art-library", insets = true) { dragArtLibrary() }
+    }
+    @Test fun art_library_e2e_light_en() {
+        Samples.seedLargeArtLibrary(ctx)
+        app("art_library_e2e_light_en", dark = false, route = "settings/art-library", insets = true) { dragArtLibrary() }
+    }
     @Test fun art_picker_en() = picker("art_picker_en")
     @Test fun art_asset_sheet_en() = assetSheet("art_asset_sheet_en")
     @Test fun settings_art_en() = app("settings_art_en", route = "settings", tall = 2400)

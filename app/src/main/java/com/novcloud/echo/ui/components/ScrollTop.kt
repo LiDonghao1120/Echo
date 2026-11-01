@@ -61,6 +61,11 @@ object ScrollTop {
     /** ...and hidden again only above this, so it does not flicker at the edge. */
     const val HIDE_SCREENS = 1.0f
 
+    /** The key with its paper ring, and the room a list leaves at its end so its last row can rise clear of the key. */
+    val RING = 3.dp
+    val KEY = 46.dp + RING * 2
+    val CLEARANCE = KEY + 12.dp
+
     /** Distance from the top in px, from the first visible item and the average height of a line of items. */
     fun scrolled(firstIndex: Int, firstOffset: Int, lineSize: Float, perLine: Int): Float =
         (firstIndex / perLine.coerceAtLeast(1)) * lineSize.coerceAtLeast(0f) + firstOffset
@@ -148,6 +153,8 @@ fun BoxScope.ScrollTopButton(
     modifier: Modifier = Modifier,
     bottom: Dp = LocalBottomInset.current + 16.dp,
     end: Dp = 16.dp,
+    onClick: (suspend () -> Unit)? = null,
+    ring: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surface,
 ) {
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -166,13 +173,17 @@ fun BoxScope.ScrollTopButton(
     ) {
         Box(
             Modifier
-                .size(46.dp)
+                .size(ScrollTop.KEY)
                 .testTag("scroll_top")
                 .semantics { contentDescription = label; role = Role.Button }
                 .echoClick(corner = 0.dp, color = p.signal) {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    scope.launch { state.scrollToTop() }
+                    scope.launch { onClick?.invoke() ?: state.scrollToTop() }
                 }
+                // A paper ring first, so the ink key never runs into an ink tile or card behind it and reads as a stray
+                // offset shadow; on the page itself the ring is invisible.
+                .background(ring, RectangleShape)
+                .padding(ScrollTop.RING)
                 .background(ink, RectangleShape)
                 .padding(4.dp)
                 .border(1.dp, paper.copy(alpha = 0.28f), RectangleShape),

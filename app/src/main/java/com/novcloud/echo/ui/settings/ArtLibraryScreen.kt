@@ -13,15 +13,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -44,7 +40,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -55,15 +50,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.novcloud.echo.EchoApp
@@ -94,6 +86,18 @@ import com.novcloud.echo.ui.theme.EchoShape
 import com.novcloud.echo.ui.theme.EchoType
 import com.novcloud.echo.ui.theme.palette
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import com.novcloud.echo.ui.components.CollapsingHeader
+import com.novcloud.echo.ui.components.ScrollTop
+import kotlin.math.roundToInt
 
 private enum class KindFilter { All, Logo, Poster }
 
@@ -157,91 +161,76 @@ fun ArtLibraryScreen() {
     }
     val linkedCount = remember(assets, linked) { assets.map { ArtLibraryMatch.key(it.name) }.distinct().count { it in linked } }
     val grid = rememberLazyGridState()
-    val density = LocalDensity.current
-    val collapse by remember {
-        derivedStateOf {
-            if (grid.firstVisibleItemIndex > 0) 1f else (grid.firstVisibleItemScrollOffset / with(density) { 56.dp.toPx() }).coerceIn(0f, 1f)
-        }
-    }
-    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp
-    val topPx = with(density) { top.roundToPx() }
     val p = palette
     val scope = rememberCoroutineScope()
     val toTop = rememberScrollTop(grid)
-    var searchHeight by remember { mutableIntStateOf(0) }
-    val searchY by remember {
-        derivedStateOf {
-            val info = grid.layoutInfo
-            val slot = info.visibleItemsInfo.firstOrNull { it.key == "search" }
-            if (slot == null) topPx else maxOf(topPx, slot.offset.y - info.viewportStartOffset)
-        }
+    // The title block above the pinned search collapses first, then the grid scrolls (exit until collapsed). Everything is
+    // laid out in one Column: the opaque top bar, the title block (clipped to what is left of it), the search and filters,
+    // then the grid in the space below. Nothing floats over the grid and nothing is placed from the grid's layout info.
+    val header = rememberSaveable(saver = CollapsingHeader.Saver) { CollapsingHeader() }
+    val connection = remember(header) { header.connection() }
+    val headerDrag = rememberScrollableState { d -> header.drag(d, grid) }
+    LaunchedEffect(grid, header) {
+        // A grid scrolled away from its first row always has the title block fully folded, however it got there
+        // (a drag, a fling, a jump, a restored position).
+        snapshotFlow { grid.canScrollBackward to header.height }.collect { (scrolled, _) -> if (scrolled) header.fold() }
     }
-    val pinned by remember { derivedStateOf { searchY <= topPx && grid.canScrollBackward } }
+    val goTop: () -> Unit = { scope.launch { grid.scrollToTopFast(); header.unfold() } }
     val full: (androidx.compose.foundation.lazy.grid.LazyGridItemSpanScope.() -> GridItemSpan) = { GridItemSpan(maxLineSpan) }
+    val scrolled by remember { derivedStateOf { grid.canScrollBackward } }
+    val rule by animateFloatAsState(if (scrolled) 1f else 0f, tween(EchoMotion.Quick), label = "pinned")
 
-    Box(Modifier.fillMaxSize()) {
-        LazyVerticalGrid(
-            GridCells.Fixed(2), Modifier.fillMaxSize().testTag("art_library_grid"), state = grid,
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top, bottom = LocalBottomInset.current + 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(18.dp),
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).nestedScroll(connection)) {
+        CollapsingTopBar(stringResource(R.string.art_library), header.progress, onTitleClick = goTop, divider = false)
+        Box(
+            Modifier.fillMaxWidth().clipToBounds()
+                .scrollable(headerDrag, Orientation.Vertical)
+                .layout { m, c ->
+                    val placeable = m.measure(c.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+                    header.height = placeable.height
+                    val folded = header.folded.roundToInt().coerceIn(0, placeable.height)
+                    layout(placeable.width, placeable.height - folded) { placeable.place(0, -folded) }
+                }
+                .graphicsLayer { alpha = 1f - (header.progress * 1.4f).coerceIn(0f, 1f) },
         ) {
-            item(key = "title", span = full) {
-                Column(Modifier.padding(start = 4.dp)) {
-                    Text(
-                        stringResource(R.string.art_library),
-                        style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp),
-                    )
-                    Spacer(Modifier.height(6.dp))
+            Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 4.dp, bottom = 14.dp)) {
+                Text(
+                    stringResource(R.string.art_library),
+                    style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp),
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(number(assets.size), style = EchoType.numeral, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.width(5.dp))
+                    Text(pluralStringResource(R.plurals.label_images, assets.size), style = MaterialTheme.typography.labelMedium, color = p.muted)
+                    if (linkedCount > 0) {
+                        Spacer(Modifier.width(14.dp))
+                        Box(Modifier.width(6.dp).height(6.dp).background(p.signal))
+                        Spacer(Modifier.width(6.dp))
+                        Text(count(R.plurals.art_library_linked, linkedCount), style = MaterialTheme.typography.labelMedium, color = p.muted)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SolidButton(stringResource(R.string.art_from_photos), Modifier.weight(1f), icon = Icons.Rounded.Image, onClick = adder.fromPhotos)
+                    SolidButton(stringResource(R.string.art_from_files), Modifier.weight(1f), icon = Icons.AutoMirrored.Rounded.InsertDriveFile, primary = false, onClick = adder.fromFiles)
+                }
+                adding?.let { a ->
+                    Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(number(assets.size), style = EchoType.numeral, color = MaterialTheme.colorScheme.onSurface)
-                        Spacer(Modifier.width(5.dp))
-                        Text(pluralStringResource(R.plurals.label_images, assets.size), style = MaterialTheme.typography.labelMedium, color = p.muted)
-                        if (linkedCount > 0) {
-                            Spacer(Modifier.width(14.dp))
-                            Box(Modifier.width(6.dp).height(6.dp).background(p.signal))
-                            Spacer(Modifier.width(6.dp))
-                            Text(count(R.plurals.art_library_linked, linkedCount), style = MaterialTheme.typography.labelMedium, color = p.muted)
-                        }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SolidButton(stringResource(R.string.art_from_photos), Modifier.weight(1f), icon = Icons.Rounded.Image, onClick = adder.fromPhotos)
-                        SolidButton(stringResource(R.string.art_from_files), Modifier.weight(1f), icon = Icons.AutoMirrored.Rounded.InsertDriveFile, primary = false, onClick = adder.fromFiles)
-                    }
-                    adding?.let { a ->
-                        Spacer(Modifier.height(12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            val f by animateFloatAsState(a.fraction, tween(EchoMotion.Standard), label = "adding")
-                            LinearProgressIndicator({ f }, Modifier.weight(1f).height(2.dp), color = p.signal, trackColor = p.rule, gapSize = 0.dp, drawStopIndicator = {})
-                            Spacer(Modifier.width(10.dp))
-                            Text("${a.done} / ${a.total}", style = EchoType.numeral, color = p.muted)
-                        }
+                        val f by animateFloatAsState(a.fraction, tween(EchoMotion.Standard), label = "adding")
+                        LinearProgressIndicator({ f }, Modifier.weight(1f).height(2.dp), color = p.signal, trackColor = p.rule, gapSize = 0.dp, drawStopIndicator = {})
+                        Spacer(Modifier.width(10.dp))
+                        Text("${a.done} / ${a.total}", style = EchoType.numeral, color = p.muted)
                     }
                 }
-            }
-            if (assets.isNotEmpty()) {
-                item(key = "search", span = full) { Spacer(Modifier.fillMaxWidth().height(with(density) { searchHeight.toDp() })) }
-            }
-            if (assets.isEmpty() && adding == null) {
-                item(key = "empty", span = full) { EmptyState(null, stringResource(R.string.art_library_empty)) }
-            } else if (shown.isEmpty()) {
-                item(key = "none", span = full) {
-                    Text(stringResource(R.string.art_no_results), Modifier.padding(4.dp, 24.dp), style = MaterialTheme.typography.titleMedium, color = p.muted)
-                }
-            }
-            items(shown, key = { it.id }) { a ->
-                ArtAssetTile(a, ArtLibraryMatch.key(a.name) in linked, Modifier.animateItem()) { editing = a.id }
             }
         }
         if (assets.isNotEmpty()) {
-            val rule by animateFloatAsState(if (pinned) 1f else 0f, tween(EchoMotion.Quick), label = "pinned")
             Column(
-                Modifier.fillMaxWidth()
-                    .offset { IntOffset(0, searchY) }
-                    .onSizeChanged { searchHeight = it.height }
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 2.dp, bottom = 12.dp),
+                Modifier.fillMaxWidth().testTag("art_library_search")
+                    .scrollable(headerDrag, Orientation.Vertical)
+                    .padding(horizontal = 20.dp).padding(top = 2.dp, bottom = 12.dp),
             ) {
                 SearchLine(query, { query = it }, stringResource(R.string.art_library_search))
                 Spacer(Modifier.height(12.dp))
@@ -251,13 +240,31 @@ fun ArtLibraryScreen() {
                     }
                 }
             }
-            Box(
-                Modifier.fillMaxWidth().offset { IntOffset(0, searchY + searchHeight) }.height(1.dp)
-                    .graphicsLayer { alpha = rule }.background(p.rule),
-            )
         }
-        ScrollTopButton(toTop)
-        CollapsingTopBar(stringResource(R.string.art_library), collapse, onTitleClick = { scope.launch { grid.scrollToTopFast() } })
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            LazyVerticalGrid(
+                GridCells.Fixed(2), Modifier.fillMaxSize().testTag("art_library_grid"), state = grid,
+                contentPadding = PaddingValues(
+                    start = 16.dp, end = 16.dp, top = 8.dp,
+                    bottom = LocalBottomInset.current + 24.dp + ScrollTop.CLEARANCE,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                if (assets.isEmpty() && adding == null) {
+                    item(key = "empty", span = full) { EmptyState(null, stringResource(R.string.art_library_empty)) }
+                } else if (shown.isEmpty()) {
+                    item(key = "none", span = full) {
+                        Text(stringResource(R.string.art_no_results), Modifier.padding(4.dp, 24.dp), style = MaterialTheme.typography.titleMedium, color = p.muted)
+                    }
+                }
+                items(shown, key = { it.id }) { a ->
+                    ArtAssetTile(a, ArtLibraryMatch.key(a.name) in linked, Modifier.animateItem()) { editing = a.id }
+                }
+            }
+            // The pinned block's edge once rows run under it: a hairline in the grid's own space, never over the bar.
+            Box(Modifier.fillMaxWidth().height(1.dp).graphicsLayer { alpha = rule }.background(p.rule))
+            ScrollTopButton(toTop, onClick = { grid.scrollToTopFast(); header.unfold() })
+        }
     }
     editing?.let { id ->
         val asset = assets.firstOrNull { it.id == id }

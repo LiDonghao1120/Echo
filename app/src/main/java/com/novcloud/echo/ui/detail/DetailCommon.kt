@@ -39,12 +39,14 @@ fun CollapsingTopBar(
     progress: Float,
     overImage: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
+    divider: Boolean = true,
     actions: @Composable () -> Unit = {},
 ) {
     val nav = LocalActions.current
     val bg = MaterialTheme.colorScheme.surface
     val iconTint = if (overImage) lerp(Color.White, MaterialTheme.colorScheme.onSurface, progress) else MaterialTheme.colorScheme.onSurface
-    Box(Modifier.fillMaxWidth().background(bg.copy(alpha = progress * 0.97f))) {
+    // Fully opaque once collapsed: anything scrolling under the bar (and the status bar) must not show through.
+    Box(Modifier.fillMaxWidth().background(bg.copy(alpha = progress.coerceIn(0f, 1f)))) {
         Row(Modifier.statusBarsPadding().height(56.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(40.dp).clip(EchoShape.card)
@@ -70,6 +72,6 @@ fun CollapsingTopBar(
             }
             Spacer(Modifier.width(2.dp))
         }
-        if (progress > 0.95f) HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = com.novcloud.echo.ui.theme.LocalPalette.current.rule)
+        if (divider && progress > 0.95f) HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = com.novcloud.echo.ui.theme.LocalPalette.current.rule)
     }
 }

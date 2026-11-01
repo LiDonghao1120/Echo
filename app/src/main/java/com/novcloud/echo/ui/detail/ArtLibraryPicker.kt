@@ -109,14 +109,14 @@ fun ArtLibraryPickerContent(
             Box {
             LazyVerticalGrid(
                 GridCells.Fixed(2), Modifier.fillMaxWidth().heightIn(max = 470.dp).testTag("art_picker_grid"), state = grid,
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp + com.novcloud.echo.ui.components.ScrollTop.CLEARANCE),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 items(shown, key = { it.first.id }) { (a, same) ->
                     ArtAssetTile(a, ArtLibraryMatch.key(a.name) in linked, sameName = same) { onPick(a) }
                 }
             }
-            ScrollTopButton(top, bottom = 14.dp, end = 26.dp)
+            ScrollTopButton(top, bottom = 14.dp, end = 20.dp, ring = MaterialTheme.colorScheme.surfaceContainerLow)
             }
         }
         Box(Modifier.padding(horizontal = 20.dp).fillMaxWidth().height(1.dp).background(p.rule))

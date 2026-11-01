@@ -181,7 +181,7 @@ private fun SongsTab(toTop: SharedFlow<Int>) {
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(), state = list,
-            contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp, end = if (sections.isEmpty()) 0.dp else 18.dp),
+            contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp + (if (sections.isEmpty()) com.novcloud.echo.ui.components.ScrollTop.CLEARANCE else 0.dp), end = if (sections.isEmpty()) 0.dp else 18.dp),
         ) {
             item {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -241,7 +241,7 @@ private fun AlbumsTab(toTop: SharedFlow<Int>) {
         GridCells.Adaptive(150.dp),
         Modifier.fillMaxSize(),
         state = grid,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp + com.novcloud.echo.ui.components.ScrollTop.CLEARANCE),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
@@ -276,7 +276,7 @@ private fun ArtistsTab(toTop: SharedFlow<Int>) {
             GridCells.Adaptive(150.dp),
             Modifier.fillMaxSize(),
             state = grid,
-            contentPadding = PaddingValues(start = 16.dp, end = if (sections.isEmpty()) 16.dp else 30.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = if (sections.isEmpty()) 16.dp else 30.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp + (if (sections.isEmpty()) com.novcloud.echo.ui.components.ScrollTop.CLEARANCE else 0.dp)),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {

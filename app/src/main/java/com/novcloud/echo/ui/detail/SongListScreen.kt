@@ -155,7 +155,7 @@ fun SongListScreen(source: ListSource) {
     var addAll by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 24.dp)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 24.dp + com.novcloud.echo.ui.components.ScrollTop.CLEARANCE)) {
             item {
                 Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(colors.top.copy(alpha = 0.9f), Color.Transparent)))) {
                     Column(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 64.dp), horizontalAlignment = Alignment.CenterHorizontally) {

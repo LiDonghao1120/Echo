@@ -32,6 +32,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performTextInput
 import com.novcloud.echo.playback.SleepState
 import com.novcloud.echo.ui.player.SleepTimerContent
@@ -57,6 +59,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+
+internal const val STATUS_DP = 40
+internal const val NAV_DP = 24
 
 private const val PHONE = "zh-rCN-w400dp-h880dp-normal-long-notround-any-xhdpi-keyshidden-nonav"
 
@@ -91,6 +96,35 @@ abstract class ScreenshotBase {
         compose.onNodeWithTag("art_library_grid").performScrollToIndex(46)
     }
 
+    /**
+     * Real-device edge-to-edge: a 40dp status bar and a 24dp gesture bar, dispatched to the Compose view the way the
+     * system does. Robolectric gives no insets by default, which is how v0.11.1's pinned search passed CI.
+     */
+    protected fun edgeToEdge(statusDp: Int = STATUS_DP, navDp: Int = NAV_DP) {
+        compose.runOnUiThread {
+            val d = ctx.resources.displayMetrics.density
+            val insets = androidx.core.view.WindowInsetsCompat.Builder()
+                .setInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars(), androidx.core.graphics.Insets.of(0, (statusDp * d).toInt(), 0, 0))
+                .setInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars(), androidx.core.graphics.Insets.of(0, 0, 0, (navDp * d).toInt()))
+                .build()
+            val content = ctx.findViewById<android.view.ViewGroup>(android.R.id.content)
+            androidx.core.view.ViewCompat.dispatchApplyWindowInsets(content.getChildAt(0), insets)
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+    }
+
+    /** Scrolls the artwork library the way a finger does (drags and flings through nested scrolling), not by jumping. */
+    protected fun dragArtLibrary(times: Int = 6) {
+        repeat(times) {
+            compose.onNodeWithTag("art_library_grid").performTouchInput {
+                swipeUp(startY = height * 0.62f, endY = height * 0.12f, durationMillis = 350)
+            }
+            compose.mainClock.advanceTimeBy(1_500)
+            compose.waitForIdle()
+        }
+    }
+
     protected fun app(
         name: String,
         dark: Boolean = true,
@@ -102,6 +136,7 @@ abstract class ScreenshotBase {
         withArt: Boolean = true,
         sleep: SleepState? = null,
         artLibrary: Boolean = false,
+        insets: Boolean = false,
         before: () -> Unit = {},
     ) {
         if (tall != null) RuntimeEnvironment.setQualifiers("+h${tall}dp")
@@ -118,6 +153,7 @@ abstract class ScreenshotBase {
                 }
             }
         }
+        if (insets) edgeToEdge()
         settle()
         before()
         settle(2)
@@ -181,7 +217,7 @@ abstract class ScreenshotBase {
     }
 
     /** A bottom sheet's content on its own, the way the sheet shows it. */
-    protected fun sheet(name: String, dark: Boolean = true, seed: () -> Unit = {}, content: @Composable () -> Unit) {
+    protected fun sheet(name: String, dark: Boolean = true, seed: () -> Unit = {}, before: () -> Unit = {}, content: @Composable () -> Unit) {
         compose.mainClock.autoAdvance = false
         Samples.seed(ctx)
         seed()
@@ -200,6 +236,8 @@ abstract class ScreenshotBase {
             }
         }
         settle()
+        before()
+        settle(1)
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }
 
@@ -380,6 +418,55 @@ class ScreenshotTest : ScreenshotBase() {
     @Test fun art_library_scrolled_light() {
         Samples.seedLargeArtLibrary(ctx)
         app("art_library_scrolled_light", dark = false, route = "settings/art-library") { scrollArtLibrary() }
+    }
+    // v0.11.2: scrolled by finger with real-device insets and the mini player — the state v0.11.1 broke.
+    @Test fun art_library_e2e_light() {
+        Samples.seedLargeArtLibrary(ctx)
+        app("art_library_e2e_light", dark = false, route = "settings/art-library", insets = true) { dragArtLibrary() }
+    }
+    @Test fun art_library_e2e_dark() {
+        Samples.seedLargeArtLibrary(ctx)
+        app("art_library_e2e_dark", route = "settings/art-library", insets = true) { dragArtLibrary() }
+    }
+    @Test fun art_library_e2e_folding_light() {
+        Samples.seedLargeArtLibrary(ctx)
+        app("art_library_e2e_folding_light", dark = false, route = "settings/art-library", insets = true) {
+            compose.onNodeWithTag("art_library_grid").performTouchInput { swipeUp(startY = height * 0.5f, endY = height * 0.42f, durationMillis = 900) }
+        }
+    }
+    @Test fun art_library_e2e_filtered_light() {
+        Samples.seedLargeArtLibrary(ctx)
+        app("art_library_e2e_filtered_light", dark = false, route = "settings/art-library", insets = true) {
+            compose.onAllNodesWithText("海报").onFirst().performClick()
+            compose.mainClock.advanceTimeBy(1_000)
+            dragArtLibrary(2)
+        }
+    }
+    @Test fun songlist_e2e_light() = app("songlist_e2e_light", dark = false, route = "list/recent", insets = true) {
+        compose.onRoot().performTouchInput { swipeUp(startY = height * 0.6f, endY = height * 0.1f, durationMillis = 350) }
+        compose.mainClock.advanceTimeBy(1_500)
+        compose.onRoot().performTouchInput { swipeUp(startY = height * 0.6f, endY = height * 0.1f, durationMillis = 350) }
+    }
+    @Test fun library_albums_e2e_light() = app("library_albums_e2e_light", dark = false, route = "library", insets = true) {
+        compose.onAllNodesWithText("专辑").onFirst().performClick()
+        compose.mainClock.advanceTimeBy(1_500)
+        compose.onRoot().performTouchInput { swipeUp(startY = height * 0.6f, endY = height * 0.15f, durationMillis = 350) }
+    }
+    @Test fun art_picker_scrolled_light() = sheet(
+        "art_picker_scrolled_light", dark = false, seed = { Samples.seedLargeArtLibrary(ctx) },
+        before = {
+            repeat(3) {
+                compose.onNodeWithTag("art_picker_grid").performTouchInput { swipeUp(startY = height * 0.8f, endY = height * 0.1f, durationMillis = 300) }
+                compose.mainClock.advanceTimeBy(1_500)
+            }
+        },
+    ) {
+        val c = Samples.app(ctx)
+        val assets by c.artLibrary.assets.collectAsState()
+        val linked = com.novcloud.echo.ui.settings.rememberLinkedArtists()
+        com.novcloud.echo.ui.detail.ArtLibraryPickerContent(
+            "Otis Fenwick", com.novcloud.echo.data.ArtKind.Logo, assets, linked.keys, {}, {}, {},
+        )
     }
     @Test fun art_picker_dark() = picker("art_picker_dark")
     @Test fun art_asset_sheet_dark() = assetSheet("art_asset_sheet_dark")

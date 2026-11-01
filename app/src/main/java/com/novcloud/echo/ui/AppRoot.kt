@@ -54,6 +54,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -178,7 +179,9 @@ fun AppRoot(
                         exit = fadeOut(tween(EchoMotion.Standard)),
                     ) {
                         val surface = MaterialTheme.colorScheme.surface
-                        val veil by animateFloatAsState(if (barVisible) 1f else 0f, tween(EchoMotion.Medium), label = "veil")
+                        // The veil is on every screen, not only the tab roots: a list scrolling under the floating mini player fades out
+                        // above it instead of showing through around and below it.
+                        val veil = 1f
                         Box(
                             Modifier.fillMaxWidth().drawBehind {
                                 if (veil > 0f) {
@@ -198,7 +201,7 @@ fun AppRoot(
                                 }
                             },
                         ) {
-                            MiniPlayer(this@AnimatedVisibility, onExpand = { expanded = true }, modifier = Modifier.padding(bottom = 6.dp))
+                            MiniPlayer(this@AnimatedVisibility, onExpand = { expanded = true }, modifier = Modifier.padding(bottom = 6.dp).testTag("mini_player"))
                         }
                     }
                     AnimatedVisibility(
@@ -210,7 +213,12 @@ fun AppRoot(
                         visible = !barVisible,
                         enter = expandVertically(tween(EchoMotion.Medium, easing = FastOutSlowInEasing)),
                         exit = shrinkVertically(tween(EchoMotion.Medium, easing = FastOutSlowInEasing)),
-                    ) { Spacer(Modifier.fillMaxWidth().navigationBarsPadding()) }
+                    ) {
+                        // Under the mini player the gesture bar is solid like the veil above it; with nothing playing it stays clear.
+                        val navTone by animateFloatAsState(if (hasSong && !expanded) 1f else 0f, tween(EchoMotion.Standard), label = "navTone")
+                        val surface = MaterialTheme.colorScheme.surface
+                        Spacer(Modifier.fillMaxWidth().drawBehind { if (navTone > 0f) drawRect(surface.copy(alpha = navTone)) }.navigationBarsPadding())
+                    }
                 }
                 AnimatedVisibility(
                     visible = expanded && hasSong,
