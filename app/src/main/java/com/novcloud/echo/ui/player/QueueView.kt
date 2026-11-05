@@ -212,6 +212,19 @@ internal class QueueReorder(
         }
     }
 
+    /**
+     * The gesture was taken away (the system claimed it, or the screen went away) rather than released:
+     * put the rows back and send nothing to the player.
+     */
+    fun cancel() {
+        if (draggingKey == null) return
+        scroller?.cancel()
+        draggingKey = null
+        delta = 0f
+        held = null
+        sync(latest)
+    }
+
     private fun swapIfNeeded() {
         val key = draggingKey ?: return
         val info = list.layoutInfo
@@ -323,7 +336,7 @@ private fun QueueRow(
                         onDragStart = { latest.start(key, longPress = true) },
                         onDrag = { change, amount -> change.consume(); latest.drag(amount.y) },
                         onDragEnd = { latest.end() },
-                        onDragCancel = { latest.end() },
+                        onDragCancel = { latest.cancel() },
                     )
                 }
                 .clickable { actions.player.playAt(e.index) }
@@ -345,7 +358,7 @@ private fun QueueRow(
                         onDragStart = { latest.start(key, longPress = false) },
                         onDrag = { change, amount -> change.consume(); latest.drag(amount.y) },
                         onDragEnd = { latest.end() },
-                        onDragCancel = { latest.end() },
+                        onDragCancel = { latest.cancel() },
                     )
                 },
             )
