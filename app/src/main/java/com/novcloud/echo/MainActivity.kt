@@ -102,6 +102,16 @@ class MainActivity : ComponentActivity() {
     private fun hasAudioPermission(): Boolean =
         ContextCompat.checkSelfPermission(this, audioPermission) == PackageManager.PERMISSION_GRANTED
 
+    override fun onStart() {
+        super.onStart()
+        (application as EchoApp).container.library.onForeground()
+    }
+
+    override fun onStop() {
+        (application as EchoApp).container.library.onBackground()
+        super.onStop()
+    }
+
     override fun onDestroy() {
         if (isFinishing) (application as EchoApp).container.player.release()
         super.onDestroy()

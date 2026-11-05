@@ -76,6 +76,14 @@ class LibraryRepository(
     @Volatile private var aliases: Map<String, String> = emptyMap()
     private var observerRegistered = false
     private var pending: Job? = null
+    private val autoScan = AutoScanPolicy()
+    private val autoPrefs by lazy { context.getSharedPreferences("autoscan", Context.MODE_PRIVATE) }
+    @Volatile private var foreground = false
+    @Volatile private var dirtyWhileAway = false
+    @Volatile private var lastTreeCheck = 0L
+    private val _changes = MutableSharedFlow<LibraryDiff>(extraBufferCapacity = 8)
+    /** What each scan that changed the library added, removed or found edited (for caches keyed by song). */
+    val changes: SharedFlow<LibraryDiff> = _changes.asSharedFlow()
 
     private val favoriteKeys = db.favorites().keys().stateIn(scope, SharingStarted.Eagerly, emptyList())
     val favoriteOrder: StateFlow<List<Long>> = combine(favoriteKeys, _library) { keys, lib -> keys.mapNotNull { lib.songByKey[it]?.id } }
@@ -159,13 +167,45 @@ class LibraryRepository(
     private val started = AtomicBoolean(false)
     private var missingJob: Job? = null
 
-    enum class Walk { Never, IfChanged, Always }
+    enum class Walk(val mode: AutoScanPolicy.Mode) {
+        Never(AutoScanPolicy.Mode.Never),
+        IfChanged(AutoScanPolicy.Mode.IfChanged),
+        Always(AutoScanPolicy.Mode.Always),
+    }
 
     /** Startup scan, once per process. Needs the audio permission; returns false without it. */
     fun start(): Boolean {
         if (!hasAudioPermission()) return false
-        if (started.compareAndSet(false, true)) scope.launch { rescan(Walk.IfChanged) }
+        if (started.compareAndSet(false, true)) {
+            lastTreeCheck = System.currentTimeMillis()
+            scope.launch { rescan(Walk.IfChanged) }
+        }
         return true
+    }
+
+    /**
+     * The app came to the foreground: run a MediaStore scan held back while it was away, and check SAF folders for
+     * new or edited files when the last check is old enough (see [AutoScanPolicy]). Never blocks the caller.
+     */
+    fun onForeground() {
+        foreground = true
+        if (!started.get()) return
+        if (dirtyWhileAway) {
+            dirtyWhileAway = false
+            DiagLog.i(TAG, "auto-scan: media store changed while in the background")
+            scheduleStoreScan()
+        }
+        val now = System.currentTimeMillis()
+        if (!autoScan.checkDue(now, lastTreeCheck)) return
+        lastTreeCheck = now
+        scope.launch {
+            if (prefs.scanTrees.first().isEmpty()) return@launch
+            rescan(Walk.IfChanged)
+        }
+    }
+
+    fun onBackground() {
+        foreground = false
     }
 
     fun refresh(full: Boolean = true) {
@@ -211,10 +251,16 @@ class LibraryRepository(
                 } else {
                     val stamps = if (walk == Walk.Never && treeStamps.keys == trees.toSet()) treeStamps
                     else trees.associateWith { treeScanner.signature(it) ?: 0L }
-                    if (walk == Walk.Always || stamps != treeStamps) {
+                    val now = System.currentTimeMillis()
+                    val lastDeep = autoPrefs.getLong(KEY_DEEP_WALK, 0)
+                    if (stamps != treeStamps || autoScan.walkTrees(walk.mode, false, now, lastDeep)) {
                         val t1 = SystemClock.elapsedRealtime()
                         runCatching { treeScanner.scan(trees, rules, store.knownPaths) { _progress.value = it } }
-                            .onSuccess { treeSongs = it; treeStamps = stamps }
+                            .onSuccess {
+                                treeSongs = it
+                                treeStamps = stamps
+                                autoPrefs.edit().putLong(KEY_DEEP_WALK, now).apply()
+                            }
                             .onFailure { DiagLog.e(TAG, "folder walk failed", it) }
                         tTrees = SystemClock.elapsedRealtime() - t1
                     }
@@ -225,6 +271,13 @@ class LibraryRepository(
                 raw.map { it.cleaned() }
             } ?: return
             val changed = LibrarySnapshot.changed(_library.value, songs)
+            if (changed && _library.value.loaded) {
+                val diff = withContext(Dispatchers.Default) { LibraryDiff.of(_library.value.songs, songs) }
+                if (!diff.isEmpty) {
+                    DiagLog.i(TAG, "library $walk: ${diff.describe()}")
+                    _changes.tryEmit(diff)
+                }
+            }
             if (changed) {
                 _library.value = withContext(Dispatchers.Default) { Library.build(songs) }
             }
@@ -357,19 +410,30 @@ class LibraryRepository(
         return _library.first { it.loaded }
     }
 
+    /** MediaStore changes: debounced while in the foreground, deferred to the next foreground while away. */
     private fun registerObserver() {
         if (observerRegistered) return
         observerRegistered = true
         val obs = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
-                pending?.cancel()
-                pending = scope.launch {
-                    delay(1500)
-                    rescan(Walk.Never)
+                if (!foreground) {
+                    dirtyWhileAway = true
+                    return
                 }
+                scheduleStoreScan()
             }
         }
         context.contentResolver.registerContentObserver(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, obs)
+    }
+
+    private fun scheduleStoreScan() {
+        val wait = autoScan.onChange(SystemClock.elapsedRealtime())
+        pending?.cancel()
+        pending = scope.launch {
+            delay(wait)
+            autoScan.onScan()
+            rescan(Walk.Never)
+        }
     }
 
     /** Re-points saved references at the current files (see [Rematch]) and refreshes their stored tags. */
@@ -450,6 +514,7 @@ class LibraryRepository(
         const val TAG = "EchoLibrary"
         private const val LOGO_CLEANUP_STEP = "artist_logo_cleanup_v1"
         private const val LOGO_CLEANUP_DELAY_MS = 2_500L
+        private const val KEY_DEEP_WALK = "deep_walk_at"
     }
 
     /**

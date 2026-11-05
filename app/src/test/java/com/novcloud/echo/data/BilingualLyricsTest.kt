@@ -159,11 +159,11 @@ class BilingualLyricsTest {
 
     @Test
     fun titleDashArtistLineIsNotATranslation() {
-        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("Lemon - 米津玄師"))
-        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("春よ、来い - 松任谷由実"))
+        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("Ember - 森川遥"))
+        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("夏の灯 - 白石遥香"))
         assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("Paper Satellites — 温屿"))
         assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("Paper Satellites － 温屿"))
-        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("Lemon -米津玄師"))
+        assertEquals(-1, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("Ember -森川遥"))
         assertEquals("I love you ".length, com.novcloud.echo.data.lyrics.Bilingual.inlineIndex("I love you 我爱你"))
     }
 

@@ -33,6 +33,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performTextInput
 import com.novcloud.echo.playback.SleepState
@@ -160,6 +161,24 @@ abstract class ScreenshotBase {
         before()
         settle(2)
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+    }
+
+    /**
+     * Holds the drag handle of upcoming row [row] and moves it down by [rows] row heights without lifting the finger,
+     * the way a person reorders the queue; returns the titles of the upcoming songs as they were before.
+     */
+    protected fun dragQueue(row: Int = 1, rows: Float = 2.6f): List<String> {
+        val state = Samples.app(ctx).player.state.value
+        val pos = state.queue.indexOfFirst { it.index == state.currentIndex }
+        val titles = state.queue.drop(pos + 1).map { it.song.title }
+        val h = compose.onNodeWithTag("queue_row_0").fetchSemanticsNode().boundsInRoot.height
+        compose.onAllNodesWithTag("queue_handle", useUnmergedTree = true)[row].performTouchInput {
+            down(center)
+            repeat(20) { moveBy(androidx.compose.ui.geometry.Offset(0f, h * rows / 20), delayMillis = 16) }
+        }
+        compose.mainClock.advanceTimeBy(600)
+        compose.waitForIdle()
+        return titles
     }
 
     protected fun sleepSheet(name: String) {
@@ -327,6 +346,23 @@ class ScreenshotTest : ScreenshotBase() {
         app("lyrics_word_tools_dark", expanded = true, pane = com.novcloud.echo.ui.player.PlayerPane.Lyrics) {
             compose.onNode(androidx.compose.ui.test.hasContentDescription("歌词调整")).performClick()
         }
+    }
+
+    @Test fun queue_dark() = app("queue_dark", expanded = true, pane = com.novcloud.echo.ui.player.PlayerPane.Queue, insets = true)
+
+    /** Row 2 of Up Next held and dragged down past two rows: it floats lifted under the finger, the rows it passed moved up. */
+    @Test fun queue_drag_dark() = app("queue_drag_dark", expanded = true, pane = com.novcloud.echo.ui.player.PlayerPane.Queue, insets = true) {
+        val titles = dragQueue(row = 1, rows = 2.6f)
+        fun top(title: String) = compose.onNodeWithText(title).fetchSemanticsNode().boundsInRoot.top
+        org.junit.Assert.assertTrue("held row moved below the rows it passed", top(titles[1]) > top(titles[2]) && top(titles[1]) > top(titles[3]))
+        org.junit.Assert.assertTrue("rows passed shifted up", top(titles[2]) < top(titles[1]) && top(titles[3]) < top(titles[4]))
+        val statusPx = STATUS_DP * ctx.resources.displayMetrics.density
+        org.junit.Assert.assertTrue("held row stays below the status bar", top(titles[1]) > statusPx)
+    }
+
+    @Test fun lyrics_embedded_dark() {
+        Samples.primeEmbeddedLyrics(ctx)
+        app("lyrics_embedded_dark", expanded = true, pane = com.novcloud.echo.ui.player.PlayerPane.Lyrics, insets = true)
     }
 
     @Test fun library_artists_dark() = app("library_artists_dark", route = "library") {

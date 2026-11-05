@@ -6,9 +6,7 @@ import android.provider.DocumentsContract
 import com.novcloud.echo.data.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.DataInputStream
 import java.io.File
-import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
@@ -284,7 +282,7 @@ object Bilingual {
     private const val DASHES = "-‐‑‒–—―－~～"
 
     /**
-     * "Lemon - 米津玄師" or "春よ、来い — 松任谷由実" is a title/artist credit line, not a translated lyric:
+     * "Ember - 森川遥" or "夏の灯 — 白石遥香" is a title/artist credit line, not a translated lyric:
      * a dash between the parts rules out a translation cut on either side of it.
      */
     private fun isCredit(head: String, tail: String) = head.trimEnd().lastOrNull()?.let { it in DASHES } == true ||
@@ -353,6 +351,12 @@ class LyricsLoader(private val context: Context, private val db: com.novcloud.ec
         treeIndex = null
     }
 
+    /** Drops cached lyrics of songs whose files changed, so embedded lyrics edited in place are read again. */
+    fun forget(ids: Set<Long>) {
+        if (ids.isEmpty()) return
+        synchronized(cache) { cache.keys.removeAll { it.substringBefore('|').toLongOrNull() in ids } }
+    }
+
     private fun invalidate(song: Song) = synchronized(cache) { cache.keys.removeAll { it.startsWith("${song.id}|") } }
 
     private suspend fun picked(song: Song): Lyrics? {
@@ -404,6 +408,7 @@ class LyricsLoader(private val context: Context, private val db: com.novcloud.ec
 
     private companion object {
         const val MAX_FILE = 1024 * 1024
+        const val STREAM_HEAD = 8 * 1024 * 1024
     }
 
     private fun sidecar(song: Song): Lyrics? {
@@ -461,10 +466,23 @@ class LyricsLoader(private val context: Context, private val db: com.novcloud.ec
         return map
     }
 
+    /** Reads the file through its descriptor so only tag headers and the lyric fields are loaded. */
     private fun embedded(song: Song): Lyrics? {
         val text = runCatching {
-            context.contentResolver.openInputStream(song.uri)?.use { TagReader.lyrics(it) }
-        }.getOrNull() ?: return null
+            context.contentResolver.openFileDescriptor(song.uri, "r")?.use { pfd ->
+                java.io.FileInputStream(pfd.fileDescriptor).use { TagReader.lyrics(com.novcloud.echo.data.tags.ChannelSource(it.channel)) }
+            }
+        }.getOrElse {
+            // A provider that hands out a pipe instead of a seekable file: tags sit near the start for most formats.
+            runCatching {
+                context.contentResolver.openInputStream(song.uri)?.use { input ->
+                    val head = ByteArray(STREAM_HEAD)
+                    var n = 0
+                    while (n < head.size) { val r = input.read(head, n, head.size - n); if (r < 0) break; n += r }
+                    TagReader.lyrics(com.novcloud.echo.data.tags.ArraySource(head.copyOf(n)))
+                }
+            }.getOrNull()
+        } ?: return null
         return LyricsParser.parse(text)
     }
 }
@@ -492,111 +510,5 @@ object TextDecoder {
             .decode(ByteBuffer.wrap(bytes)).toString()
     } catch (_: CharacterCodingException) {
         null
-    }
-}
-
-object TagReader {
-    fun lyrics(input: InputStream): String? {
-        val s = DataInputStream(input.buffered(64 * 1024))
-        val head = ByteArray(4)
-        s.readFully(head)
-        return when {
-            head[0] == 'I'.code.toByte() && head[1] == 'D'.code.toByte() && head[2] == '3'.code.toByte() -> id3(s, head[3].toInt())
-            String(head, Charsets.US_ASCII) == "fLaC" -> flac(s)
-            else -> null
-        }
-    }
-
-    private fun id3(s: DataInputStream, major: Int): String? {
-        s.readUnsignedByte()
-        val flags = s.readUnsignedByte()
-        val size = syncsafe(s.readInt())
-        var read = 0
-        if (flags and 0x40 != 0) {
-            val ext = s.readInt()
-            val extSize = if (major == 4) syncsafe(ext) - 4 else ext
-            s.skipFully(extSize); read += 4 + extSize
-        }
-        val headerLen = if (major == 2) 6 else 10
-        while (read + headerLen < size) {
-            val id: String
-            val frameSize: Int
-            if (major == 2) {
-                val b = ByteArray(3); s.readFully(b); id = String(b, Charsets.US_ASCII)
-                frameSize = (s.readUnsignedByte() shl 16) or (s.readUnsignedByte() shl 8) or s.readUnsignedByte()
-            } else {
-                val b = ByteArray(4); s.readFully(b); id = String(b, Charsets.US_ASCII)
-                val raw = s.readInt()
-                frameSize = if (major == 4) syncsafe(raw) else raw
-                s.readUnsignedShort()
-            }
-            read += headerLen
-            if (id[0].code == 0 || frameSize <= 0 || read + frameSize > size) return null
-            if (id == "USLT" || id == "ULT") {
-                val data = ByteArray(frameSize); s.readFully(data)
-                return uslt(data)
-            }
-            s.skipFully(frameSize)
-            read += frameSize
-        }
-        return null
-    }
-
-    private fun uslt(d: ByteArray): String? {
-        if (d.size < 5) return null
-        val enc = d[0].toInt()
-        var i = 4
-        val wide = enc == 1 || enc == 2
-        if (wide) {
-            while (i + 1 < d.size && !(d[i].toInt() == 0 && d[i + 1].toInt() == 0)) i += 2
-            i += 2
-        } else {
-            while (i < d.size && d[i].toInt() != 0) i++
-            i += 1
-        }
-        if (i >= d.size) return null
-        val body = d.copyOfRange(i, d.size)
-        val text = when (enc) {
-            0 -> TextDecoder.latinOrGbk(body)
-            1 -> String(body, Charsets.UTF_16)
-            2 -> String(body, Charsets.UTF_16BE)
-            else -> String(body, Charsets.UTF_8)
-        }
-        return text.trim('\u0000', ' ', '\n').takeIf { it.isNotBlank() }
-    }
-
-    private fun flac(s: DataInputStream): String? {
-        while (true) {
-            val h = s.readUnsignedByte()
-            val last = h and 0x80 != 0
-            val type = h and 0x7F
-            val len = (s.readUnsignedByte() shl 16) or (s.readUnsignedByte() shl 8) or s.readUnsignedByte()
-            if (type == 4) {
-                val d = ByteArray(len); s.readFully(d)
-                val bb = ByteBuffer.wrap(d).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                val vendor = bb.int; bb.position(bb.position() + vendor)
-                val n = bb.int
-                repeat(n) {
-                    val l = bb.int
-                    val b = ByteArray(l); bb.get(b)
-                    val c = String(b, Charsets.UTF_8)
-                    val k = c.substringBefore('=').uppercase()
-                    if (k == "LYRICS" || k == "UNSYNCEDLYRICS") return c.substringAfter('=').takeIf { it.isNotBlank() }
-                }
-                return null
-            }
-            s.skipFully(len)
-            if (last) return null
-        }
-    }
-
-    private fun syncsafe(v: Int) = (v and 0x7F) or ((v shr 8 and 0x7F) shl 7) or ((v shr 16 and 0x7F) shl 14) or ((v shr 24 and 0x7F) shl 21)
-
-    private fun DataInputStream.skipFully(n: Int) {
-        var left = n.toLong()
-        while (left > 0) {
-            val k = skip(left)
-            if (k <= 0) { if (read() < 0) return; left-- } else left -= k
-        }
     }
 }

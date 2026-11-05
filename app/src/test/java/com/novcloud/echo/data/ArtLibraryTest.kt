@@ -49,7 +49,7 @@ class ArtLibraryTest {
             "Nova Lark-3fa9c2d1e8.png" to ("Nova Lark" to logo),
             "Nova Lark_1730000000123.png" to ("Nova Lark" to logo),
             "Nova Lark.logo.png" to ("Nova Lark" to logo),
-            "Maroon Static 5.png" to ("Maroon Static 5" to logo),
+            "Harbor Static 5.png" to ("Harbor Static 5" to logo),
             "Sum 41ish_logo.png" to ("Sum 41ish" to logo),
             "Glass-182_logo.png" to ("Glass-182" to logo),
             "Glass-182.png" to ("Glass-182" to logo),

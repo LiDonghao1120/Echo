@@ -148,6 +148,9 @@
     <string name="lyrics_by_line_desc">歌词逐行</string>
     <string name="lyrics_by_word_desc">歌词逐字</string>
     <string name="queue_up_next">接下来</string>
+    <string name="queue_move_next">移到下一首</string>
+    <string name="queue_drag">拖动排序</string>
+    <string name="queue_remove">从队列移除</string>
     <string name="sleep_timer">定时关闭</string>
     <string name="sleep_until_pause">后暂停播放</string>
     <string name="sleep_end_of_song_state">播完这首</string>

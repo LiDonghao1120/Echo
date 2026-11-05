@@ -43,7 +43,7 @@ class MediaScanner(private val context: Context) {
             if (!rules.accepts(r.song.folder, r.isMusic)) continue
             var s = r.song
             if (s.durationMs <= 0) {
-                val key = "${s.path}|${s.size}"
+                val key = "${s.path}|${s.size}|${s.modified}"
                 seen += key
                 val d = probed[key] ?: if (probes++ < 400) TagProbe.duration(context, s.uri).also { probed[key] = it } else 0
                 if (d > 0) s = s.copy(durationMs = d)
@@ -69,6 +69,7 @@ class MediaScanner(private val context: Context) {
             add(MediaStore.Audio.Media.TRACK)
             add(MediaStore.Audio.Media.YEAR)
             add(MediaStore.Audio.Media.DATE_ADDED)
+            add(MediaStore.Audio.Media.DATE_MODIFIED)
             add(MediaStore.Audio.Media.DATA)
             add(MediaStore.Audio.Media.MIME_TYPE)
             add(MediaStore.Audio.Media.SIZE)
@@ -90,6 +91,7 @@ class MediaScanner(private val context: Context) {
             val iTrack = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
             val iYear = c.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
             val iAdded = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+            val iModified = c.getColumnIndex(MediaStore.Audio.Media.DATE_MODIFIED)
             val iData = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             val iMime = c.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
             val iSize = c.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
@@ -121,6 +123,7 @@ class MediaScanner(private val context: Context) {
                     size = c.getLong(iSize),
                     key = key,
                     mediaId = c.getLong(iId),
+                    modified = if (iModified >= 0) c.getLong(iModified) * 1000 else 0,
                 )
                 out += Row(song, c.getInt(iMusic) != 0)
             }

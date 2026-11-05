@@ -32,6 +32,19 @@ class LibrarySnapshotTest {
     }
 
     @Test
+    fun keepsModificationTimesAndReadsTheOlderLayout() {
+        val stamped = store.map { it.copy(modified = 1_700_000_000_000L + it.id) }
+        val back = LibrarySnapshot.read(bytes(LibrarySnapshot(stamped, tree)).inputStream())!!
+        assertEquals(stamped, back.songs)
+        val old = ByteArrayOutputStream().also { LibrarySnapshot.writeV2(LibrarySnapshot(stamped, tree, mapOf("t" to 1L)), it) }.toByteArray()
+        val upgraded = LibrarySnapshot.read(old.inputStream())!!
+        assertEquals(store, upgraded.songs)
+        assertTrue(upgraded.songs.all { it.modified == 0L })
+        assertEquals(mapOf("t" to 1L), upgraded.trees)
+        assertTrue(LibraryDiff.of(upgraded.songs, stamped).isEmpty)
+    }
+
+    @Test
     fun storeSavesAtomicallyAndLoads() {
         val dir = Files.createTempDirectory("snap").toFile()
         val s = SnapshotStore(dir)

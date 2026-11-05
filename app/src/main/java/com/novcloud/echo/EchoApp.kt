@@ -73,6 +73,7 @@ class AppContainer(app: Application) {
     fun homeReady(): Boolean = library.library.value.loaded && home.value.ready
 
     init {
+        appScope.launch { library.changes.collect { lyrics.forget(it.staleIds) } }
         appScope.launch {
             while (isActive) {
                 delay(60_000)

@@ -22,6 +22,7 @@ private const val PHONE_EN = "en-rUS-w400dp-h880dp-normal-long-notround-any-xhdp
 class EnglishScreenshotTest : ScreenshotBase() {
 
     @Test fun home_en() = app("home_en")
+    @Test fun queue_drag_en() = app("queue_drag_en", expanded = true, pane = com.novcloud.echo.ui.player.PlayerPane.Queue, insets = true) { dragQueue(row = 0, rows = 1.6f) }
     @Test fun home_tall_en() = app("home_tall_en", tall = 1900)
     @Test fun home_light_en() = app("home_light_en", dark = false)
 

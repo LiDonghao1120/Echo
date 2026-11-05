@@ -70,7 +70,7 @@ object Pinyin {
         (if (nameStart) surnames[c] else null) ?: readings(c).firstOrNull()
 
     /**
-     * Sort key that orders Han text by pinyin among Latin text (周杰伦 next to Zhou), case-insensitive. Text starting
+     * Sort key that orders Han text by pinyin among Latin text (周景澜 next to Zhou), case-insensitive. Text starting
      * with anything other than a letter or a Han character with a reading sorts after Z, like the # section.
      */
     fun sortKey(text: String, name: Boolean = false): String {
@@ -99,8 +99,8 @@ object Pinyin {
 /**
  * A string prepared for search: its letters, digits and Han characters (case folded), each Han character with its
  * readings. A query matches when, from some character on, every query character is consumed by the text in order:
- * a literal character, a whole reading, or the start of a reading (initials), so zjl, zhoujielun, zhoujl and 周jl all
- * find 周杰伦.
+ * a literal character, a whole reading, or the start of a reading (initials), so zjl, zhoujinglan, zhoujl and 周jl all
+ * find 周景澜.
  */
 class SearchText private constructor(private val chars: CharArray, private val readings: Array<List<String>?>) {
     val hasHan: Boolean get() = readings.any { it != null }

@@ -148,6 +148,9 @@
     <string name="lyrics_by_line_desc">Line-by-line lyrics</string>
     <string name="lyrics_by_word_desc">Word-by-word lyrics</string>
     <string name="queue_up_next">Up Next</string>
+    <string name="queue_move_next">Play next</string>
+    <string name="queue_drag">Drag to reorder</string>
+    <string name="queue_remove">Remove from queue</string>
     <string name="sleep_timer">Sleep timer</string>
     <string name="sleep_until_pause">until playback pauses</string>
     <string name="sleep_end_of_song_state">End of track</string>

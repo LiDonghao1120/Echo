@@ -79,6 +79,7 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
+        player.setShuffleOrder(QueueOrder())
         mix = VolumeMix(player)
         fading = FadingPlayer(player, mix, scope) { c.audioFx.settings.value.fade }
         widget = WidgetSync(this, scope)
@@ -115,7 +116,11 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
-                if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) saveQueue()
+                if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
+                    applyResumedOrder()
+                    shuffleNewQueue()
+                    saveQueue()
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -134,7 +139,10 @@ class PlaybackService : MediaSessionService() {
                 if (reason == Player.DISCONTINUITY_REASON_SEEK && !player.isPlaying) saveQueue()
             }
 
-            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = saveQueue()
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+                if (shuffleModeEnabled && !applyingOrder) setOrder(currentOrder().reshuffledFrom(player.currentMediaItemIndex))
+                saveQueue()
+            }
             override fun onRepeatModeChanged(repeatMode: Int) = saveQueue()
         })
 
@@ -144,7 +152,7 @@ class PlaybackService : MediaSessionService() {
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaSession.Builder(this, fading)
+        session = MediaSession.Builder(this, QueuePlayer(fading, ::keepAppendedLast))
             .setSessionActivity(open)
             .setCallback(Callback())
             .build()
@@ -209,24 +217,99 @@ class PlaybackService : MediaSessionService() {
         if (resume) player.playWhenReady = true
     }
 
-    /** The saved queue as library songs, with the index of the saved current item among them (-1 if it is gone). */
-    private suspend fun savedQueue(): Triple<SavedQueue, List<MediaItem>, Int>? {
+    private class Restored(val saved: SavedQueue, val items: List<MediaItem>, val index: Int, val order: QueueOrder?)
+
+    /** The saved queue as library songs, the saved current item's index among them (-1 if gone) and its play order. */
+    private suspend fun savedQueue(): Restored? {
         val saved = app.container.prefs.loadQueue() ?: return null
         val repo = app.container.library
         val lib = repo.awaitLoaded()
         val songs = saved.keys.map { repo.resolve(it, lib) }
         val items = songs.mapNotNull { it?.toMediaItem() }
         val current = songs.getOrNull(saved.index)?.id
-        return Triple(saved, items, items.indexOfFirst { it.songId() == current })
+        var next = 0
+        val kept = IntArray(songs.size) { if (songs[it] != null) next++ else -1 }
+        val order = if (saved.shuffle) saved.order.takeIf { it.isNotEmpty() }?.let { QueueOrder.remap(it, kept) }?.let { QueueOrder.of(it) } else null
+        return Restored(saved, items, items.indexOfFirst { it.songId() == current }, order)
+    }
+
+    private var applyingOrder = false
+    /** Play order and modes for a queue handed to the session by [Callback.onPlaybackResumption], applied once it lands. */
+    private var resumed: Restored? = null
+
+    private fun currentOrder(): QueueOrder = player.shuffleOrder as? QueueOrder ?: QueueOrder.of(playOrder()) ?: QueueOrder(player.mediaItemCount)
+
+    private fun playOrder(): List<Int> {
+        val t = player.currentTimeline
+        val out = ArrayList<Int>(t.windowCount)
+        var i = t.getFirstWindowIndex(true)
+        while (i != C.INDEX_UNSET && out.size < t.windowCount) {
+            out += i
+            i = t.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, true)
+        }
+        return out
+    }
+
+    private fun setOrder(order: QueueOrder) {
+        if (order.length != player.mediaItemCount) return
+        applyingOrder = true
+        try { player.setShuffleOrder(order) } finally { applyingOrder = false }
+    }
+
+    /** A queue that replaced the old one while shuffle is on starts with the item the user picked. */
+    private fun shuffleNewQueue() {
+        val order = player.shuffleOrder as? QueueOrder ?: return
+        if (!order.fresh || applyingOrder || !player.shuffleModeEnabled || player.mediaItemCount == 0) return
+        setOrder(order.reshuffledFrom(player.currentMediaItemIndex))
+    }
+
+    private fun applyResumedOrder() {
+        val r = resumed ?: return
+        if (player.mediaItemCount != r.items.size) return
+        resumed = null
+        applyModes(r)
+    }
+
+    private fun applyModes(r: Restored) {
+        applyingOrder = true
+        try {
+            r.order?.takeIf { it.length == player.mediaItemCount }?.let { player.setShuffleOrder(it) }
+            player.shuffleModeEnabled = r.saved.shuffle
+            if (r.saved.shuffle && r.order == null) player.setShuffleOrder(QueueOrder.startingWith(player.mediaItemCount, player.currentMediaItemIndex))
+            player.repeatMode = r.saved.repeat
+        } finally {
+            applyingOrder = false
+        }
+    }
+
+    /**
+     * Moves playlist item [from] to where [to] is in play order. Without shuffle that is a playlist move; with shuffle
+     * the playlist stays and only the play order changes, which is the order the queue sheet shows.
+     */
+    private fun moveInQueue(from: Int, to: Int) {
+        val n = player.mediaItemCount
+        if (from !in 0 until n || to !in 0 until n || from == to) return
+        if (!player.shuffleModeEnabled) {
+            player.moveMediaItem(from, to)
+            return
+        }
+        val order = currentOrder()
+        setOrder(order.moved(from, order.positionOf(to)))
+        saveQueue()
+    }
+
+    private fun keepAppendedLast(start: Int, count: Int) {
+        if (!player.shuffleModeEnabled || start + count > player.mediaItemCount) return
+        setOrder(currentOrder().movedToEnd(start until start + count))
     }
 
     private suspend fun restore() {
-        val (saved, items, idx) = savedQueue() ?: run { restored = true; return }
+        val r = savedQueue() ?: run { restored = true; return }
+        val (saved, items, idx) = Triple(r.saved, r.items, r.index)
         if (player.mediaItemCount > 0) { restored = true; return }
         if (items.isNotEmpty()) {
             player.setMediaItems(items, idx.coerceAtLeast(0), if (idx >= 0) saved.positionMs else 0)
-            player.shuffleModeEnabled = saved.shuffle
-            player.repeatMode = saved.repeat
+            applyModes(r)
             val skip = pendingSkip
             pendingSkip = 0
             if (skip != 0 && idx >= 0) player.seekTo((idx + skip).mod(items.size), 0)
@@ -240,7 +323,8 @@ class PlaybackService : MediaSessionService() {
         if (!restored) return
         val n = player.mediaItemCount
         val keys = (0 until n).mapNotNull { player.getMediaItemAt(it).songKey() }
-        val q = SavedQueue(keys, player.currentMediaItemIndex, player.currentPosition, player.shuffleModeEnabled, player.repeatMode)
+        val order = if (player.shuffleModeEnabled && keys.size == n) (player.shuffleOrder as? QueueOrder)?.toList() ?: playOrder() else emptyList()
+        val q = SavedQueue(keys, player.currentMediaItemIndex, player.currentPosition, player.shuffleModeEnabled, player.repeatMode, order)
         app.container.appScope.launch { app.container.prefs.saveQueue(q) }
     }
 
@@ -360,6 +444,7 @@ class PlaybackService : MediaSessionService() {
     companion object {
         private const val TAG = "EchoPlayback"
         private val SLEEP_COMMAND = SessionCommand(SleepState.ACTION, Bundle.EMPTY)
+        private val MOVE_COMMAND = SessionCommand(QueueMove.ACTION, Bundle.EMPTY)
 
         @Volatile private var active: PlaybackService? = null
 
@@ -402,17 +487,17 @@ class PlaybackService : MediaSessionService() {
             controller: MediaSession.ControllerInfo,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
             val q = savedQueue()
-            if (q == null || q.second.isEmpty()) {
+            if (q == null || q.items.isEmpty()) {
                 val all = app.container.library.awaitLoaded().songs.shuffled().take(50).map { it.toMediaItem() }
                 MediaSession.MediaItemsWithStartPosition(all, 0, 0)
             } else {
-                val (saved, items, idx) = q
                 val skip = pendingSkip
                 pendingSkip = 0
-                if (skip != 0 && idx >= 0) {
-                    MediaSession.MediaItemsWithStartPosition(items, (idx + skip).mod(items.size), 0)
+                resumed = q
+                if (skip != 0 && q.index >= 0) {
+                    MediaSession.MediaItemsWithStartPosition(q.items, (q.index + skip).mod(q.items.size), 0)
                 } else {
-                    MediaSession.MediaItemsWithStartPosition(items, idx.coerceAtLeast(0), if (idx >= 0) saved.positionMs else 0)
+                    MediaSession.MediaItemsWithStartPosition(q.items, q.index.coerceAtLeast(0), if (q.index >= 0) q.saved.positionMs else 0)
                 }
             }
         }
@@ -421,7 +506,7 @@ class PlaybackService : MediaSessionService() {
             val base = super.onConnect(session, controller)
             if (controller.packageName != packageName || !base.isAccepted) return base
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(base.availableSessionCommands.buildUpon().add(SLEEP_COMMAND).build())
+                .setAvailableSessionCommands(base.availableSessionCommands.buildUpon().add(SLEEP_COMMAND).add(MOVE_COMMAND).build())
                 .setAvailablePlayerCommands(base.availablePlayerCommands)
                 .setSessionExtras(sleep.state().toBundle())
                 .build()
@@ -433,8 +518,11 @@ class PlaybackService : MediaSessionService() {
             customCommand: SessionCommand,
             args: Bundle,
         ): ListenableFuture<SessionResult> {
-            if (customCommand.customAction != SleepState.ACTION) return super.onCustomCommand(session, controller, customCommand, args)
-            setSleep(args.getInt(SleepState.ARG_MINUTES, 0))
+            when (customCommand.customAction) {
+                SleepState.ACTION -> setSleep(args.getInt(SleepState.ARG_MINUTES, 0))
+                QueueMove.ACTION -> moveInQueue(args.getInt(QueueMove.ARG_FROM, -1), args.getInt(QueueMove.ARG_TO, -1))
+                else -> return super.onCustomCommand(session, controller, customCommand, args)
+            }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
 

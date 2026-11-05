@@ -12,7 +12,7 @@ import java.io.FileInputStream
 
 /**
  * Tags MediaStore and MediaMetadataRetriever usually cannot read: APE and WMA files, and APEv2 tags on MP3 files
- * that have no ID3 text. Results are cached by path and size in filesDir/extra_tags.json.
+ * that have no ID3 text. Results are cached by path, size and modification time in filesDir/extra_tags.json.
  */
 class ExtraTags(private val context: Context) {
     private val file get() = File(context.filesDir, "extra_tags.json")
@@ -43,7 +43,7 @@ class ExtraTags(private val context: Context) {
         val own = ext in OWN_FORMATS
         val missing = s.artist == UNKNOWN || s.album == UNKNOWN
         if (!own && !(ext == "mp3" && missing)) return s
-        val t = tagsFor(s.uri, "${s.path}|${s.size}") ?: return s
+        val t = tagsFor(s.uri, "${s.path}|${s.size}|${s.modified}") ?: return s
         return merge(s, t, prefer = own)
     }
 

@@ -8,7 +8,7 @@ data class ParsedArtName(val name: String, val kind: ArtKind)
  * The artist name and kind a picked image file most likely stands for: "Nova_Lark_logo.png" is a logo of Nova Lark,
  * "Juniper Vale - poster (2).jpg" a poster of Juniper Vale. Strips the extension, copy numbering ("(2)", "_1",
  * "copy", "副本"), long timestamps and hash tails, and logo/poster words at either end. Numbers that can be part of
- * a name ("Maroon 5", "Blink-182") stay. Underscores stand for spaces when the name has no spaces of its own.
+ * a name ("Harbor 5", "Ward-21") stay. Underscores stand for spaces when the name has no spaces of its own.
  */
 object ArtLibraryNames {
     private val ignore = RegexOption.IGNORE_CASE

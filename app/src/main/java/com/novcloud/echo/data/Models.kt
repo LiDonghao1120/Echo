@@ -26,6 +26,8 @@ data class Song(
     val docUri: String = "",
     val key: String = SongKeys.of(path),
     val mediaId: Long = 0,
+    /** File modification time in ms (0 = unknown); a tag edit in place changes it even when the size stays. */
+    val modified: Long = 0,
 ) {
     val uri: Uri get() = if (docUri.isNotEmpty()) Uri.parse(docUri) else ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, mediaId)
     val art: ArtRef get() = ArtRef(albumId, artId, docUri)

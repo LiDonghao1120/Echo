@@ -11,7 +11,7 @@ import java.io.OutputStream
 /**
  * Last scan result, so a cold start can publish the library before any MediaStore or SAF query runs.
  * [treeSongs] are the raw SAF tree results (before rules/duration filtering), [trees] the shallow
- * listing signature of each tree at walk time, [probed] MediaStore durations read with MMR keyed by path|size.
+ * listing signature of each tree at walk time, [probed] MediaStore durations read with MMR keyed by path|size|modified.
  */
 class LibrarySnapshot(
     val songs: List<Song>,
@@ -35,40 +35,68 @@ class LibrarySnapshot(
 
     companion object {
         private const val MAGIC = 0x45434831
-        private const val FORMAT = 2
+        private const val FORMAT = 3
+
+        private val FIELDS = Song::class.java.declaredFields
+            .filter { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+            .map { "${it.name}:${it.type.name}" }
+
+        private fun schema(format: Int, fields: List<String>) = format * 31 + fields.sorted().joinToString(",").hashCode()
 
         /** Changes whenever [Song]'s fields change, so an older file is discarded instead of misread. */
-        val SCHEMA: Int = FORMAT * 31 + Song::class.java.declaredFields
-            .filter { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
-            .map { "${it.name}:${it.type.name}" }.sorted().joinToString(",").hashCode()
+        val SCHEMA: Int = schema(FORMAT, FIELDS)
+
+        /** Files written by 0.7–0.11: the same songs without [Song.modified]; still read so an upgrade starts instantly. */
+        internal val SCHEMA_V2: Int = schema(2, FIELDS - "modified:long")
 
         fun read(input: InputStream): LibrarySnapshot? = runCatching {
             val d = DataInputStream(BufferedInputStream(input, 1 shl 16))
-            if (d.readInt() != MAGIC || d.readInt() != SCHEMA) return null
-            val songs = readSongs(d)
-            val tree = readSongs(d)
+            if (d.readInt() != MAGIC) return null
+            val withModified = when (d.readInt()) {
+                SCHEMA -> true
+                SCHEMA_V2 -> false
+                else -> return null
+            }
+            val songs = readSongs(d, withModified)
+            val tree = readSongs(d, withModified)
             val trees = HashMap<String, Long>().apply { repeat(d.readInt()) { put(d.str(), d.readLong()) } }
             val probed = HashMap<String, Long>().apply { repeat(d.readInt()) { put(d.str(), d.readLong()) } }
             if (d.readInt() != MAGIC) return null
             LibrarySnapshot(songs, tree, trees, probed)
         }.getOrNull()
 
+        /** A file in the 0.7–0.11 layout, for the upgrade test. */
+        internal fun writeV2(s: LibrarySnapshot, out: OutputStream) {
+            val d = DataOutputStream(out)
+            d.writeInt(MAGIC)
+            d.writeInt(SCHEMA_V2)
+            writeSongs(d, s.songs, withModified = false)
+            writeSongs(d, s.treeSongs, withModified = false)
+            d.writeInt(s.trees.size)
+            s.trees.forEach { (k, v) -> d.str(k); d.writeLong(v) }
+            d.writeInt(s.probed.size)
+            s.probed.forEach { (k, v) -> d.str(k); d.writeLong(v) }
+            d.writeInt(MAGIC)
+            d.flush()
+        }
+
         fun sameSongs(a: List<Song>, b: List<Song>): Boolean = a.size == b.size && HashSet(a) == HashSet(b)
 
         /** Whether a scan result has to be published over [current]; an identical song set keeps the existing library. */
         fun changed(current: Library, songs: List<Song>): Boolean = !current.loaded || !sameSongs(current.songs, songs)
 
-        private fun writeSongs(d: DataOutputStream, list: List<Song>) {
+        private fun writeSongs(d: DataOutputStream, list: List<Song>, withModified: Boolean = true) {
             d.writeInt(list.size)
             for (s in list) {
                 d.writeLong(s.id); d.str(s.title); d.str(s.artist); d.str(s.album); d.writeLong(s.albumId)
                 d.str(s.albumArtist); d.str(s.genre); d.writeLong(s.durationMs); d.writeInt(s.track); d.writeInt(s.disc)
                 d.writeInt(s.year); d.writeLong(s.dateAdded); d.str(s.path); d.str(s.folder); d.str(s.mimeType)
                 d.writeLong(s.size); d.str(s.docUri); d.str(s.key); d.writeLong(s.mediaId)
+                if (withModified) d.writeLong(s.modified)
             }
         }
 
-        private fun readSongs(d: DataInputStream): List<Song> {
+        private fun readSongs(d: DataInputStream, withModified: Boolean): List<Song> {
             val n = d.readInt()
             require(n in 0..1_000_000)
             return ArrayList<Song>(n).apply {
@@ -79,6 +107,7 @@ class LibrarySnapshot(
                             albumArtist = d.str(), genre = d.str(), durationMs = d.readLong(), track = d.readInt(), disc = d.readInt(),
                             year = d.readInt(), dateAdded = d.readLong(), path = d.str(), folder = d.str(), mimeType = d.str(),
                             size = d.readLong(), docUri = d.str(), key = d.str(), mediaId = d.readLong(),
+                            modified = if (withModified) d.readLong() else 0,
                         ),
                     )
                 }

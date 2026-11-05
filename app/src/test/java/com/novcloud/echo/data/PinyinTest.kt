@@ -24,22 +24,22 @@ class PinyinTest {
 
     @Test
     fun fullInitialsAndMixed() {
-        listOf("zjl", "zhoujielun", "zhoujl", "zjielun", "周jl", "周杰l", "jielun", "jl", "ZJL", "zhou jie lun").forEach {
-            assertTrue(it, finds("周杰伦", it))
+        listOf("zjl", "zhoujinglan", "zhoujl", "zjinglan", "周jl", "周景l", "jinglan", "jl", "ZJL", "zhou jing lan").forEach {
+            assertTrue(it, finds("周景澜", it))
         }
         assertTrue(finds("温屿", "wy"))
         assertTrue(finds("温屿", "wenyu"))
         assertTrue(finds("晚风邮局", "wfyj"))
         assertTrue(finds("晚风邮局", "fengyou"))
         assertTrue(finds("北岸 (Live)", "bal"))
-        assertTrue(finds("Jay Chou 周杰伦", "jaychou"))
+        assertTrue(finds("Jade Zhou 周景澜", "jadezhou"))
     }
 
     @Test
     fun rejectsWhatDoesNotSpellIt() {
-        assertTrue(!finds("周杰伦", "zjm"))
-        assertTrue(!finds("周杰伦", "jz"))
-        assertTrue(!finds("周杰伦", "zhoux"))
+        assertTrue(!finds("周景澜", "zjm"))
+        assertTrue(!finds("周景澜", "jz"))
+        assertTrue(!finds("周景澜", "zhoux"))
         assertTrue(!finds("温屿", "yw"))
         assertTrue(!finds("Neon Orchard", "zjl"))
     }
@@ -62,13 +62,13 @@ class PinyinTest {
 
     @Test
     fun sortsHanAmongLatinByPinyin() {
-        val names = listOf("Zoe", "周杰伦", "陈奕迅", "Adele", "温屿", "曾轶可", "123", "Beyond", "王菲", "♪Intro")
+        val names = listOf("Zoya Brook", "周景澜", "陈一舟", "Aria Moss", "温屿", "曾小满", "123", "Brightwater", "王雾", "♪Intro")
         val sorted = names.sortedBy { Pinyin.sortKey(it, name = true) }
-        assertEquals(listOf("Adele", "Beyond", "陈奕迅", "王菲", "温屿", "曾轶可", "周杰伦", "Zoe", "123", "♪Intro"), sorted)
-        assertEquals('Z', Pinyin.section(Pinyin.sortKey("曾轶可", name = true)))
+        assertEquals(listOf("Aria Moss", "Brightwater", "陈一舟", "王雾", "温屿", "曾小满", "周景澜", "Zoya Brook", "123", "♪Intro"), sorted)
+        assertEquals('Z', Pinyin.section(Pinyin.sortKey("曾小满", name = true)))
         assertEquals('C', Pinyin.section(Pinyin.sortKey("曾经", name = false)))
         assertEquals('#', Pinyin.section(Pinyin.sortKey("123")))
-        assertEquals('#', Pinyin.section(Pinyin.sortKey("あいみょん")))
+        assertEquals('#', Pinyin.section(Pinyin.sortKey("あおぞら")))
         assertEquals('W', Pinyin.section(Pinyin.sortKey("  温屿")))
     }
 

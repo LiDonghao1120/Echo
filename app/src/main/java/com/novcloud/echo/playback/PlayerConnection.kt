@@ -266,7 +266,29 @@ class PlayerConnection(
         c.addMediaItems(songs.map { it.toMediaItem() })
     }
 
-    fun moveInQueue(from: Int, to: Int) = withController { it.moveMediaItem(from, to) }
+    /**
+     * Moves playlist item [from] to the place playlist item [to] holds in play order. In shuffle mode the controller
+     * cannot change the play order, so the service does it (see [QueueOrder]); otherwise it is a plain playlist move.
+     */
+    fun moveMediaItem(from: Int, to: Int) = withController { c ->
+        if (from == to || from !in 0 until c.mediaItemCount || to !in 0 until c.mediaItemCount) return@withController
+        if (c.shuffleModeEnabled) {
+            c.sendCustomCommand(SessionCommand(QueueMove.ACTION, Bundle.EMPTY), Bundle().apply {
+                putInt(QueueMove.ARG_FROM, from)
+                putInt(QueueMove.ARG_TO, to)
+            })
+        } else {
+            c.moveMediaItem(from, to)
+        }
+    }
+
+    /** Makes queued item [index] the next one to play, in play order (shuffle included). */
+    fun moveToNext(index: Int) {
+        val q = _state.value
+        val pos = q.queue.indexOfFirst { it.index == q.currentIndex }
+        val next = q.queue.getOrNull(pos + 1)?.index ?: return
+        if (next != index) moveMediaItem(index, next)
+    }
 
     fun clearQueue() = withController { c ->
         val cur = c.currentMediaItemIndex

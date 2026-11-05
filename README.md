@@ -60,13 +60,20 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 ### Now Playing
 - Colours taken from the album art, a large title and a waveform-style scrubber.
 - The mini player expands into Now Playing with a shared-element transition.
-- In the queue, swipe a track away or move it up next. **Play next** and **Add to queue** are available from any song's menu.
+- **Reorder the queue by dragging**: hold a track, or grab its handle, and move it; the list scrolls on its own near the edges and the other tracks slide out of the way. Swipe a track away or move it up next.
+- **Play next** and **Add to queue** are available from any song's menu. With shuffle on, Play next still plays right after the current song, and the shuffled order is kept when the app restarts.
 - **Sleep timer**: 15, 30, 45, 60 or 90 minutes, any length you dial in, or the end of the current song. The countdown shows in Now Playing, the volume fades out over the last 30 seconds, and the timer keeps running with the app closed.
 
 ### Lyrics
 - **Synced LRC lyrics** that scroll with the song. Tap a line to jump to it.
 - **Word-by-word lyrics**: the current line fills glyph by glyph with a soft cream-to-vermilion wipe, and the word being sung lifts with a glow. Real word timing is used when the file has it (enhanced LRC `<mm:ss.xx>` tags, the inline `[mm:ss.xx]word` form, QRC/KRC word stamps, Apple Music style `.ttml`); other lines are paced by syllable across the line. Switch between line and word mode in the lyrics view or in Settings.
-- Echo looks for a `.ttml` or `.lrc` file next to the song, then in a lyrics folder you choose, then for lyrics embedded in the file (ID3 USLT, FLAC `LYRICS`).
+- Echo looks for a `.ttml` or `.lrc` file next to the song, then in a lyrics folder you choose, then for lyrics embedded in the file:
+  - MP3: ID3 `USLT` and synced `SYLT` (converted to timed lines, word by word when the file stores syllables), including ID3v2.2 and unsynchronised tags
+  - M4A / MP4 / ALAC: the `©lyr` atom, including Apple Music style TTML
+  - FLAC, Ogg Vorbis and Opus: `LYRICS`, `UNSYNCEDLYRICS` and `SYNCEDLYRICS` comments
+  - WAV and AIFF: the ID3 chunk
+
+  Only the tags are read, never the whole file, and timed lyrics win over plain text when a file has both.
 - **Bilingual lyrics**: the translation sits under the original line. Lines with the same timestamp, `/`-separated pairs and "original translation" lines (English, Japanese, Korean, mixed Japanese and English, German…, followed by the Chinese) are all recognised.
 - "Title - Artist" credit lines at the top of a file stay as one line instead of being split as a translation.
 - **Timing offset per song**: nudge lyrics earlier or later in 0.1-second steps from the lyrics view. The offset is saved for that song.
@@ -76,12 +83,13 @@ Echo (回响, "echo") is for people who keep their music as files. It plays what
 
 ### Your library
 - Songs (sort by title, artist, album, date added or duration), albums, artists, genres, folders, playlists and favourites.
-- **Pinyin search**: find Chinese titles, artists and albums by full pinyin, initials or a mix with characters (`zhoujielun`, `zjl`, `周jl`), all offline. Common polyphonic characters match either reading.
+- **Pinyin search**: find Chinese titles, artists and albums by full pinyin, initials or a mix with characters (`wenyu`, `wy`, `温y`), all offline. Common polyphonic characters match either reading.
 - An **A–Z index** on the song and artist lists, sorted by pinyin with Latin names alongside. Drag along it to jump between letters.
 - Tracks with several artists (`/`, `、`, `;`, `&`, `feat.`) show up under each of them.
 - If Android doesn't report genres, Echo reads them from the file tags.
 - Reads tags Android leaves out: **APEv2** (Monkey's Audio, and MP3 files tagged that way) and **WMA/ASF** metadata, including cover art.
-- Opens straight to your library: the last scan is kept on the device and new or removed files are picked up in the background.
+- Opens straight to your library: the last scan is kept on the device and changes are picked up in the background.
+- **New and edited songs show up on their own**, no rescan needed: Android's media index is watched while the app is open, and added folders are checked when you come back to Echo (a quick look each time, a full pass every few hours). Tags or lyrics you fix in another app are picked up too. Nothing runs while Echo is in the background.
 - **Scan folders**: add folders with the system picker, including ones Android's media index skips, and include or exclude any folder on the device. Ignore tracks shorter than a set length. Duplicates are removed.
 - Favourites, playlists and listening history follow your files: they are tied to each file's path, and a song that was moved or renamed is found again by its tags.
 

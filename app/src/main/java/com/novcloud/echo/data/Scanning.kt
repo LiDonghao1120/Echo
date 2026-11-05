@@ -301,6 +301,7 @@ class TreeScanner(private val context: Context) {
             size = d.size,
             docUri = d.uri.toString(),
             key = key,
+            modified = d.modified,
         )
     }
 

@@ -14,7 +14,15 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore("echo")
 
-data class SavedQueue(val keys: List<String>, val index: Int, val positionMs: Long, val shuffle: Boolean, val repeat: Int)
+/** [order] is the shuffled play order as indices into [keys] (empty when there is none to keep). */
+data class SavedQueue(
+    val keys: List<String>,
+    val index: Int,
+    val positionMs: Long,
+    val shuffle: Boolean,
+    val repeat: Int,
+    val order: List<Int> = emptyList(),
+)
 
 enum class ThemeMode { System, Dark, Light }
 
@@ -28,6 +36,7 @@ class Prefs(private val context: Context) {
         val pos = longPreferencesKey("queue_pos")
         val shuffle = booleanPreferencesKey("shuffle")
         val repeat = intPreferencesKey("repeat")
+        val queueOrder = stringPreferencesKey("queue_order")
         val minDuration = intPreferencesKey("min_duration_s")
         val lyricsTree = stringPreferencesKey("lyrics_tree")
         val theme = stringPreferencesKey("theme")
@@ -130,6 +139,7 @@ class Prefs(private val context: Context) {
         it[K.pos] = q.positionMs
         it[K.shuffle] = q.shuffle
         it[K.repeat] = q.repeat
+        if (q.order.size == q.keys.size && q.order.isNotEmpty()) it[K.queueOrder] = q.order.joinToString(",") else it.remove(K.queueOrder)
     }
 
     suspend fun loadQueue(): SavedQueue? {
@@ -137,7 +147,8 @@ class Prefs(private val context: Context) {
         val keys = p[K.queueKeys]?.split(SEP)?.filter { it.isNotEmpty() }
             ?: p[K.queue]?.split(',')?.mapNotNull { it.toLongOrNull()?.let(SongKeys::legacyKey) }.orEmpty()
         if (keys.isEmpty()) return null
-        return SavedQueue(keys, p[K.index] ?: 0, p[K.pos] ?: 0, p[K.shuffle] ?: false, p[K.repeat] ?: 0)
+        val order = p[K.queueOrder]?.split(',')?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size == keys.size }.orEmpty()
+        return SavedQueue(keys, p[K.index] ?: 0, p[K.pos] ?: 0, p[K.shuffle] ?: false, p[K.repeat] ?: 0, order)
     }
 
     private companion object {

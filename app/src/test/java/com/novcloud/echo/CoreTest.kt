@@ -24,7 +24,7 @@ class CoreTest {
     )
 
     private val lib = Library.build(
-        (1L..300L).map { song(it, listOf("周杰伦", "林俊杰", "Taylor Swift", "陈奕迅", "Adele", "五月天")[(it % 6).toInt()], it % 25, listOf("Pop", "Rock", "Jazz")[(it % 3).toInt()]) },
+        (1L..300L).map { song(it, listOf("林夕照", "沈星河", "Ivy Calder", "温屿", "Otis Fenwick", "晚潮乐队")[(it % 6).toInt()], it % 25, listOf("Pop", "Rock", "Jazz")[(it % 3).toInt()]) },
     )
 
     @Test
@@ -72,7 +72,7 @@ class CoreTest {
             PlayEvent(0, s.id, s.title, s.artist, s.album, s.albumId, s.genre, day - (i + 1) * 3_600_000L, 180_000, 200_000, true)
         }
         val a = Recommender.build(lib, events, day + 9 * 3_600_000L)
-        val today = events + PlayEvent(0, 5, "x", "周杰伦", "a", 5, "Pop", day + 10 * 3_600_000L, 200_000, 200_000, true)
+        val today = events + PlayEvent(0, 5, "x", "林夕照", "a", 5, "Pop", day + 10 * 3_600_000L, 200_000, 200_000, true)
         val b = Recommender.build(lib, today, day + 20 * 3_600_000L)
         assertEquals(a.daily!!.songs.map { it.id }, b.daily!!.songs.map { it.id })
         assertEquals(30, a.daily!!.songs.size)
@@ -106,7 +106,7 @@ class CoreTest {
         val days = listOf(0L, 1, 2, 5, 6, 7, 8)
         val events = days.map { d ->
             val t = today.minusDays(d).atTime(21, 0).atZone(zone).toInstant().toEpochMilli()
-            PlayEvent(0, 1, "a", "周杰伦/林俊杰", "b", 1, "Pop", t, 600_000, 600_000, true)
+            PlayEvent(0, 1, "a", "林夕照/沈星河", "b", 1, "Pop", t, 600_000, 600_000, true)
         }.sortedBy { it.startedAt }
         val s = StatsEngine.compute(events, lib, StatsRange.Week, now)
         assertEquals(3, s.currentStreak)

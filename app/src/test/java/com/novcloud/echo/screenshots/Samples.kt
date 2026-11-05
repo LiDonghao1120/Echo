@@ -247,4 +247,41 @@ object Samples {
         val c = app(context)
         c.lyrics.prime(s, c.lyricsTree.value, com.novcloud.echo.data.lyrics.LyricsParser.parse(lrc))
     }
+
+    /**
+     * Lyrics read the way a real file's are: a synthetic M4A (mdat first, then moov/udta/meta/ilst ©lyr) holding
+     * word-timed, bilingual LRC goes through the embedded tag reader and the parser.
+     */
+    fun primeEmbeddedLyrics(context: Context, songTitle: String = "Paper Satellites") {
+        val s = songs.first { it.title == songTitle }
+        val p = s.durationMs * 37 / 100
+        fun t(ms: Long) = "%02d:%02d.%02d".format(ms / 60_000, ms / 1000 % 60, ms % 1000 / 10)
+        val words = listOf("Every ", "light ", "on ", "the ", "pier ", "is ", "calling ", "home")
+        val start = p - 2600
+        val stamped = words.mapIndexed { i, w -> "<${t(start + i * 650L)}>$w" }.joinToString("") + "<${t(start + words.size * 650L)}>"
+        val lrc = listOf(
+            "[${t(p - 11_000)}]Low tide, slow tide",
+            "[${t(p - 11_000)}]退潮 慢慢退潮",
+            "[${t(p - 6_500)}]Paper boats along the line",
+            "[${t(p - 6_500)}]纸船沿着海岸线",
+            "[${t(start)}]$stamped",
+            "[${t(start)}]码头的每一盏灯都在唤我回家",
+            "[${t(p + 3_000)}]Keep the porch light burning",
+            "[${t(p + 3_000)}]让门廊的灯一直亮着",
+            "[${t(p + 7_200)}]Till the morning tide",
+            "[${t(p + 7_200)}]直到清晨的潮水",
+        ).joinToString("\n")
+        fun box(type: ByteArray, body: ByteArray): ByteArray {
+            val n = 8 + body.size
+            return byteArrayOf((n shr 24).toByte(), (n shr 16).toByte(), (n shr 8).toByte(), n.toByte()) + type + body
+        }
+        fun box(type: String, body: ByteArray) = box(type.toByteArray(Charsets.ISO_8859_1), body)
+        val lyr = byteArrayOf(0xA9.toByte(), 'l'.code.toByte(), 'y'.code.toByte(), 'r'.code.toByte())
+        val data = box("data", byteArrayOf(0, 0, 0, 1, 0, 0, 0, 0) + lrc.toByteArray())
+        val meta = box("meta", ByteArray(4) + box("hdlr", ByteArray(25)) + box("ilst", box(lyr, data)))
+        val file = box("ftyp", "M4A ".toByteArray() + ByteArray(4)) + box("mdat", ByteArray(4096)) + box("moov", box("mvhd", ByteArray(100)) + box("udta", meta))
+        val text = com.novcloud.echo.data.lyrics.TagReader.lyrics(com.novcloud.echo.data.tags.ArraySource(file))!!
+        val c = app(context)
+        c.lyrics.prime(s, c.lyricsTree.value, com.novcloud.echo.data.lyrics.LyricsParser.parse(text))
+    }
 }
