@@ -216,6 +216,8 @@ internal class QueueReorder(
         val key = draggingKey ?: return
         val info = list.layoutInfo
         val cur = info.visibleItemsInfo.firstOrNull { it.key == key } ?: return
+        // Until the list has laid out the last swap its positions are stale; swapping again would undo it.
+        if (cur.index != rows.indexOfFirst { it.second == key }) return
         val top = cur.offset + offsetOf(key)
         val middle = top + cur.size / 2f
         val target = info.visibleItemsInfo.firstOrNull { it.key != key && middle >= it.offset && middle <= it.offset + it.size } ?: return
@@ -287,8 +289,11 @@ private fun QueueRow(
         gesturesEnabled = !dragging,
         backgroundContent = {
             val c by animateColorAsState(if (dismiss.targetValue == SwipeToDismissBoxValue.Settled) Color.Transparent else Color(0xFFE5484D), label = "bg")
-            Box(Modifier.fillMaxSize().background(c).padding(end = 24.dp), contentAlignment = Alignment.CenterEnd) {
-                Icon(Icons.Rounded.Delete, removeLabel, tint = Color.White)
+            // The row itself is transparent over the player background, so the icon only shows while swiping.
+            if (dismiss.dismissDirection != SwipeToDismissBoxValue.Settled) {
+                Box(Modifier.fillMaxSize().background(c).padding(end = 24.dp), contentAlignment = Alignment.CenterEnd) {
+                    Icon(Icons.Rounded.Delete, removeLabel, tint = Color.White)
+                }
             }
         },
     ) {

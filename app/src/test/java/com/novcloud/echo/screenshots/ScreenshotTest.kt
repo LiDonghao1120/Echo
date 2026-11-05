@@ -171,10 +171,13 @@ abstract class ScreenshotBase {
         val state = Samples.app(ctx).player.state.value
         val pos = state.queue.indexOfFirst { it.index == state.currentIndex }
         val titles = state.queue.drop(pos + 1).map { it.song.title }
-        val h = compose.onNodeWithTag("queue_row_0").fetchSemanticsNode().boundsInRoot.height
-        compose.onAllNodesWithTag("queue_handle", useUnmergedTree = true)[row].performTouchInput {
-            down(center)
-            repeat(20) { moveBy(androidx.compose.ui.geometry.Offset(0f, h * rows / 20), delayMillis = 16) }
+        val h = compose.onNodeWithTag("queue_row_0", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.height
+        val handle = compose.onAllNodesWithTag("queue_handle", useUnmergedTree = true)[row]
+        handle.performTouchInput { down(center) }
+        repeat(24) {
+            compose.onRoot().performTouchInput { moveBy(androidx.compose.ui.geometry.Offset(0f, h * rows / 24), delayMillis = 16) }
+            compose.mainClock.advanceTimeBy(32)
+            compose.waitForIdle()
         }
         compose.mainClock.advanceTimeBy(600)
         compose.waitForIdle()
