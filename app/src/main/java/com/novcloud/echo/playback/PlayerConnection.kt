@@ -158,7 +158,7 @@ class PlayerConnection(
             }
         }
         _state.value = PlayerState(
-            song = c.currentMediaItem?.let { songFor(it, lib) },
+            song = c.currentMediaItem?.let { songFor(it, lib) } ?: _state.value.song.takeIf { !timeline.isEmpty },
             isPlaying = c.playingOrBuffering(),
             buffering = c.playbackState == Player.STATE_BUFFERING,
             durationMs = c.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: (c.currentMediaItem?.let { songFor(it, lib)?.durationMs } ?: 0),

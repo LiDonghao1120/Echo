@@ -162,7 +162,7 @@ fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onColla
     ) {
         if (song != null && Build.VERSION.SDK_INT >= 31) {
             com.novcloud.echo.ui.components.SwapImage(
-                song.art,
+                song.art, slot = "now_playing_backdrop", modifier =
                 Modifier.fillMaxSize().graphicsLayer { alpha = 0.22f; scaleX = 1.5f; scaleY = 1.5f }.blur(100.dp),
             )
         }
@@ -302,7 +302,7 @@ private fun SharedTransitionScope.ArtPane(song: Song, playing: Boolean, accent: 
                             onHorizontalDrag = { _, d -> scope.launch { swipe.snapTo(swipe.value + d) } },
                         )
                     },
-                EchoShape.cover, song.album, 72.dp,
+                EchoShape.cover, song.album, 72.dp, slot = com.novcloud.echo.ui.components.NOW_PLAYING_SLOT,
             )
         }
     }

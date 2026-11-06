@@ -118,7 +118,7 @@ fun SharedTransitionScope.MiniPlayer(avs: AnimatedVisibilityScope, onExpand: () 
                 Modifier
                     .sharedElement(rememberSharedContentState("art"), avs)
                     .size(44.dp),
-                EchoShape.cover, song.album, 18.dp,
+                EchoShape.cover, song.album, 18.dp, slot = com.novcloud.echo.ui.components.MINI_PLAYER_SLOT,
             )
             Spacer(Modifier.width(12.dp))
             AnimatedContent(
