@@ -199,7 +199,69 @@ fun Artwork(
     val base = remember(seed) { seededColor(seed) }
     Box(modifier.clip(shape).background(lerp(base, Ink, 0.62f)), contentAlignment = Alignment.Center) {
         EchoMark(Modifier.size(iconSize), color = base.copy(alpha = 0.75f), core = base)
-        if (model != null) AsyncImage(model = model, contentDescription = null, contentScale = contentScale, modifier = Modifier.fillMaxSize())
+        if (model != null) SwapImage(model, Modifier.fillMaxSize(), contentScale)
+    }
+}
+
+/**
+ * An image whose model can change in place (the now-playing cover on skip): the picture already on screen stays
+ * until the new one has loaded and faded in over it, so the placeholder never flashes between two covers.
+ * When the new model has no picture, the old one is dropped and whatever is behind this shows.
+ */
+@Composable
+fun SwapImage(model: Any?, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop, alpha: Float = 1f) {
+    val layers = remember { ArrayList<Any>(3) }
+    if (model != null && layers.lastOrNull() != model) {
+        layers.remove(model)
+        layers.add(model)
+        while (layers.size > 3) layers.removeAt(0)
+    }
+    var settled by remember { mutableStateOf<Any?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    if (model == null) { layers.clear(); return }
+    val top = model
+    val visible = if (settled == top) listOf(top) else layers.toList()
+    Box(modifier) {
+        visible.forEach { m ->
+            androidx.compose.runtime.key(m) {
+                AsyncImage(
+                    model = m, contentDescription = null, contentScale = contentScale, alpha = alpha,
+                    modifier = Modifier.fillMaxSize(),
+                    onSuccess = { if (m == top) scope.launch { kotlinx.coroutines.delay(SWAP_SETTLE_MS); settled = m } },
+                    onError = { if (m == top) settled = m },
+                )
+            }
+        }
+    }
+    if (settled == top && layers.size > 1) { layers.retainAll { it == top } }
+}
+
+private const val SWAP_SETTLE_MS = 260L
+
+/**
+ * Warms the image cache with the covers of the songs before and after the current one, in play order, at the size
+ * the now-playing cover is drawn, so a skip finds its cover already decoded instead of reading it from the file.
+ */
+@Composable
+fun PrefetchNeighbourArt(state: com.novcloud.echo.playback.PlayerState) {
+    val context = LocalContext.current
+    val px = with(androidx.compose.ui.platform.LocalDensity.current) {
+        androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.roundToPx()
+    }
+    val pos = state.queue.indexOfFirst { it.index == state.currentIndex }
+    val wrap = state.repeat == androidx.media3.common.Player.REPEAT_MODE_ALL
+    val neighbours = remember(state.queue, pos, wrap) {
+        if (pos < 0) emptyList() else listOf(pos + 1, pos - 1, pos + 2).mapNotNull { i ->
+            val n = state.queue.size
+            val j = if (wrap && n > 0) ((i % n) + n) % n else i
+            state.queue.getOrNull(j)?.song?.art
+        }.distinct()
+    }
+    LaunchedEffect(neighbours, px) {
+        val loader = coil.Coil.imageLoader(context)
+        neighbours.forEach { art ->
+            loader.enqueue(coil.request.ImageRequest.Builder(context).data(art).size(px).build())
+        }
     }
 }
 

@@ -123,6 +123,7 @@ enum class PlayerPane { Art, Lyrics, Queue }
 fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onCollapse: () -> Unit, startPane: PlayerPane = PlayerPane.Art) {
     val actions = LocalActions.current
     val state by actions.player.state.collectAsState()
+    com.novcloud.echo.ui.components.PrefetchNeighbourArt(state)
     val favorites by actions.repo.favorites.collectAsState()
     val song = state.song
     var pane by rememberSaveable { mutableStateOf(startPane) }
@@ -160,9 +161,9 @@ fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onColla
             .clickable(remember { MutableInteractionSource() }, null) {},
     ) {
         if (song != null && Build.VERSION.SDK_INT >= 31) {
-            AsyncImage(
-                song.art, null, contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.22f; scaleX = 1.5f; scaleY = 1.5f }.blur(100.dp),
+            com.novcloud.echo.ui.components.SwapImage(
+                song.art,
+                Modifier.fillMaxSize().graphicsLayer { alpha = 0.22f; scaleX = 1.5f; scaleY = 1.5f }.blur(100.dp),
             )
         }
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Ink.copy(alpha = 0.92f))))

@@ -32,13 +32,13 @@ private val cache = HashMap<Any, ArtColors>()
 @Composable
 fun rememberArtColors(model: Any?): ArtColors {
     val context = LocalContext.current
-    var colors by remember(model) { mutableStateOf(model?.let { synchronized(cache) { cache[it] } } ?: DefaultArtColors) }
+    var colors by remember { mutableStateOf(model?.let { synchronized(cache) { cache[it] } } ?: DefaultArtColors) }
     LaunchedEffect(model) {
         if (model == null) { colors = DefaultArtColors; return@LaunchedEffect }
         synchronized(cache) { cache[model] }?.let { colors = it; return@LaunchedEffect }
         val req = ImageRequest.Builder(context).data(model).size(160).allowHardware(false).build()
         val result = context.imageLoader.execute(req)
-        val bmp = ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap ?: return@LaunchedEffect
+        val bmp = ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap ?: run { colors = DefaultArtColors; return@LaunchedEffect }
         val c = withContext(Dispatchers.Default) {
             runCatching {
                 val soft = if (bmp.config == Bitmap.Config.HARDWARE) bmp.copy(Bitmap.Config.ARGB_8888, false) else bmp

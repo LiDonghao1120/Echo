@@ -74,6 +74,7 @@ import kotlin.math.roundToInt
 fun SharedTransitionScope.MiniPlayer(avs: AnimatedVisibilityScope, onExpand: () -> Unit, modifier: Modifier = Modifier) {
     val actions = LocalActions.current
     val state by actions.player.state.collectAsState()
+    com.novcloud.echo.ui.components.PrefetchNeighbourArt(state)
     val position by actions.player.position.collectAsState()
     val song = state.song ?: return
     val colors = rememberArtColors(song.art)
