@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import com.novcloud.echo.ui.components.AlphabetRail
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -153,9 +154,16 @@ fun SongListScreen(source: ListSource) {
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var addAll by remember { mutableStateOf(false) }
+    val alphabetical = source is ListSource.GenreSrc || source is ListSource.FolderSrc
+    val sections = remember(songs, alphabetical) {
+        if (alphabetical && songs.size >= com.novcloud.echo.ui.library.RAIL_MIN) com.novcloud.echo.ui.components.sectionStarts(songs.map { it.titleKey }) else emptyMap()
+    }
+    val currentSection by remember(sections) {
+        derivedStateOf { sections.entries.lastOrNull { it.value + 1 <= list.firstVisibleItemIndex }?.key ?: sections.keys.firstOrNull() }
+    }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 24.dp + com.novcloud.echo.ui.components.ScrollTop.CLEARANCE)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomInset.current + 24.dp + (if (sections.isEmpty()) com.novcloud.echo.ui.components.ScrollTop.CLEARANCE else 0.dp))) {
             item {
                 Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(colors.top.copy(alpha = 0.9f), Color.Transparent)))) {
                     Column(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 64.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -203,13 +211,15 @@ fun SongListScreen(source: ListSource) {
             itemsIndexed(songs, key = { i, s -> "${s.id}_$i" }) { i, s ->
                 SongRow(
                     s, { actions.player.playSong(s, songs) },
+                    modifier = if (sections.isEmpty()) Modifier else Modifier.padding(end = 18.dp),
                     index = if (source is ListSource.Kind && source.kind == "most") i + 1 else null,
                     current = state.song?.id == s.id, playing = state.isPlaying,
                     menuContext = SongMenuContext(playlistId),
                 )
             }
         }
-        ScrollTopButton(top)
+        if (sections.isEmpty()) ScrollTopButton(top)
+        AlphabetRail(sections, currentSection, { i -> scope.launch { list.scrollToItem(i + 1) } }, Modifier.statusBarsPadding().padding(top = 56.dp))
         CollapsingTopBar(title, progress, onTitleClick = { scope.launch { list.scrollToTopFast() } }) {
             Row {
                 if (songs.isNotEmpty() && playlistId == null) IconButton(onClick = { addAll = true }) { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null) }

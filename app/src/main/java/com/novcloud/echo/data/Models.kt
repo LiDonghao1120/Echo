@@ -141,7 +141,7 @@ data class Library(
                 )
             }.sortedByKey { nameSortKey(it.name) }
             val genres = songs.filter { it.genre.isNotBlank() }.groupBy { Names.key(it.genre) }
-                .map { (_, l) -> Genre(mostCommon(l.map { it.genre }), l) }.sortedByDescending { it.songs.size }
+                .map { (_, l) -> Genre(mostCommon(l.map { it.genre }), l.sortedByKey { it.titleKey }) }.sortedByDescending { it.songs.size }
             val folders = songs.groupBy { it.folder }.map { (p, l) -> Folder(p, l.sortedByKey { it.titleKey }) }
                 .sortedByKey { sortKey(it.name) }
             return Library(songs.sortedByKey { it.titleKey }, albums, artists, genres, folders, loaded = true)

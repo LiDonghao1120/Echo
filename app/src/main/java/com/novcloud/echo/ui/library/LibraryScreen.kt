@@ -210,7 +210,7 @@ private fun SongsTab(toTop: SharedFlow<Int>) {
     }
 }
 
-private const val RAIL_MIN = 24
+internal const val RAIL_MIN = 24
 
 @Composable
 fun PillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
@@ -234,27 +234,33 @@ private fun AlbumsTab(toTop: SharedFlow<Int>) {
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
     val grid = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+    val sections = remember(lib) { if (lib.albums.size >= RAIL_MIN) sectionStarts(lib.albums.map { sortKey(it.title) }) else emptyMap() }
+    val current by remember(sections) {
+        derivedStateOf { sections.entries.lastOrNull { it.value <= grid.firstVisibleItemIndex }?.key ?: sections.keys.firstOrNull() }
+    }
     val top = rememberScrollTop(grid)
     ScrollTopOn(toTop, 1) { grid.scrollToTopFast() }
     Box(Modifier.fillMaxSize()) {
-    LazyVerticalGrid(
-        GridCells.Adaptive(150.dp),
-        Modifier.fillMaxSize(),
-        state = grid,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp + com.novcloud.echo.ui.components.ScrollTop.CLEARANCE),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-        items(lib.albums, key = { it.id }) { a ->
-            Column(Modifier.echoClick(corner = 4.dp) { actions.openAlbum(a.id) }) {
-                Artwork(a.art, Modifier.fillMaxWidth().aspectRatio(1f), EchoShape.cover, a.title)
-                Spacer(Modifier.height(8.dp))
-                Text(displayAlbum(a.title), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(displayArtist(a.artist), style = MaterialTheme.typography.bodySmall, color = palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        LazyVerticalGrid(
+            GridCells.Adaptive(150.dp),
+            Modifier.fillMaxSize(),
+            state = grid,
+            contentPadding = PaddingValues(start = 16.dp, end = if (sections.isEmpty()) 16.dp else 30.dp, top = 6.dp, bottom = LocalBottomInset.current + 12.dp + (if (sections.isEmpty()) com.novcloud.echo.ui.components.ScrollTop.CLEARANCE else 0.dp)),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            items(lib.albums, key = { it.id }) { a ->
+                Column(Modifier.echoClick(corner = 4.dp) { actions.openAlbum(a.id) }) {
+                    Artwork(a.art, Modifier.fillMaxWidth().aspectRatio(1f), EchoShape.cover, a.title)
+                    Spacer(Modifier.height(8.dp))
+                    Text(displayAlbum(a.title), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(displayArtist(a.artist), style = MaterialTheme.typography.bodySmall, color = palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
-    }
-    ScrollTopButton(top)
+        AlphabetRail(sections, current, { i -> scope.launch { grid.scrollToItem(i) } })
+        if (sections.isEmpty()) ScrollTopButton(top)
     }
 }
 
@@ -334,8 +340,14 @@ private fun FoldersTab(toTop: SharedFlow<Int>) {
     val actions = LocalActions.current
     val lib by container.library.library.collectAsState()
     val list = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val sections = remember(lib) { if (lib.folders.size >= RAIL_MIN) sectionStarts(lib.folders.map { sortKey(it.name) }) else emptyMap() }
+    val current by remember(sections) {
+        derivedStateOf { sections.entries.lastOrNull { it.value + 1 <= list.firstVisibleItemIndex }?.key ?: sections.keys.firstOrNull() }
+    }
     ScrollTopOn(toTop, 4) { list.scrollToTopFast() }
-    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp)) {
+    Box(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomInset.current + 12.dp, end = if (sections.isEmpty()) 0.dp else 18.dp)) {
         item(key = "manage") {
             Row(
                 Modifier.fillMaxWidth().clickable { actions.openScanFolders() }.heightIn(min = 52.dp).padding(horizontal = 20.dp),
@@ -361,6 +373,8 @@ private fun FoldersTab(toTop: SharedFlow<Int>) {
                 Text("${f.songs.size}", style = EchoType.numeral(14.sp), color = palette.muted)
             }
         }
+    }
+    AlphabetRail(sections, current, { i -> scope.launch { list.scrollToItem(i + 1) } })
     }
 }
 
