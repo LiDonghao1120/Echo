@@ -224,6 +224,8 @@ fun SwapImage(
     val retries = remember { androidx.compose.runtime.mutableStateMapOf<Any, Int>() }
     val current by androidx.compose.runtime.rememberUpdatedState(model)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val context = LocalContext.current
+    val motion = LocalMotion.current
     if (slot != null) {
         androidx.compose.runtime.DisposableEffect(Unit) {
             com.novcloud.echo.diag.DiagLog.i("EchoArt", "$slot enter model=${model.artTag()} held=${held?.model.artTag()}")
@@ -241,15 +243,18 @@ fun SwapImage(
             )
         }
         androidx.compose.runtime.key(model, retries[model] ?: 0) {
+            val fade = remember { androidx.compose.animation.core.Animatable(if (base == null || base.model == model || !motion) 1f else 0f) }
+            val request = remember(model) { coil.request.ImageRequest.Builder(context).data(model).crossfade(false).build() }
             AsyncImage(
-                model = model, contentDescription = null, contentScale = contentScale, alpha = alpha,
-                modifier = Modifier.fillMaxSize(),
+                model = request, contentDescription = null, contentScale = contentScale, alpha = alpha,
+                modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = fade.value },
                 onSuccess = { ok ->
                     val m = model
                     if (slot != null) com.novcloud.echo.diag.DiagLog.i("EchoArt", "$slot loaded ${m.artTag()} from ${ok.result.dataSource} in ${android.os.SystemClock.uptimeMillis() - (SwapMemory.since[slot] ?: 0)}ms held=${held?.model.artTag()}")
                     val bmp = (ok.result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap?.asImageBitmap()
                     scope.launch {
-                        kotlinx.coroutines.delay(SWAP_SETTLE_MS)
+                        if (fade.value < 1f) fade.animateTo(1f, androidx.compose.animation.core.tween(SWAP_FADE_MS, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                        kotlinx.coroutines.delay(SWAP_HOLD_MS)
                         if (m == current) {
                             settled = m
                             if (bmp != null) {
@@ -297,7 +302,8 @@ object SwapMemory {
     val size = HashMap<String, androidx.compose.ui.unit.IntSize>()
 }
 
-private const val SWAP_SETTLE_MS = 260L
+private const val SWAP_FADE_MS = 320
+private const val SWAP_HOLD_MS = 60L
 private const val SWAP_RETRIES = 2
 private const val SWAP_RETRY_MS = 150L
 const val NOW_PLAYING_SLOT = "now_playing"
