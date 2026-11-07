@@ -78,7 +78,11 @@ class ArtFetcher(private val ref: ArtRef, private val options: Options) : Fetche
 }
 
 class ArtKeyer : Keyer<ArtRef> {
-    override fun key(data: ArtRef, options: Options) = if (data.albumId >= 0) "album:${data.albumId}" else "song:${data.songId}"
+    override fun key(data: ArtRef, options: Options): String {
+        val base = if (data.albumId >= 0) "album:${data.albumId}" else "song:${data.songId}"
+        val w = (options.size.width as? Dimension.Pixels)?.px ?: return base
+        return "$base@$w"
+    }
 }
 
 fun albumArtUri(albumId: Long): Uri =

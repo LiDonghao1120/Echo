@@ -224,6 +224,13 @@ fun SwapImage(
     val retries = remember { androidx.compose.runtime.mutableStateMapOf<Any, Int>() }
     val current by androidx.compose.runtime.rememberUpdatedState(model)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    if (slot != null) {
+        androidx.compose.runtime.DisposableEffect(Unit) {
+            com.novcloud.echo.diag.DiagLog.i("EchoArt", "$slot enter model=${model.artTag()} held=${held?.model.artTag()}")
+            onDispose { com.novcloud.echo.diag.DiagLog.i("EchoArt", "$slot leave") }
+        }
+        androidx.compose.runtime.LaunchedEffect(model) { SwapMemory.since[slot] = android.os.SystemClock.uptimeMillis() }
+    }
     if (model == null) return
     Box(modifier.then(if (slot != null) Modifier.onSizeChanged { SwapMemory.size[slot] = it } else Modifier)) {
         val base = held
@@ -239,6 +246,7 @@ fun SwapImage(
                 modifier = Modifier.fillMaxSize(),
                 onSuccess = { ok ->
                     val m = model
+                    if (slot != null) com.novcloud.echo.diag.DiagLog.i("EchoArt", "$slot loaded ${m.artTag()} from ${ok.result.dataSource} in ${android.os.SystemClock.uptimeMillis() - (SwapMemory.since[slot] ?: 0)}ms held=${held?.model.artTag()}")
                     val bmp = (ok.result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap?.asImageBitmap()
                     scope.launch {
                         kotlinx.coroutines.delay(SWAP_SETTLE_MS)
@@ -274,11 +282,18 @@ fun SwapImage(
     }
 }
 
+private fun Any?.artTag(): String = when (this) {
+    null -> "-"
+    is com.novcloud.echo.data.ArtRef -> if (albumId >= 0) "a$albumId" else "s$songId"
+    else -> javaClass.simpleName
+}
+
 class HeldImage(val model: Any, val bitmap: androidx.compose.ui.graphics.ImageBitmap)
 
 /** The picture each [SwapImage] slot last settled on and how big it is drawn, kept outside composition so a re-created slot starts from the picture already on screen. */
 object SwapMemory {
     val held = HashMap<String, HeldImage>()
+    val since = HashMap<String, Long>()
     val size = HashMap<String, androidx.compose.ui.unit.IntSize>()
 }
 

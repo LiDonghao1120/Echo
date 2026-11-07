@@ -119,6 +119,7 @@ fun AppRoot(
     val nav = rememberNavController()
     val playerState by container.player.state.collectAsState()
     var expanded by rememberSaveable { mutableStateOf(startExpanded) }
+    LaunchedEffect(expanded) { com.novcloud.echo.diag.DiagLog.i("EchoArt", "expanded $expanded") }
     var menuFor by remember { mutableStateOf<Pair<Song, SongMenuContext>?>(null) }
     val openTick by openPlayer.collectAsState()
     LaunchedEffect(Unit) { if (startRoute != "home") nav.navigate(startRoute) }
@@ -132,6 +133,7 @@ fun AppRoot(
         )
     }
     val hasSong = playerState.song != null
+    LaunchedEffect(hasSong) { com.novcloud.echo.diag.DiagLog.i("EchoArt", "hasSong $hasSong") }
     val entry by nav.currentBackStackEntryAsState()
     val barVisible = entry?.destination?.route.let { it == null || it in tabRoutes }
     LaunchedEffect(entry) {

@@ -157,8 +157,12 @@ class PlayerConnection(
                 i = timeline.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, c.shuffleModeEnabled)
             }
         }
+        val song = c.currentMediaItem?.let { songFor(it, lib) } ?: _state.value.song.takeIf { !timeline.isEmpty }
+        if (song?.id != _state.value.song?.id) {
+            com.novcloud.echo.diag.DiagLog.i("EchoArt", "song ${_state.value.song?.id} -> ${song?.id} index ${c.currentMediaItemIndex} playing ${c.isPlaying}")
+        }
         _state.value = PlayerState(
-            song = c.currentMediaItem?.let { songFor(it, lib) } ?: _state.value.song.takeIf { !timeline.isEmpty },
+            song = song,
             isPlaying = c.playingOrBuffering(),
             buffering = c.playbackState == Player.STATE_BUFFERING,
             durationMs = c.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: (c.currentMediaItem?.let { songFor(it, lib)?.durationMs } ?: 0),
