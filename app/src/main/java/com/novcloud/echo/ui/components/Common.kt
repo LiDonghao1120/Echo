@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -218,59 +219,66 @@ fun SwapImage(
     alpha: Float = 1f,
     slot: String? = null,
 ) {
-    val layers = remember { ArrayList<Any>(3) }
-    if (layers.isEmpty() && slot != null) SwapMemory.shown[slot]?.takeIf { it != model }?.let { layers.add(it) }
-    if (model != null && layers.lastOrNull() != model) {
-        layers.remove(model)
-        layers.add(model)
-        while (layers.size > 3) layers.removeAt(0)
-    }
+    var held by remember { mutableStateOf(slot?.let { SwapMemory.held[it] }) }
     var settled by remember { mutableStateOf<Any?>(null) }
     val retries = remember { androidx.compose.runtime.mutableStateMapOf<Any, Int>() }
     val current by androidx.compose.runtime.rememberUpdatedState(model)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    if (model == null) { layers.clear(); return }
-    val visible = if (settled == model) listOf(model) else layers.toList()
+    if (model == null) return
     Box(modifier.then(if (slot != null) Modifier.onSizeChanged { SwapMemory.size[slot] = it } else Modifier)) {
-        visible.forEach { m ->
-            androidx.compose.runtime.key(m, retries[m] ?: 0) {
-                AsyncImage(
-                    model = m, contentDescription = null, contentScale = contentScale, alpha = alpha,
-                    modifier = Modifier.fillMaxSize(),
-                    onSuccess = {
-                        if (m == current) scope.launch {
-                            kotlinx.coroutines.delay(SWAP_SETTLE_MS)
-                            if (m == current) {
-                                settled = m
-                                if (slot != null) SwapMemory.shown[slot] = m
+        val base = held
+        if (base != null && settled != model) {
+            androidx.compose.foundation.Image(
+                base.bitmap, contentDescription = null, contentScale = contentScale, alpha = alpha,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        androidx.compose.runtime.key(model, retries[model] ?: 0) {
+            AsyncImage(
+                model = model, contentDescription = null, contentScale = contentScale, alpha = alpha,
+                modifier = Modifier.fillMaxSize(),
+                onSuccess = { ok ->
+                    val m = model
+                    val bmp = (ok.result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap?.asImageBitmap()
+                    scope.launch {
+                        kotlinx.coroutines.delay(SWAP_SETTLE_MS)
+                        if (m == current) {
+                            settled = m
+                            if (bmp != null) {
+                                val h = HeldImage(m, bmp)
+                                held = h
+                                if (slot != null) SwapMemory.held[slot] = h
                             }
                         }
-                    },
-                    onError = { err ->
-                        if (slot != null) com.novcloud.echo.diag.DiagLog.w("EchoArt", "$slot cover failed (try ${retries[m] ?: 0}): ${err.result.throwable.javaClass.simpleName} ${err.result.throwable.message}")
-                        if (m == current) scope.launch {
-                            if ((retries[m] ?: 0) < SWAP_RETRIES) {
-                                kotlinx.coroutines.delay(SWAP_RETRY_MS)
-                                if (m == current) retries[m] = (retries[m] ?: 0) + 1
-                            } else {
-                                settled = m
-                                if (slot != null) SwapMemory.shown.remove(slot)
-                            }
+                    }
+                },
+                onError = { err ->
+                    val m = model
+                    if (slot != null) com.novcloud.echo.diag.DiagLog.w("EchoArt", "$slot cover failed (try ${retries[m] ?: 0}): ${err.result.throwable.javaClass.simpleName} ${err.result.throwable.message}")
+                    scope.launch {
+                        if ((retries[m] ?: 0) < SWAP_RETRIES) {
+                            kotlinx.coroutines.delay(SWAP_RETRY_MS)
+                            if (m == current) retries[m] = (retries[m] ?: 0) + 1
+                        } else if (m == current) {
+                            settled = m
+                            held = null
+                            if (slot != null) SwapMemory.held.remove(slot)
                         }
-                    },
-                )
-            }
+                    }
+                },
+            )
         }
     }
-    if (settled == model && layers.size > 1) layers.retainAll { it == model }
     androidx.compose.runtime.SideEffect {
-        if (retries.size > 4) retries.keys.filter { it !in layers }.forEach { retries.remove(it) }
+        if (retries.size > 4) retries.keys.filter { it != model }.forEach { retries.remove(it) }
     }
 }
 
-/** What each [SwapImage] slot last showed and how big it is drawn, kept outside composition so a re-created slot starts from the picture already on screen. */
+class HeldImage(val model: Any, val bitmap: androidx.compose.ui.graphics.ImageBitmap)
+
+/** The picture each [SwapImage] slot last settled on and how big it is drawn, kept outside composition so a re-created slot starts from the picture already on screen. */
 object SwapMemory {
-    val shown = HashMap<String, Any>()
+    val held = HashMap<String, HeldImage>()
     val size = HashMap<String, androidx.compose.ui.unit.IntSize>()
 }
 
@@ -279,7 +287,7 @@ private const val SWAP_RETRIES = 2
 private const val SWAP_RETRY_MS = 150L
 const val NOW_PLAYING_SLOT = "now_playing"
 const val MINI_PLAYER_SLOT = "mini_player"
-private val PREFETCH_SLOTS = listOf(NOW_PLAYING_SLOT, MINI_PLAYER_SLOT)
+private val PREFETCH_SLOTS = listOf(NOW_PLAYING_SLOT)
 
 /**
  * Warms the image cache with the covers of the songs before and after the current one, in play order, at the size
