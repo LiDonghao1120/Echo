@@ -336,7 +336,7 @@ private fun Disc(angle: FloatState, modifier: Modifier) {
                     drawCircle(Color(0xFF8E959D).copy(alpha = 0.6f), r * 0.97f, c, style = Stroke(hair))
                     drawCircle(Color.White.copy(alpha = 0.9f), r - hair * 0.5f, c, style = Stroke(hair))
                     drawCircle(Color.Black, r * 0.36f, c, blendMode = BlendMode.Clear)
-                    drawCircle(Color.White.copy(alpha = 0.22f), r * 0.36f, c)
+                    drawCircle(Color.White.copy(alpha = 0.3f), r * 0.36f, c)
                     drawCircle(Color(0xFF8E959D).copy(alpha = 0.7f), r * 0.36f, c, style = Stroke(hair))
                     drawCircle(Color.White.copy(alpha = 0.5f), r * 0.28f, c, style = Stroke(r * 0.025f))
                     drawCircle(Color.Black, r * 0.125f, c, blendMode = BlendMode.Clear)

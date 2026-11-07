@@ -11,7 +11,7 @@ data class CoverFrame(val side: Float, val width: Float, val height: Float)
  */
 object CoverGeometry {
     const val RECORD = 0.94f
-    const val RECORD_OUT = 0.42f
+    const val RECORD_OUT = 0.5f
     const val CASE_W = 142f / 120f
     const val CASE_H = 125f / 120f
     const val DISC = 0.98f
