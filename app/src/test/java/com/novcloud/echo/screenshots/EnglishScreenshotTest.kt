@@ -36,7 +36,9 @@ class EnglishScreenshotTest : ScreenshotBase() {
 
     @Test fun artist_en() = app("artist_en", route = "artist/Ivy%20Calder", tall = 1700)
     @Test fun artist_kira_en() = app("artist_kira_en", route = "artist/Kira%20Nox")
-    @Test fun album_en() = app("album_en", route = "album/1", tall = 1400)
+    @Test fun album_en() = app("album_en", route = "album/1", tall = 1400, seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Classic) })
+    @Test fun album_vinyl_en() = app("album_vinyl_en", route = "album/2", seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Vinyl) })
+    @Test fun cover_style_sheet_en() = coverPicker("cover_style_sheet_en")
     @Test fun daily_en() = app("daily_en", route = "mix/daily")
     @Test fun search_en() = app("search_en", route = "search")
 

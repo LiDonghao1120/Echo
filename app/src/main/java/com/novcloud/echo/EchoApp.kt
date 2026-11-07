@@ -51,6 +51,8 @@ class AppContainer(app: Application) {
     val backup = BackupManager(app, db, prefs, library, artLibrary)
     val player = PlayerConnection(app, library.library, appScope)
     val lyricsTree: StateFlow<String?> = prefs.lyricsTree.stateIn(appScope, SharingStarted.Eagerly, null)
+    val coverStyle: StateFlow<com.novcloud.echo.data.CoverStyle> =
+        prefs.coverStyle.stateIn(appScope, SharingStarted.Eagerly, com.novcloud.echo.data.CoverStyle.Classic)
     val audioFx = com.novcloud.echo.playback.audio.AudioFx(app, prefs::audioFx, prefs::setAudioFx, appScope)
 
     private val events = db.events().since(0).shareIn(appScope, SharingStarted.Eagerly, replay = 1)

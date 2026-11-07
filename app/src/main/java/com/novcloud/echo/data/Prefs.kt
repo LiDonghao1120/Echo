@@ -26,6 +26,15 @@ data class SavedQueue(
 
 enum class ThemeMode { System, Dark, Light }
 
+/** How the album page draws its cover; one choice for every album. */
+enum class CoverStyle {
+    Classic, Vinyl, Jewel, Film;
+
+    companion object {
+        fun of(name: String?): CoverStyle = entries.firstOrNull { it.name == name } ?: Classic
+    }
+}
+
 class Prefs(private val context: Context) {
     private val ds get() = context.dataStore
 
@@ -50,7 +59,11 @@ class Prefs(private val context: Context) {
         val artAutoApply = booleanPreferencesKey("art_auto_apply")
         val artDeclined = stringSetPreferencesKey("art_declined")
         val artSyncFromArtist = booleanPreferencesKey("art_sync_from_artist")
+        val coverStyle = stringPreferencesKey("album_cover_style")
     }
+
+    val coverStyle: Flow<CoverStyle> = ds.data.map { CoverStyle.of(it[K.coverStyle]) }
+    suspend fun setCoverStyle(v: CoverStyle) = edit { it[K.coverStyle] = v.name }
 
     val artAutoApply: Flow<Boolean> = ds.data.map { it[K.artAutoApply] ?: true }
     val artDeclined: Flow<Set<String>> = ds.data.map { it[K.artDeclined].orEmpty() }
@@ -111,6 +124,7 @@ class Prefs(private val context: Context) {
         return BackupSettings(
             theme = p[K.theme], minDurationSec = p[K.minDuration], songSort = p[K.songSort], keepScreenOnLyrics = p[K.keepScreenLyrics],
             lyricsByWord = p[K.lyricsByWord], artAutoApply = p[K.artAutoApply], artSyncFromArtist = p[K.artSyncFromArtist],
+            coverStyle = p[K.coverStyle],
             scanIncluded = p[K.scanIncluded].orEmpty(), scanExcluded = p[K.scanExcluded].orEmpty(), scanTrees = p[K.scanTrees].orEmpty(),
             lyricsTree = p[K.lyricsTree],
         )
@@ -126,6 +140,7 @@ class Prefs(private val context: Context) {
         put(K.lyricsByWord, s.lyricsByWord)
         put(K.artAutoApply, s.artAutoApply)
         put(K.artSyncFromArtist, s.artSyncFromArtist)
+        put(K.coverStyle, s.coverStyle?.let { CoverStyle.of(it).name })
         it[K.scanIncluded] = s.scanIncluded
         it[K.scanExcluded] = s.scanExcluded
         it[K.scanTrees] = s.scanTrees.filter(usable).toSet()

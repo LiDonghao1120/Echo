@@ -35,7 +35,7 @@ class BackupTest {
         events = listOf(event(k1, 1000), event(k2, 2000, "白鸟")),
         refs = listOf(SongRef(k1, "Glasshouse", "Ivy Calder", "Paper Satellites", 201_000, 9), SongRef(k2, "白鸟", "温屿", "北岸", 233_000, 9)),
         aliases = listOf(SongAlias("id:42", k1)),
-        settings = BackupSettings("Dark", 15, "artist", false, setOf("/storage/emulated/0/Music"), setOf("/storage/emulated/0/Ringtones"), setOf("content://tree/1"), "content://tree/2", lyricsByWord = false),
+        settings = BackupSettings("Dark", 15, "artist", false, setOf("/storage/emulated/0/Music"), setOf("/storage/emulated/0/Ringtones"), setOf("content://tree/1"), "content://tree/2", lyricsByWord = false, coverStyle = "Film"),
         artists = listOf(BackupArtist("Ivy Calder", "poster_0.jpg", "logo_0.png"), BackupArtist("温屿", null, "logo_1.png")),
         lyrics = listOf(
             com.novcloud.echo.data.db.LyricOverride(k1, offsetMs = 300, updatedAt = 11),
@@ -131,6 +131,8 @@ class BackupTest {
         assertEquals(setOf("/storage/emulated/0/Ringtones", "/storage/emulated/0/Music"), m.settings.scanIncluded)
         assertTrue(m.settings.scanExcluded.isEmpty())
         assertEquals("content://tree/2", m.settings.lyricsTree)
+        assertEquals("Film", m.settings.coverStyle)
+        assertEquals("Classic", BackupMerge.combine(here.copy(settings = here.settings.copy(coverStyle = "Classic")), sample, ImportMode.Merge).settings.coverStyle)
         assertEquals(BackupArtist("Ivy Calder", "mine.jpg", "logo_0.png"), m.artists.first { it.artist == "Ivy Calder" })
         assertEquals(m, BackupMerge.combine(m, sample, ImportMode.Merge))
     }

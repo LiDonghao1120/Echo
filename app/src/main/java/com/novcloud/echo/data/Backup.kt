@@ -30,6 +30,7 @@ data class BackupSettings(
     val lyricsByWord: Boolean? = null,
     val artAutoApply: Boolean? = null,
     val artSyncFromArtist: Boolean? = null,
+    val coverStyle: String? = null,
 )
 
 /** [poster] and [logo] are file names inside the backup's art/ folder. */
@@ -155,6 +156,7 @@ object BackupCodec {
             s.lyricsByWord?.let { put("lyricsByWord", it) }
             s.artAutoApply?.let { put("artAutoApply", it) }
             s.artSyncFromArtist?.let { put("artSyncFromArtist", it) }
+            s.coverStyle?.let { put("coverStyle", it) }
             s.lyricsTree?.let { put("lyricsTree", it) }
             put("scanIncluded", JSONArray(s.scanIncluded.sorted()))
             put("scanExcluded", JSONArray(s.scanExcluded.sorted()))
@@ -221,6 +223,7 @@ object BackupCodec {
                 lyricsByWord = if (s.has("lyricsByWord")) s.getBoolean("lyricsByWord") else null,
                 artAutoApply = if (s.has("artAutoApply")) s.getBoolean("artAutoApply") else null,
                 artSyncFromArtist = if (s.has("artSyncFromArtist")) s.getBoolean("artSyncFromArtist") else null,
+                coverStyle = s.strOrNull("coverStyle"),
                 scanIncluded = s.optJSONArray("scanIncluded").strings(),
                 scanExcluded = s.optJSONArray("scanExcluded").strings(),
                 scanTrees = s.optJSONArray("scanTrees").strings(),
@@ -299,6 +302,7 @@ object BackupMerge {
                 scanExcluded = cs.scanExcluded + (ins.scanExcluded - cs.scanIncluded),
                 scanTrees = cs.scanTrees + ins.scanTrees,
                 lyricsTree = cs.lyricsTree ?: ins.lyricsTree,
+                coverStyle = cs.coverStyle ?: ins.coverStyle,
             ),
             artists = artists.values.toList(),
             lyrics = cur.lyrics + inc.lyrics.filter { lyricKeys.add(it.songKey) },

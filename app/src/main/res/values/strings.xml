@@ -190,6 +190,13 @@
     <string name="follow_system">跟随系统</string>
     <string name="theme_dark">深色</string>
     <string name="theme_light">浅色</string>
+    <string name="cover_style">专辑封面样式</string>
+    <string name="cover_style_classic">简洁</string>
+    <string name="cover_style_vinyl">黑胶</string>
+    <string name="cover_style_jewel">CD</string>
+    <string name="cover_style_film">胶片</string>
+    <string name="cover_style_hint">在专辑页长按封面也能更换</string>
+    <string name="cover_style_change">更换封面样式</string>
     <string name="settings_language">语言</string>
     <string name="settings_playback">播放</string>
     <string name="settings_min_duration">忽略短于</string>

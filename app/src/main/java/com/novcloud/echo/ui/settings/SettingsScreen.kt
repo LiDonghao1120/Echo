@@ -81,6 +81,7 @@ fun SettingsScreen() {
     val progress by container.library.progress.collectAsState()
     var clearing by remember { mutableStateOf(false) }
     var licenses by remember { mutableStateOf(false) }
+    var pickingCover by remember { mutableStateOf(false) }
     val importFolder = com.novcloud.echo.ui.detail.rememberFolderImport()
     val tools = rememberDataTools()
     val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
@@ -102,6 +103,9 @@ fun SettingsScreen() {
                         Chip(stringResource(l), theme == m, Modifier.weight(1f)) { scope.launch { container.prefs.setTheme(m) } }
                     }
                 }
+                Rule()
+                val coverStyle by container.coverStyle.collectAsState()
+                NavRow(stringResource(R.string.cover_style), com.novcloud.echo.ui.detail.coverStyleLabel(coverStyle)) { pickingCover = true }
             }
             Group(stringResource(R.string.settings_language)) {
                 val activity = context as? android.app.Activity
@@ -254,6 +258,11 @@ fun SettingsScreen() {
         CollapsingTopBar(stringResource(R.string.settings), collapse)
     }
     if (licenses) LicensesDialog { licenses = false }
+    if (pickingCover) {
+        val now by actions.player.state.collectAsState()
+        val sample = now.song?.let { lib.albumById[it.albumId] } ?: lib.albums.firstOrNull()
+        com.novcloud.echo.ui.detail.CoverStyleSheet(sample?.art, sample?.title.orEmpty(), hint = true) { pickingCover = false }
+    }
     if (clearing) ConfirmDialog(stringResource(R.string.history_clear_confirm), stringResource(R.string.action_clear_history)) { ok ->
         clearing = false
         if (ok) scope.launch { container.db.events().clear() }

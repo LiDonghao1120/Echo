@@ -40,6 +40,7 @@ import com.novcloud.echo.playback.SleepState
 import com.novcloud.echo.ui.player.SleepTimerContent
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
@@ -138,6 +139,7 @@ abstract class ScreenshotBase {
         sleep: SleepState? = null,
         artLibrary: Boolean = false,
         insets: Boolean = false,
+        capture: Boolean = true,
         seedMore: () -> Unit = {},
         before: () -> Unit = {},
     ) {
@@ -160,7 +162,7 @@ abstract class ScreenshotBase {
         settle()
         before()
         settle(2)
-        compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+        if (capture) compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }
 
     /**
@@ -285,6 +287,29 @@ abstract class ScreenshotBase {
         }
     }
 
+    /** Saves the album cover style and waits until the app has picked it up. */
+    protected fun coverStyle(style: com.novcloud.echo.data.CoverStyle) {
+        val c = Samples.app(ctx)
+        kotlinx.coroutines.runBlocking { c.prefs.setCoverStyle(style) }
+        awaitCoverStyle(style)
+    }
+
+    protected fun awaitCoverStyle(style: com.novcloud.echo.data.CoverStyle) {
+        val c = Samples.app(ctx)
+        val deadline = System.currentTimeMillis() + 5_000
+        while (c.coverStyle.value != style && System.currentTimeMillis() < deadline) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            Thread.sleep(20)
+        }
+        check(c.coverStyle.value == style) { "cover style stayed ${c.coverStyle.value}" }
+    }
+
+    /** The cover style picker as its sheet shows it, previews drawn with a sample album's cover. */
+    protected fun coverPicker(name: String, dark: Boolean = true) = sheet(name, dark = dark) {
+        val album = Samples.library.albumById.getValue(1)
+        com.novcloud.echo.ui.detail.CoverStylePicker(com.novcloud.echo.data.CoverStyle.Vinyl, album.art, album.title, hint = true) {}
+    }
+
     protected fun primeEffects() {
         val fx = Samples.app(ctx).audioFx
         fx.publishCaps(com.novcloud.echo.playback.audio.EqCaps(true, listOf(60, 230, 910, 3600, 14000), -1500, 1500, bassBoost = true))
@@ -372,7 +397,33 @@ class ScreenshotTest : ScreenshotBase() {
         compose.onNodeWithText("歌手").performClick()
     }
     @Test fun library_songs_light() = app("library_songs_light", dark = false, route = "library")
-    @Test fun album_dark() = app("album_dark", route = "album/1")
+    @Test fun album_dark() = app("album_dark", route = "album/1", seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Classic) })
+    @Test fun album_vinyl_dark() = app("album_vinyl_dark", route = "album/1", seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Vinyl) })
+    @Test fun album_vinyl_light() = app("album_vinyl_light", dark = false, route = "album/5", seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Vinyl) })
+    @Test fun album_jewel_dark() = app("album_jewel_dark", route = "album/1", seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Jewel) })
+    @Test fun album_jewel_light() = app("album_jewel_light", dark = false, route = "album/3", seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Jewel) })
+    @Test fun album_film_dark() = app("album_film_dark", route = "album/1", seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Film) })
+    @Test fun album_film_light() = app("album_film_light", dark = false, route = "album/6", seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Film) })
+    @Test fun album_vinyl_narrow_dark() {
+        RuntimeEnvironment.setQualifiers("+w340dp")
+        app("album_vinyl_narrow_dark", route = "album/1", seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Vinyl) })
+    }
+    @Test fun cover_style_sheet_dark() = coverPicker("cover_style_sheet_dark")
+    @Test fun cover_style_sheet_light() = coverPicker("cover_style_sheet_light", dark = false)
+
+    @Test fun album_cover_long_press_opens_the_picker() = app(
+        "album_cover_long_press_dark", route = "album/1", capture = false, seedMore = { coverStyle(com.novcloud.echo.data.CoverStyle.Film) },
+    ) {
+        compose.onNodeWithTag("album_cover").performTouchInput { longClick() }
+        settle(2)
+        compose.onAllNodesWithText(ctx.getString(R.string.cover_style)).onFirst().assertExists()
+        compose.onAllNodesWithText(ctx.getString(R.string.cover_style_vinyl)).onFirst().performClick()
+        settle(1)
+        awaitCoverStyle(com.novcloud.echo.data.CoverStyle.Vinyl)
+        compose.onAllNodesWithText(ctx.getString(R.string.cover_style)).onFirst().assertExists()
+        settle(1)
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/outputs/roborazzi/album_cover_long_press_dark.png")
+    }
     @Test fun search_dark() = app("search_dark", route = "search")
 
     @Test fun search_pinyin_dark() = app("search_pinyin_dark", route = "search") {

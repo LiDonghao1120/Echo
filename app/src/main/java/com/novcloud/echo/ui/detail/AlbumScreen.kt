@@ -41,7 +41,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -83,6 +90,9 @@ fun AlbumScreen(id: Long) {
         }
     }
     var addAll by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf(false) }
+    val coverStyle by container.coverStyle.collectAsState()
+    val haptic = LocalHapticFeedback.current
     val multiDisc = album.songs.map { it.disc }.distinct().size > 1
     val more = lib.artist(album.artist)?.albums?.filter { it.id != album.id }.orEmpty()
 
@@ -91,13 +101,20 @@ fun AlbumScreen(id: Long) {
             item {
                 Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(colors.top.copy(alpha = 0.85f), Color.Transparent)))) {
                     Column(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 64.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Artwork(
-                            album.art,
-                            Modifier.size(250.dp).graphicsLayer {
+                        val playingHere = state.isPlaying && album.songs.any { it.id == state.song?.id }
+                        val styleLabel = stringResource(R.string.cover_style_change)
+                        AlbumCover(
+                            coverStyle, album.art, album.title,
+                            Modifier.fillMaxWidth().testTag("album_cover").graphicsLayer {
                                 val p = (list.firstVisibleItemScrollOffset / 900f).coerceIn(0f, 0.25f)
                                 scaleX = 1 - p; scaleY = 1 - p; alpha = 1 - p * 2
-                            }.shadow(24.dp, EchoShape.cover, spotColor = colors.top),
-                            EchoShape.cover, album.title, 64.dp,
+                            }.pointerInput(Unit) {
+                                detectTapGestures(onLongPress = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    picking = true
+                                })
+                            }.semantics { onLongClick(styleLabel) { picking = true; true } },
+                            spinning = playingHere, accent = colors.top, frame = album.songs.size + album.year % 30,
                         )
                         Spacer(Modifier.height(20.dp))
                         Text(displayAlbum(album.title), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black), textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 28.dp))
@@ -148,4 +165,5 @@ fun AlbumScreen(id: Long) {
         }
     }
     if (addAll) AddToPlaylistDialog(album.songs) { addAll = false }
+    if (picking) CoverStyleSheet(album.art, album.title, hint = false) { picking = false }
 }

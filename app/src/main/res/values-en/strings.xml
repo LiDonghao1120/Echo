@@ -190,6 +190,13 @@
     <string name="follow_system">Follow system</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_light">Light</string>
+    <string name="cover_style">Album cover style</string>
+    <string name="cover_style_classic">Classic</string>
+    <string name="cover_style_vinyl">Vinyl</string>
+    <string name="cover_style_jewel">CD</string>
+    <string name="cover_style_film">Film</string>
+    <string name="cover_style_hint">You can also long-press the cover on any album page</string>
+    <string name="cover_style_change">Change cover style</string>
     <string name="settings_language">Language</string>
     <string name="settings_playback">Playback</string>
     <string name="settings_min_duration">Skip tracks shorter than</string>
