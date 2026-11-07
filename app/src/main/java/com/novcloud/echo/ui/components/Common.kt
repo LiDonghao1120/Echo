@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -225,7 +226,7 @@ fun SwapImage(
     val current by androidx.compose.runtime.rememberUpdatedState(model)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val context = LocalContext.current
-    val motion = LocalMotion.current
+    val motion = com.novcloud.echo.ui.theme.LocalMotion.current
     if (slot != null) {
         androidx.compose.runtime.DisposableEffect(Unit) {
             com.novcloud.echo.diag.DiagLog.i("EchoArt", "$slot enter model=${model.artTag()} held=${held?.model.artTag()}")
