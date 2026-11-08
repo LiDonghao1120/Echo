@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -52,6 +53,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -305,10 +307,13 @@ private fun ReportPoster(s: Stats, today: LocalDate) {
             if (range == StatsRange.Today) {
                 if (avg != null && !s.empty) {
                     val diff = (s.totalMs - avg) / 60_000
-                    Column(Modifier.padding(bottom = 18.dp), horizontalAlignment = Alignment.End) {
+                    Column(Modifier.padding(start = 12.dp, bottom = 18.dp), horizontalAlignment = Alignment.End) {
                         Stamp((if (diff >= 0) "+" else "−") + durationText(kotlin.math.abs(diff)), diff >= 0)
                         Spacer(Modifier.height(8.dp))
-                        Text(stringResource(R.string.stats_today_vs_average), style = EchoType.label, color = Paper.copy(alpha = 0.55f), maxLines = 1)
+                        Text(
+                            stringResource(R.string.stats_today_vs_average), Modifier.widthIn(max = 112.dp), style = EchoType.label,
+                            color = Paper.copy(alpha = 0.55f), textAlign = TextAlign.End, maxLines = 2,
+                        )
                     }
                 }
             } else if (range.days != null && s.previousMs > 0) {
