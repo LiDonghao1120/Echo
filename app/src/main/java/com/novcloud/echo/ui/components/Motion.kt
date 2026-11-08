@@ -92,18 +92,27 @@ fun Modifier.echoClick(
         }
 }
 
-fun Modifier.echoAura(active: Boolean, color: Color, corner: Dp = 6.dp, reach: Dp = 26.dp, count: Int = 3): Modifier = composed {
+fun Modifier.echoAura(
+    active: Boolean,
+    color: Color,
+    corner: Dp = 6.dp,
+    reach: Dp = 26.dp,
+    count: Int = 3,
+    amount: () -> Float = { 1f },
+): Modifier = composed {
     val motion = LocalMotion.current
-    val level by animateFloatAsState(if (active) 1f else 0f, tween(700), label = "aura")
+    val level = animateFloatAsState(if (active) 1f else 0f, tween(700), label = "aura")
     val phase = if (motion) {
         val t = rememberInfiniteTransition(label = "aura")
-        t.animateFloat(0f, 1f, infiniteRepeatable(tween(3200, easing = LinearEasing)), label = "phase").value
-    } else 0.18f
+        t.animateFloat(0f, 1f, infiniteRepeatable(tween(3200, easing = LinearEasing)), label = "phase")
+    } else null
     drawBehind {
-        if (level <= 0.01f) return@drawBehind
+        val l = level.value * amount().coerceIn(0f, 1f)
+        if (l <= 0.01f) return@drawBehind
+        val ph = phase?.value ?: 0.18f
         for (i in 0 until count) {
-            val p = (phase + i.toFloat() / count) % 1f
-            echoRing(color.copy(alpha = (1f - p) * 0.42f * level), reach.toPx() * p, corner.toPx(), 1.4.dp.toPx())
+            val p = (ph + i.toFloat() / count) % 1f
+            echoRing(color.copy(alpha = (1f - p) * 0.42f * l), reach.toPx() * p, corner.toPx(), 1.4.dp.toPx())
         }
     }
 }

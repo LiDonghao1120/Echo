@@ -140,6 +140,7 @@ abstract class ScreenshotBase {
         artLibrary: Boolean = false,
         insets: Boolean = false,
         capture: Boolean = true,
+        motion: Boolean = false,
         seedMore: () -> Unit = {},
         before: () -> Unit = {},
     ) {
@@ -152,7 +153,7 @@ abstract class ScreenshotBase {
         sleep?.let { Samples.app(ctx).player.previewSleep(it) }
         waitForHome()
         compose.setContent {
-            EchoTheme(dark, motion = false) {
+            EchoTheme(dark, motion = motion) {
                 Surface(color = MaterialTheme.colorScheme.surface) {
                     AppRoot(MutableStateFlow(0L), startRoute = route, startExpanded = expanded, startPane = pane)
                 }

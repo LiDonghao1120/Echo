@@ -68,6 +68,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -180,38 +187,24 @@ fun SharedTransitionScope.NowPlayingScreen(avs: AnimatedVisibilityScope, onColla
                     Icon(Icons.Rounded.MoreHoriz, null, tint = Paper.copy(alpha = 0.85f))
                 }
             }
-            AnimatedContent(
-                targetState = pane,
-                transitionSpec = {
-                    (fadeIn(tween(EchoMotion.Medium, 60)) + slideInVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it / 14 }) togetherWith fadeOut(tween(EchoMotion.Quick))
-                },
+            PlayerStage(
+                song, pane, state.isPlaying, song.id in favorites, colors.accent, avs,
+                dismissDrag = dismissDrag,
+                onLike = { actions.repo.toggleFavorite(song.id) },
+                onArt = { pane = PlayerPane.Art },
                 modifier = Modifier.weight(1f),
-                label = "pane",
-            ) { p ->
-                when (p) {
-                    PlayerPane.Art -> ArtPane(song, state.isPlaying, colors.accent, avs, dismissDrag)
-                    PlayerPane.Lyrics -> Column {
-                        CompactHeader(song) { pane = PlayerPane.Art }
-                        LyricsView(song, colors.accent, Modifier.weight(1f))
-                    }
-                    PlayerPane.Queue -> Column {
-                        CompactHeader(song) { pane = PlayerPane.Art }
-                        QueueView(Modifier.weight(1f))
-                    }
-                }
-            }
-            if (pane == PlayerPane.Art) TitleBlock(song, song.id in favorites, avs) { actions.repo.toggleFavorite(song.id) }
+            )
             SeekRuler(state.durationMs, colors.accent, song.id)
             Transport(state.isPlaying, state.shuffle, state.repeat, colors.accent)
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                PaneButton(Icons.Rounded.Lyrics, pane == PlayerPane.Lyrics, colors.accent) {
+                PaneButton(Icons.Rounded.Lyrics, pane == PlayerPane.Lyrics, colors.accent, "pane_lyrics") {
                     pane = if (pane == PlayerPane.Lyrics) PlayerPane.Art else PlayerPane.Lyrics
                 }
                 SleepButton(colors.accent) { sleepSheet = true }
-                PaneButton(Icons.AutoMirrored.Rounded.QueueMusic, pane == PlayerPane.Queue, colors.accent) {
+                PaneButton(Icons.AutoMirrored.Rounded.QueueMusic, pane == PlayerPane.Queue, colors.accent, "pane_queue") {
                     pane = if (pane == PlayerPane.Queue) PlayerPane.Art else PlayerPane.Queue
                 }
             }
@@ -267,108 +260,228 @@ private fun QueuePosition(index: Int, size: Int) {
     }
 }
 
+/**
+ * The middle of the player: the cover, the title, the heart and the lyrics or queue panel laid out together.
+ * One cover is drawn once and morphs between the big centred slot and the header thumbnail as the morph runs 0 → 1;
+ * both slots come from this one layout pass, and every per-frame value is read in placement layers only.
+ */
 @Composable
-private fun SharedTransitionScope.ArtPane(song: Song, playing: Boolean, accent: Color, avs: AnimatedVisibilityScope, dismissDrag: Modifier) {
+private fun SharedTransitionScope.PlayerStage(
+    song: Song,
+    pane: PlayerPane,
+    playing: Boolean,
+    liked: Boolean,
+    accent: Color,
+    avs: AnimatedVisibilityScope,
+    dismissDrag: Modifier,
+    onLike: () -> Unit,
+    onArt: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val actions = LocalActions.current
-    val scale by animateFloatAsState(if (playing) 1f else 0.88f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessLow), label = "art")
+    val motion = com.novcloud.echo.ui.theme.LocalMotion.current
+    val morph = remember { Animatable(if (pane == PlayerPane.Art) 0f else 1f, visibilityThreshold = 0.0005f) }
+    LaunchedEffect(pane, motion) {
+        val target = if (pane == PlayerPane.Art) 0f else 1f
+        if (motion) morph.animateTo(target, MORPH_SPRING) else morph.snapTo(target)
+    }
+    val atArt by remember { derivedStateOf { morph.value == 0f } }
+    val lastPanel = remember { arrayOf(if (pane == PlayerPane.Art) PlayerPane.Lyrics else pane) }
+    val panel = if (pane != PlayerPane.Art) pane.also { lastPanel[0] = it } else lastPanel[0]
+    val panelShown = pane != PlayerPane.Art || !atArt
+    val play = animateFloatAsState(if (playing) 1f else 0.88f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessLow), label = "art")
     val swipe = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
-    BoxWithConstraints(Modifier.fillMaxSize().then(dismissDrag), contentAlignment = Alignment.Center) {
-        val side = minOf(maxWidth - 64.dp, maxHeight - 48.dp)
-        Box(
-            Modifier
-                .size(side)
-                .graphicsLayer {
-                    scaleX = scale; scaleY = scale
-                    translationX = swipe.value * 0.45f
-                    rotationZ = swipe.value / 90f
+    val geo = remember { CoverGeometry() }
+    val f = { morph.value }
+
+    Layout(
+        modifier = modifier.fillMaxWidth().then(if (pane == PlayerPane.Art) dismissDrag else Modifier),
+        content = {
+            if (panelShown) {
+                Box(Modifier.layoutId(Slot.Panel)) {
+                    AnimatedContent(
+                        targetState = panel,
+                        transitionSpec = {
+                            (fadeIn(tween(EchoMotion.Medium, 60)) + slideInVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it / 14 }) togetherWith
+                                fadeOut(tween(EchoMotion.Quick))
+                        },
+                        label = "panel",
+                    ) { p ->
+                        if (p == PlayerPane.Queue) QueueView(Modifier.fillMaxSize()) else LyricsView(song, accent, Modifier.fillMaxSize())
+                    }
                 }
-                .echoAura(playing, accent, corner = 4.dp, reach = 30.dp),
-        ) {
-            Artwork(
-                song.art,
-                Modifier
-                    .fillMaxSize()
-                    .sharedElement(rememberSharedContentState("art"), avs)
-                    .shadow(if (playing) 28.dp else 8.dp, EchoShape.cover, spotColor = Color.Black)
-                    .pointerInput(Unit) {
-                        detectHorizontalDragGestures(
-                            onDragEnd = {
-                                val v = swipe.value
-                                if (v < -180) actions.player.next() else if (v > 180) actions.player.previous()
-                                scope.launch { swipe.animateTo(0f, spring(dampingRatio = 0.6f)) }
-                            },
-                            onDragCancel = { scope.launch { swipe.animateTo(0f) } },
-                            onHorizontalDrag = { _, d -> scope.launch { swipe.snapTo(swipe.value + d) } },
-                        )
+            }
+            Column(Modifier.layoutId(Slot.BigTitle)) {
+                AnimatedContent(
+                    song,
+                    contentKey = { it.id },
+                    transitionSpec = {
+                        (slideInVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(EchoMotion.Medium))) togetherWith
+                            (slideOutVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { -it } + fadeOut(tween(EchoMotion.Quick))) using
+                            SizeTransform(clip = true)
                     },
-                EchoShape.cover, song.album, 72.dp, slot = com.novcloud.echo.ui.components.NOW_PLAYING_SLOT,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CompactHeader(song: Song, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Artwork(song.art, Modifier.size(56.dp), EchoShape.cover, song.album, 24.dp)
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                song.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Paper, maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(displayArtist(song.artist), style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.6f), maxLines = 1)
-        }
-    }
-}
-
-@Composable
-private fun SharedTransitionScope.TitleBlock(song: Song, liked: Boolean, avs: AnimatedVisibilityScope, onLike: () -> Unit) {
-    val actions = LocalActions.current
-    Row(Modifier.fillMaxWidth().padding(start = 28.dp, end = 14.dp, top = 6.dp), verticalAlignment = Alignment.Bottom) {
-        Column(Modifier.weight(1f)) {
-            AnimatedContent(
-                song,
-                contentKey = { it.id },
-                transitionSpec = {
-                    (slideInVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(EchoMotion.Medium))) togetherWith
-                        (slideOutVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { -it } + fadeOut(tween(EchoMotion.Quick))) using
-                        SizeTransform(clip = true)
-                },
-                modifier = Modifier.sharedBounds(rememberSharedContentState("title"), avs).clipToBounds(),
-                label = "title",
-            ) { s ->
-                val text = markTitle(s.title)
+                    modifier = (if (atArt) Modifier.sharedBounds(rememberSharedContentState("title"), avs) else Modifier).clipToBounds(),
+                    label = "title",
+                ) { s ->
+                    val text = markTitle(s.title)
+                    Text(
+                        text,
+                        style = displayStyle(text, 34.sp), color = Paper, maxLines = 1,
+                        modifier = if (pane == PlayerPane.Art) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2200) else Modifier,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    text,
-                    style = displayStyle(text, 34.sp), color = Paper, maxLines = 1,
-                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2200),
+                    "${displayArtist(song.artist)}  /  ${displayAlbum(song.album)}",
+                    style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.62f), maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clickable(enabled = pane == PlayerPane.Art) { actions.openArtist(song.artists.first()) },
                 )
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "${displayArtist(song.artist)}  /  ${displayAlbum(song.album)}",
-                style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.62f), maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable { actions.openArtist(song.artists.first()) },
-            )
+            Column(Modifier.layoutId(Slot.SmallTitle).testTag("np_small_title")) {
+                Text(
+                    song.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Paper, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    displayArtist(song.artist), style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.6f), maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (pane != PlayerPane.Art) Box(Modifier.layoutId(Slot.Header).clickable(onClick = onArt))
+            Box(Modifier.layoutId(Slot.Cover).echoAura(playing, accent, corner = 4.dp, reach = 30.dp, amount = { 1f - f() })) {
+                Artwork(
+                    song.art,
+                    Modifier
+                        .fillMaxSize()
+                        .then(if (atArt) Modifier.sharedElement(rememberSharedContentState("art"), avs) else Modifier)
+                        .graphicsLayer {
+                            val t = f().coerceIn(0f, 1f)
+                            val s = geo.scale(t, play.value).coerceAtLeast(0.01f)
+                            val level = ((play.value - 0.88f) / 0.12f).coerceIn(0f, 1f)
+                            val rest = (8f + 20f * level).dp.toPx()
+                            shadowElevation = rest + (3.dp.toPx() - rest) * t
+                            spotShadowColor = Color.Black
+                            shape = RoundedCornerShape(4.dp.toPx() / s)
+                            clip = true
+                        }
+                        .testTag("np_cover")
+                        .then(
+                            if (pane == PlayerPane.Art) Modifier.pointerInput(Unit) {
+                                detectHorizontalDragGestures(
+                                    onDragEnd = {
+                                        val v = swipe.value
+                                        if (v < -180) actions.player.next() else if (v > 180) actions.player.previous()
+                                        scope.launch { swipe.animateTo(0f, spring(dampingRatio = 0.6f)) }
+                                    },
+                                    onDragCancel = { scope.launch { swipe.animateTo(0f) } },
+                                    onHorizontalDrag = { _, d -> scope.launch { swipe.snapTo(swipe.value + d) } },
+                                )
+                            } else Modifier,
+                        ),
+                    RectangleShape, song.album, 72.dp, slot = com.novcloud.echo.ui.components.NOW_PLAYING_SLOT,
+                )
+            }
+            Box(Modifier.layoutId(Slot.Heart)) { LikeButton(liked, onLike) }
+        },
+    ) { ms, c ->
+        val w = c.maxWidth
+        val h = c.maxHeight
+        fun m(slot: Slot) = ms.firstOrNull { it.layoutId == slot }
+        val headerH = 76.dp.roundToPx()
+        val thumb = 56.dp.roundToPx()
+        val thumbX = 24.dp.roundToPx()
+        val thumbY = 10.dp.roundToPx()
+        val heart = m(Slot.Heart)!!.measure(Constraints())
+        val heartX = w - 14.dp.roundToPx() - heart.width
+        val bigX = 28.dp.roundToPx()
+        val big = m(Slot.BigTitle)!!.measure(Constraints(maxWidth = (heartX - bigX).coerceAtLeast(0)))
+        val smallX = thumbX + thumb + 14.dp.roundToPx()
+        val small = m(Slot.SmallTitle)!!.measure(Constraints(maxWidth = (heartX - 4.dp.roundToPx() - smallX).coerceAtLeast(0)))
+        val rowH = 6.dp.roundToPx() + maxOf(big.height, heart.height)
+        val artH = (h - rowH).coerceAtLeast(0)
+        val side = minOf(w - 64.dp.roundToPx(), artH - 48.dp.roundToPx()).coerceAtLeast(1)
+        val cover = m(Slot.Cover)!!.measure(Constraints.fixed(side, side))
+        val panelP = m(Slot.Panel)?.measure(Constraints.fixed(w, (h - headerH).coerceAtLeast(0)))
+        val hit = m(Slot.Header)?.measure(Constraints.fixed(heartX.coerceAtLeast(0), headerH))
+        val coverX = (w - side) / 2
+        val coverY = (artH - side) / 2
+        geo.side = side.toFloat()
+        geo.thumb = thumb.toFloat()
+        val bigY = h - big.height
+        val smallY = thumbY + (thumb - small.height) / 2
+        val k = if (big.height > 0 && small.height > 0) small.height.toFloat() / big.height else 1f
+        val heartBigY = h - heart.height
+        val heartSmallY = thumbY + (thumb - heart.height) / 2
+        val lift = 28.dp.toPx()
+        layout(w, h) {
+            panelP?.placeWithLayer(0, headerH) {
+                val t = f()
+                alpha = ((t - 0.3f) / 0.7f).coerceIn(0f, 1f)
+                translationY = (1f - t.coerceIn(0f, 1f)) * lift
+            }
+            big.placeWithLayer(bigX, bigY) {
+                val t = f()
+                transformOrigin = TransformOrigin(0f, 0f)
+                translationX = (smallX - bigX) * t
+                translationY = (smallY - bigY) * t
+                val sc = 1f + (k - 1f) * t
+                scaleX = sc; scaleY = sc
+                alpha = 1f - ((t - 0.15f) / 0.45f).coerceIn(0f, 1f)
+            }
+            small.placeWithLayer(smallX, smallY) {
+                val t = f()
+                transformOrigin = TransformOrigin(0f, 0f)
+                translationX = (bigX - smallX) * (1f - t)
+                translationY = (bigY - smallY) * (1f - t)
+                val sc = 1f / k + (1f - 1f / k) * t
+                scaleX = sc; scaleY = sc
+                alpha = ((t - 0.4f) / 0.45f).coerceIn(0f, 1f)
+            }
+            hit?.place(0, 0)
+            cover.placeWithLayer(coverX, coverY) {
+                val t = f()
+                val rest = 1f - t.coerceIn(0f, 1f)
+                val s = geo.scale(t, play.value)
+                scaleX = s; scaleY = s
+                translationX = (thumbX + thumb / 2f - (coverX + side / 2f)) * t + swipe.value * 0.45f * rest
+                translationY = (thumbY + thumb / 2f - (coverY + side / 2f)) * t
+                rotationZ = swipe.value / 90f * rest
+            }
+            heart.placeWithLayer(heartX, heartBigY) {
+                translationY = (heartSmallY - heartBigY) * f()
+            }
         }
-        val likeScale = remember { Animatable(1f) }
-        val scope = rememberCoroutineScope()
-        IconButton(onClick = {
-            onLike()
-            scope.launch { likeScale.snapTo(0.55f); likeScale.animateTo(1f, spring(dampingRatio = 0.32f, stiffness = Spring.StiffnessMedium)) }
-        }) {
-            Icon(
-                if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null,
-                Modifier.size(28.dp).graphicsLayer { scaleX = likeScale.value; scaleY = likeScale.value },
-                tint = if (liked) Vermilion else Paper.copy(alpha = 0.8f),
-            )
-        }
+    }
+}
+
+private val MORPH_SPRING = spring<Float>(dampingRatio = 0.9f, stiffness = 140f)
+
+private enum class Slot { Panel, BigTitle, SmallTitle, Header, Cover, Heart }
+
+/** Size of the big cover slot and of the header thumbnail in px, from the last layout pass. */
+private class CoverGeometry {
+    var side by mutableFloatStateOf(1f)
+    var thumb by mutableFloatStateOf(1f)
+
+    /** Scale of the big-slot cover at morph [t]: the playing scale in the big slot, the thumbnail at 1. */
+    fun scale(t: Float, play: Float): Float = (side * play + (thumb - side * play) * t) / side
+}
+
+@Composable
+private fun LikeButton(liked: Boolean, onLike: () -> Unit) {
+    val likeScale = remember { Animatable(1f) }
+    val scope = rememberCoroutineScope()
+    IconButton(onClick = {
+        onLike()
+        scope.launch { likeScale.snapTo(0.55f); likeScale.animateTo(1f, spring(dampingRatio = 0.32f, stiffness = Spring.StiffnessMedium)) }
+    }) {
+        Icon(
+            if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null,
+            Modifier.size(28.dp).graphicsLayer { scaleX = likeScale.value; scaleY = likeScale.value },
+            tint = if (liked) Vermilion else Paper.copy(alpha = 0.8f),
+        )
     }
 }
 
@@ -475,10 +588,10 @@ private fun ToggleIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, on
 }
 
 @Composable
-private fun PaneButton(icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, accent: Color, onClick: () -> Unit) {
+private fun PaneButton(icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, accent: Color, tag: String, onClick: () -> Unit) {
     val bg by animateFloatAsState(if (on) 1f else 0f, label = "pane")
     Box(
-        Modifier.size(44.dp).echoClick(corner = 8.dp, color = accent, onClick = onClick).clip(EchoShape.card).background(Paper.copy(alpha = 0.92f * bg)),
+        Modifier.testTag(tag).size(44.dp).echoClick(corner = 8.dp, color = accent, onClick = onClick).clip(EchoShape.card).background(Paper.copy(alpha = 0.92f * bg)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, null, Modifier.size(23.dp), tint = lerp(Paper.copy(alpha = 0.7f), Ink, bg))
