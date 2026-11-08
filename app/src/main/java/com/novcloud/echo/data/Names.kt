@@ -1,10 +1,14 @@
 package com.novcloud.echo.data
 
+import com.novcloud.echo.data.tags.TagText
 import java.text.Normalizer
 import java.util.Locale
 
 /**
  * Tag text cleanup and the canonical key used to decide that two spellings name the same artist, album or genre.
+ *
+ * Both first undo a charset misreading of the tag bytes ([TagText.repair]: "MAR虯 VELL" is "MARÍA VELL"), so a misread
+ * spelling and the correct one are the same artist everywhere names are compared, stored rows included.
  *
  * [clean] keeps what the user can see (it is what the UI shows): it drops characters that render as nothing
  * (NUL terminators and other control characters, BOMs, zero-width spaces, word joiners), turns odd spaces into
@@ -47,9 +51,10 @@ object Names {
         return false
     }
 
-    fun clean(s: String): String {
-        if (s.isEmpty()) return s
-        if (isPlain(s)) return s
+    fun clean(raw: String): String {
+        if (raw.isEmpty()) return raw
+        if (isPlain(raw)) return raw
+        val s = TagText.repaired(raw)
         val b = StringBuilder(s.length)
         var i = 0
         while (i < s.length) {
@@ -63,7 +68,7 @@ object Names {
             }
         }
         val t = Normalizer.normalize(b, Normalizer.Form.NFC).replace(spaces) { m -> if (m.value.all { it == '\u3000' }) m.value else " " }.trim()
-        return if (t == s) s else t
+        return if (t == raw) raw else t
     }
 
     /** ASCII printable without double spaces or edge spaces needs nothing done. */
@@ -78,9 +83,11 @@ object Names {
         return true
     }
 
-    fun key(s: String): String {
-        if (s == UNKNOWN) return UNKNOWN
-        if (s.all { it.code in 0x20..0x7E }) return fold(s.replace('[', '(').replace('{', '(').replace(']', ')').replace('}', ')'))
+    /** [repair] = false gives the key as it was before misreadings were undone (to recognise rows stored under it). */
+    fun key(raw: String, repair: Boolean = true): String {
+        if (raw == UNKNOWN) return UNKNOWN
+        if (raw.all { it.code in 0x20..0x7E }) return fold(raw.replace('[', '(').replace('{', '(').replace(']', ')').replace('}', ')'))
+        val s = if (repair) TagText.repaired(raw) else raw
         val stripped = StringBuilder(s.length)
         var i = 0
         while (i < s.length) {

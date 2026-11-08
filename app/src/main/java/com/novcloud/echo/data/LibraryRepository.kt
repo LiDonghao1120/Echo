@@ -135,6 +135,16 @@ class LibraryRepository(
         }
     }
     private val reportedVariants = HashSet<String>()
+    private val reportedNames = HashSet<String>()
+
+    /** Logs (tag EchoNames) misread tag text this scan repaired, artists that merged because of it, and names still suspicious. */
+    private fun reportNames(raw: List<Song>, cleaned: List<Song>) {
+        val found = runCatching { NameAudit.find(raw, cleaned) }.onFailure { DiagLog.e(NAMES_TAG, "audit failed", it) }.getOrNull() ?: return
+        val fresh = synchronized(reportedNames) { found.filter { reportedNames.add(NameAudit.describe(it)) } }
+        if (fresh.isEmpty()) return
+        DiagLog.i(NAMES_TAG, NameAudit.summary(found))
+        fresh.take(60).forEach { DiagLog.i(NAMES_TAG, NameAudit.describe(it)) }
+    }
 
     /** Logs, once per process, names whose spellings differ but fold to one artist, album or genre (see [NameVariants]). */
     private fun reportVariants(raw: List<Song>) {
@@ -164,6 +174,62 @@ class LibraryRepository(
             DiagLog.i(TAG, "merged artist art across spellings: dropped ${dropImages.size} older posters, ${dropLogos.size} older logos")
         }
     }
+
+    /**
+     * Play history stored with misread tag text (v0.13.2): rewrites each misread artist, album, title and genre to
+     * its repaired spelling. Statistics fold both spellings anyway; this keeps backups and logs clean. Returns how many.
+     */
+    internal suspend fun repairEventText(): Int = withContext(Dispatchers.IO) {
+        var n = 0
+        for (v in db.events().distinctText()) {
+            val fixed = com.novcloud.echo.data.tags.TagText.repair(v) ?: continue
+            if (db.events().replaceText(v, fixed) > 0) n++
+        }
+        n
+    }
+
+    /** Logos and posters whose auto-apply match key is no longer the artist's key (the name was repaired): removed. */
+    internal suspend fun dropStaleAutoArt(): Int = withContext(Dispatchers.IO) {
+        artLock.withLock {
+            var n = 0
+            db.artistLogos().allNow().filter { it.auto.isNotEmpty() && it.auto != ArtLibraryMatch.key(it.artist) }.forEach {
+                db.artistLogos().remove(it.artist); File(it.path).delete(); n++
+            }
+            db.artistImages().allNow().filter { it.auto.isNotEmpty() && it.auto != ArtLibraryMatch.key(it.artist) }.forEach {
+                db.artistImages().remove(it.artist); File(it.path).delete(); n++
+            }
+            if (n > 0) DiagLog.i(TAG, "removed $n auto-applied artist images matched on a name that has since changed")
+            n
+        }
+    }
+
+    /** Removes one artist's [kind] row (the exact stored spelling) and its file. */
+    internal suspend fun dropArtRow(kind: ArtKind, artist: String) = withContext(Dispatchers.IO) {
+        artLock.withLock {
+            if (kind == ArtKind.Logo) db.artistLogos().get(artist)?.let { db.artistLogos().remove(it.artist); File(it.path).delete() }
+            else db.artistImages().get(artist)?.let { db.artistImages().remove(it.artist); File(it.path).delete() }
+        }
+    }
+
+    /** Merges logo and poster rows of misread and correct spellings onto the correct one ([ArtistArtRows.settle]). */
+    internal suspend fun settleArtRows(): Pair<Int, Int> = withContext(Dispatchers.IO) {
+        artLock.withLock {
+            val lib = _library.value
+            fun shown(raw: String) = lib.artist(raw)?.name ?: Names.clean(raw)
+            var dropped = 0
+            var renamed = 0
+            val logos = db.artistLogos().allNow()
+            val l = ArtistArtRows.settle(logos, { it.artist }, { it.updatedAt }, { it.auto }, ::shown)
+            l.drop.forEach { r -> db.artistLogos().remove(r.artist); if (logos.none { it !in l.drop && it.path == r.path }) File(r.path).delete(); dropped++ }
+            l.rename.forEach { (r, to) -> db.artistLogos().remove(r.artist); db.artistLogos().put(r.copy(artist = to)); renamed++ }
+            val images = db.artistImages().allNow()
+            val p = ArtistArtRows.settle(images, { it.artist }, { it.updatedAt }, { it.auto }, ::shown)
+            p.drop.forEach { r -> db.artistImages().remove(r.artist); if (images.none { it !in p.drop && it.path == r.path }) File(r.path).delete(); dropped++ }
+            p.rename.forEach { (r, to) -> db.artistImages().remove(r.artist); db.artistImages().put(r.copy(artist = to)); renamed++ }
+            dropped to renamed
+        }
+    }
+
     private val started = AtomicBoolean(false)
     private var missingJob: Job? = null
 
@@ -178,7 +244,11 @@ class LibraryRepository(
         if (!hasAudioPermission()) return false
         if (started.compareAndSet(false, true)) {
             lastTreeCheck = System.currentTimeMillis()
-            scope.launch { rescan(Walk.IfChanged) }
+            scope.launch {
+                var walk = Walk.IfChanged
+                steps.once(TAG_TEXT_WALK_STEP) { if (prefs.scanTrees.first().isNotEmpty()) walk = Walk.Always }
+                rescan(walk)
+            }
         }
         return true
     }
@@ -268,7 +338,7 @@ class LibraryRepository(
                 val extra = treeSongs.filter { it.durationMs >= min && rules.accepts(it.folder, true) && it.path.lowercase() !in store.knownPaths }
                 val raw = genres.apply(SongKeys.unique(Dedupe.merge(store.songs, extra)))
                 reportVariants(raw)
-                raw.map { it.cleaned() }
+                raw.map { it.cleaned() }.also { reportNames(raw, it) }
             } ?: return
             val changed = LibrarySnapshot.changed(_library.value, songs)
             if (changed && _library.value.loaded) {
@@ -512,6 +582,8 @@ class LibraryRepository(
 
     companion object {
         const val TAG = "EchoLibrary"
+        const val NAMES_TAG = "EchoNames"
+        private const val TAG_TEXT_WALK_STEP = "tag_text_rewalk_v1"
         private const val LOGO_CLEANUP_STEP = "artist_logo_cleanup_v1"
         private const val LOGO_CLEANUP_DELAY_MS = 2_500L
         private const val KEY_DEEP_WALK = "deep_walk_at"
@@ -566,8 +638,11 @@ class LibraryRepository(
         else db.artistImages().allNow().any { Names.key(it.artist) == key && File(it.path).exists() }
     }
 
-    /** Like [setArtistArt] but only while [artist] has no [kind] of its own, checked again after the copy is made. */
-    internal suspend fun fillArt(artist: String, kind: ArtKind, file: File): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * Like [setArtistArt] but only while [artist] has no [kind] of its own, checked again after the copy is made.
+     * [autoKey] is recorded on the row: it marks the image as auto-applied and says which name it was matched on.
+     */
+    internal suspend fun fillArt(artist: String, kind: ArtKind, file: File, autoKey: String = ""): Boolean = withContext(Dispatchers.IO) {
         artLock.withLock {
             if (hasArt(artist, kind)) return@withLock false
             val source = Uri.fromFile(file)
@@ -575,12 +650,12 @@ class LibraryRepository(
                 ArtKind.Logo -> {
                     val info = runCatching { ArtistArtStore.saveLogo(context, artist, source) }.getOrNull() ?: return@withLock false
                     if (hasArt(artist, kind)) { info.file.delete(); return@withLock false }
-                    db.artistLogos().put(ArtistLogo(artist, info.file.absolutePath, info.aspect, info.luma, System.currentTimeMillis()))
+                    db.artistLogos().put(ArtistLogo(artist, info.file.absolutePath, info.aspect, info.luma, System.currentTimeMillis(), autoKey))
                 }
                 ArtKind.Poster -> {
                     val out = runCatching { ArtistArtStore.savePoster(context, artist, source) }.getOrNull() ?: return@withLock false
                     if (hasArt(artist, kind)) { out.delete(); return@withLock false }
-                    db.artistImages().put(ArtistImage(artist, out.absolutePath, System.currentTimeMillis()))
+                    db.artistImages().put(ArtistImage(artist, out.absolutePath, System.currentTimeMillis(), autoKey))
                 }
             }
             true

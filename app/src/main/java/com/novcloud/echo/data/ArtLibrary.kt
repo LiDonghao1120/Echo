@@ -1,6 +1,7 @@
 package com.novcloud.echo.data
 
 import com.novcloud.echo.data.db.ArtAsset
+import com.novcloud.echo.data.tags.TagText
 
 data class ParsedArtName(val name: String, val kind: ArtKind)
 
@@ -67,16 +68,25 @@ object ArtLibraryMatch {
     /** Letters and digits of [Names.key]: "Nova Lark", "nova_lark" and "Ｎｏｖａ Ｌａｒｋ\u200B" are one artist. */
     fun key(name: String): String = ArtistFileMatcher.key(name).ifEmpty { Names.key(name) }
 
+    /** [key] as versions before v0.13.2 worked it out, without undoing charset misreadings: what older auto-apply matched on. */
+    fun legacyKey(name: String): String = Names.key(name, repair = false).filter { it.isLetterOrDigit() }.ifEmpty { Names.key(name, repair = false) }
+
+    /** A name auto-apply may match on: not text that still looks misread after [Names] repaired what it could. */
+    fun confident(name: String): Boolean = !TagText.unexplained(name)
+
     fun kindOf(a: ArtAsset): ArtKind = if (a.kind == ArtKind.Poster.name) ArtKind.Poster else ArtKind.Logo
 
     /** Marks an image the user took off an artist, so it is not put back automatically. */
     fun declined(kind: ArtKind, artist: String, hash: String) = "${kind.name}|${key(artist)}|$hash"
 
-    data class Apply(val artist: String, val kind: ArtKind, val asset: ArtAsset)
+    /** [key] is the match key, recorded on the artist's row so a later rename can tell the image came from here. */
+    data class Apply(val artist: String, val kind: ArtKind, val asset: ArtAsset, val key: String)
 
     /**
      * Library images to put on [artists] that have no poster or logo of their own ([posters] and [logos] hold
-     * [Names.key]s of artists that do). The newest matching image of the right kind wins; declined ones are skipped.
+     * [Names.key]s of artists that do). Only exact [key] equality matches, never a part of a name or a near spelling,
+     * and neither side may look misread ([confident]). The newest matching image of the right kind wins; declined ones
+     * are skipped.
      */
     fun plan(
         artists: Collection<String>,
@@ -87,11 +97,12 @@ object ArtLibraryMatch {
     ): List<Apply> {
         if (assets.isEmpty()) return emptyList()
         val byKey = assets.sortedWith(compareByDescending<ArtAsset> { it.updatedAt }.thenByDescending { it.id })
+            .filter { confident(it.name) }
             .groupBy { key(it.name) to kindOf(it) }
         val out = ArrayList<Apply>()
         val seen = HashSet<String>()
         for (artist in artists) {
-            if (artist == UNKNOWN || artist.isBlank()) continue
+            if (artist == UNKNOWN || artist.isBlank() || !confident(artist)) continue
             val nk = Names.key(artist)
             if (!seen.add(nk)) continue
             val k = key(artist)
@@ -99,7 +110,7 @@ object ArtLibraryMatch {
             for (kind in ArtKind.entries) {
                 if (nk in (if (kind == ArtKind.Logo) logos else posters)) continue
                 val pick = byKey[k to kind]?.firstOrNull { declined(kind, artist, it.hash) !in declined } ?: continue
-                out += Apply(artist, kind, pick)
+                out += Apply(artist, kind, pick, k)
             }
         }
         return out

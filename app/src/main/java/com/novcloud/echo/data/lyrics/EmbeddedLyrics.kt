@@ -82,22 +82,67 @@ internal object Id3 {
     }
 
     fun lyrics(src: ByteSource, at: Long): TagReader.Found? {
+        val plain = ArrayList<TagReader.Found>()
+        val synced = ArrayList<TagReader.Found>()
+        val ok = frames(src, at, { it == "USLT" || it == "ULT" || it == "SYLT" || it == "SLT" }) { id, data ->
+            if (id == "USLT" || id == "ULT") uslt(data)?.let { TagReader.found(it) }?.let { if (it.timed) synced += it else plain += it }
+            else sylt(data)?.let { TagReader.found(it) }?.let { synced += it }
+            true
+        }
+        if (!ok) return null
+        return TagReader.pick(synced + plain)
+    }
+
+    /** A text frame as written: its declared encoding byte and the bytes that follow it. */
+    class RawText(val encoding: Int, val bytes: ByteArray)
+
+    private val TEXT_IDS = mapOf(
+        "TIT2" to "title", "TT2" to "title", "TPE1" to "artist", "TP1" to "artist", "TALB" to "album", "TAL" to "album",
+        "TPE2" to "albumArtist", "TP2" to "albumArtist", "TCON" to "genre", "TCO" to "genre",
+    )
+
+    /** Title, artist, album, album artist and genre frames by field name, undecoded; null when there is no ID3v2 tag. */
+    fun textFrames(src: ByteSource, at: Long = 0): Map<String, RawText>? {
+        val out = HashMap<String, RawText>()
+        val ok = frames(src, at, { it in TEXT_IDS }) { id, data ->
+            val field = TEXT_IDS.getValue(id)
+            if (data.isNotEmpty() && field !in out) out[field] = RawText(data[0].toInt() and 0xFF, data.copyOfRange(1, data.size))
+            out.size < 5
+        }
+        return if (ok) out else null
+    }
+
+    /** Decodes a text frame's value; several values (v2.4) stay NUL-separated, a trailing terminator is dropped. */
+    fun decodeText(t: RawText): String {
+        val parts = ArrayList<String>()
+        var from = 0
+        while (from < t.bytes.size) {
+            val end = terminator(t.bytes, from, t.encoding).let { if (it < 0) t.bytes.size else it }
+            parts += decode(t.bytes, from, end, t.encoding)
+            from = end + width(t.encoding)
+        }
+        return parts.filter { it.isNotEmpty() }.joinToString("\u0000")
+    }
+
+    /**
+     * Walks the frames of the tag at [at], reading only those [wanted] picks; [block] returns false to stop early.
+     * Returns false when there is no readable ID3v2 header there.
+     */
+    private inline fun frames(src: ByteSource, at: Long, wanted: (String) -> Boolean, block: (String, ByteArray) -> Boolean): Boolean {
         val h = src.read(at, 10)
-        if (h.size < 10 || totalSize(h) == 0L) return null
+        if (h.size < 10 || totalSize(h) == 0L) return false
         val major = h[3].toInt()
-        if (major !in 2..4) return null
+        if (major !in 2..4) return false
         val flags = h[5].toInt() and 0xFF
         val size = syncsafe(h, 6).toLong()
         val tagUnsync = flags and 0x80 != 0
-        if (major == 2 && flags and 0x40 != 0) return null
+        if (major == 2 && flags and 0x40 != 0) return false
         // v2.2 and v2.3 unsynchronise the whole tag body (frame headers included); v2.4 marks it per frame.
         val s = Id3Stream(src, at + 10, size, unsync = tagUnsync && major < 4)
         if (major >= 3 && flags and 0x40 != 0) {
-            val ext = s.bytes(4) ?: return null
+            val ext = s.bytes(4) ?: return false
             if (major == 4) s.skip((syncsafe(ext, 0) - 4).toLong()) else s.skip(TagReader.be32(ext, 0))
         }
-        val plain = ArrayList<TagReader.Found>()
-        val synced = ArrayList<TagReader.Found>()
         val headerLen = if (major == 2) 6 else 10
         while (s.remaining >= headerLen) {
             val fh = s.bytes(headerLen) ?: break
@@ -114,21 +159,15 @@ internal object Id3 {
                 fFlags = ((fh[8].toInt() and 0xFF) shl 8) or (fh[9].toInt() and 0xFF)
             }
             if (frameSize <= 0 || frameSize > s.remaining) break
-            val wanted = when (id) {
-                "USLT", "ULT" -> 1
-                "SYLT", "SLT" -> 2
-                else -> 0
-            }
-            if (wanted == 0 || frameSize > TagReader.MAX_TEXT * 2L) {
+            if (!wanted(id) || frameSize > TagReader.MAX_TEXT * 2L) {
                 s.skip(frameSize)
                 continue
             }
             val raw = s.bytes(frameSize.toInt()) ?: break
             val data = frameData(raw, major, fFlags, tagUnsync) ?: continue
-            if (wanted == 1) uslt(data)?.let { TagReader.found(it) }?.let { if (it.timed) synced += it else plain += it }
-            else sylt(data)?.let { TagReader.found(it) }?.let { synced += it }
+            if (!block(id, data)) break
         }
-        return TagReader.pick(synced + plain)
+        return true
     }
 
     /** iTunes once wrote plain sizes into v2.4 frames; a byte with its high bit set can only be that. */

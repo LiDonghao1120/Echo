@@ -147,7 +147,7 @@ private val sorts = listOf("title" to R.string.sort_title, "artist" to R.string.
 
 fun sortSongs(songs: List<Song>, sort: String): List<Song> = when (sort) {
     "artist" -> songs.sortedByKey { nameSortKey(it.artist) + "\u0001" + it.titleKey }
-    "album" -> songs.sortedByKey { sortKey(it.album) + "\u0001" + "%04d%05d".format(it.disc, it.track) }
+    "album" -> songs.sortedByKey { sortKey(it.album) + "\u0001" + "%04d%05d".format(it.disc, if (it.track > 0) it.track else 99999) }
     "added" -> songs.sortedByDescending { it.dateAdded }
     "duration" -> songs.sortedByDescending { it.durationMs }
     else -> songs

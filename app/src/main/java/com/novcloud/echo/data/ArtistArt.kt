@@ -69,6 +69,29 @@ object ArtistArtRows {
         val keep = latestByKey(rows, name, updatedAt).values.toSet()
         return rows.filter { it !in keep }
     }
+
+    /** Rows to delete, and rows to store again under the artist's name as shown, so each artist keeps one image. */
+    data class Settle<T>(val drop: List<T>, val rename: List<Pair<T, String>>)
+
+    /**
+     * After misread names were repaired, rows stored under a misread spelling and under the correct one are one
+     * artist. Per artist: an image the user picked beats an auto-applied one, then the newest wins; the winner moves
+     * to [shown] of its name when it was stored under a misread spelling.
+     */
+    fun <T> settle(rows: List<T>, name: (T) -> String, updatedAt: (T) -> Long, auto: (T) -> String, shown: (String) -> String): Settle<T> {
+        val drop = ArrayList<T>()
+        val rename = ArrayList<Pair<T, String>>()
+        rows.groupBy { Names.key(name(it)) }.forEach { (_, group) ->
+            val win = group.maxWith(compareBy<T> { auto(it).isEmpty() }.thenBy { updatedAt(it) }.thenBy { Names.key(name(it), repair = false) == Names.key(name(it)) })
+            group.filter { it !== win }.forEach { drop += it }
+            val n = name(win)
+            if (Names.key(n, repair = false) != Names.key(n)) shown(n).takeIf { it != n }?.let { rename += win to it }
+        }
+        return Settle(drop, rename)
+    }
+
+    /** Stored under a spelling that [Names] now reads differently (a charset misreading). */
+    fun misread(name: String): Boolean = Names.key(name, repair = false) != Names.key(name)
 }
 
 object ArtFiles {

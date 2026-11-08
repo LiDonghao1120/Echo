@@ -454,7 +454,7 @@ fun SongRow(
         if (index != null) {
             Box(Modifier.width(34.dp), contentAlignment = Alignment.CenterStart) {
                 if (current) EchoMeter(playing)
-                else Text("%02d".format(index), style = EchoType.numeral(13.sp), color = p.faint)
+                else Text(if (index > 0) "%02d".format(index) else "–", style = EchoType.numeral(13.sp), color = p.faint)
             }
         }
         if (showArt) {

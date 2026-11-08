@@ -121,6 +121,7 @@ class TreeScanner(private val context: Context) {
 
     private val cacheFile get() = File(context.filesDir, "tree_tags.json")
     private val extraTags = com.novcloud.echo.data.tags.ExtraTags(context)
+    private val ownText = com.novcloud.echo.data.tags.OwnTextFix(context, "tree_own_text.json")
     private var cache: HashMap<String, Tags>? = null
 
     fun scan(trees: Collection<String>, rules: FolderRules, known: Set<String>, onProgress: (ScanProgress) -> Unit): List<Song> {
@@ -148,9 +149,10 @@ class TreeScanner(private val context: Context) {
                 dirty = true
             }
             if (i % 8 == 0 || i == fresh.lastIndex) onProgress(ScanProgress(i + 1, fresh.size))
-            if (t.duration > 0) out += toSong(d, t)
+            if (t.duration > 0) out += ownText.fix(toSong(d, t))
         }
         if (dirty) saveCache(tags)
+        ownText.save()
         return out
     }
 

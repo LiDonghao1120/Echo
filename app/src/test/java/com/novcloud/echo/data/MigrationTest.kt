@@ -202,4 +202,26 @@ class MigrationTest {
         assertTrue(dao.allNow().isEmpty())
         db.close()
     }
+
+    @Test
+    fun v5ToV6MarksNothingAsAutoAppliedAndKeepsArt() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        context.deleteDatabase("migrate6.db")
+        val file = context.getDatabasePath("migrate6.db").apply { parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schema(5).forEach { db.execSQL(it) }
+            db.execSQL("INSERT INTO artist_logo (artist,path,aspect,luma,updatedAt) VALUES ('Renée Solvay','/l.png',3.0,0.9,1)")
+            db.execSQL("INSERT INTO artist_image (artist,path,updatedAt) VALUES ('Renée Solvay','/p.jpg',2)")
+            db.execSQL("INSERT INTO play_event (songId,title,artist,album,albumId,genre,startedAt,listenedMs,songDurationMs,completed,songKey) VALUES (1,'Tide','MAR\u866f VELL','Lumen',1,'',5,1000,2000,1,'p:a')")
+            db.version = 5
+        }
+        val db = EchoDatabase.create(context, "migrate6.db")
+        assertEquals("", db.artistLogos().allNow().single().auto)
+        assertEquals("", db.artistImages().allNow().single().auto)
+        db.artistLogos().put(ArtistLogo("Joaquín Mar", "/j.png", 2f, 0.5f, 3, auto = "joaquínmar"))
+        assertEquals("joaquínmar", db.artistLogos().get("Joaquín Mar")!!.auto)
+        assertEquals(1, db.events().replaceText("MAR\u866f VELL", "MARÍA VELL"))
+        assertEquals("MARÍA VELL", db.events().all().single().artist)
+        db.close()
+    }
 }

@@ -33,8 +33,23 @@ data class BackupSettings(
     val coverStyle: String? = null,
 )
 
-/** [poster] and [logo] are file names inside the backup's art/ folder. */
-data class BackupArtist(val artist: String, val poster: String? = null, val logo: String? = null)
+/**
+ * [poster] and [logo] are file names inside the backup's art/ folder; [posterAuto] and [logoAuto] are the artwork
+ * library match keys when auto-apply put them there (empty when the user picked them).
+ */
+data class BackupArtist(
+    val artist: String,
+    val poster: String? = null,
+    val logo: String? = null,
+    val posterAuto: String = "",
+    val logoAuto: String = "",
+) {
+    /** Fills what this one lacks from [other]: each image comes with its own auto key. */
+    fun orElse(other: BackupArtist) = copy(
+        poster = poster ?: other.poster, posterAuto = if (poster != null) posterAuto else other.posterAuto,
+        logo = logo ?: other.logo, logoAuto = if (logo != null) logoAuto else other.logoAuto,
+    )
+}
 
 /** An artwork library image; [file] is its name inside the backup's art/ folder. */
 data class BackupAsset(
@@ -163,7 +178,16 @@ object BackupCodec {
             put("scanTrees", JSONArray(s.scanTrees.sorted()))
         })
         .put("artists", JSONArray().apply {
-            b.artists.forEach { a -> put(JSONObject().put("name", a.artist).apply { a.poster?.let { put("poster", it) }; a.logo?.let { put("logo", it) } }) }
+            b.artists.forEach { a ->
+                put(
+                    JSONObject().put("name", a.artist).apply {
+                        a.poster?.let { put("poster", it) }
+                        a.logo?.let { put("logo", it) }
+                        if (a.posterAuto.isNotEmpty()) put("posterAuto", a.posterAuto)
+                        if (a.logoAuto.isNotEmpty()) put("logoAuto", a.logoAuto)
+                    },
+                )
+            }
         })
         .put("library", JSONArray().apply {
             b.library.forEach { a ->
@@ -229,7 +253,7 @@ object BackupCodec {
                 scanTrees = s.optJSONArray("scanTrees").strings(),
                 lyricsTree = s.strOrNull("lyricsTree"),
             ),
-            artists = d.optJSONArray("artists").objects().map { BackupArtist(it.getString("name"), it.strOrNull("poster"), it.strOrNull("logo")) },
+            artists = d.optJSONArray("artists").objects().map { BackupArtist(it.getString("name"), it.strOrNull("poster"), it.strOrNull("logo"), it.optString("posterAuto"), it.optString("logoAuto")) },
             lyrics = d.optJSONArray("lyrics").objects().map {
                 LyricOverride(it.getString("key"), it.optLong("offsetMs"), it.strOrNull("file"), it.strOrNull("text"), it.optLong("updatedAt"))
             },
@@ -284,12 +308,12 @@ object BackupMerge {
         cur.artists.forEach { a ->
             val k = Names.key(a.artist)
             val c = artists[k]
-            artists[k] = if (c == null) a else c.copy(poster = c.poster ?: a.poster, logo = c.logo ?: a.logo)
+            artists[k] = if (c == null) a else c.orElse(a)
         }
         inc.artists.forEach { a ->
             val k = Names.key(a.artist)
             val c = artists[k]
-            artists[k] = if (c == null) a else c.copy(poster = c.poster ?: a.poster, logo = c.logo ?: a.logo)
+            artists[k] = if (c == null) a else c.orElse(a)
         }
         return cur.copy(
             favorites = cur.favorites + inc.favorites.filter { favKeys.add(it.songKey) },

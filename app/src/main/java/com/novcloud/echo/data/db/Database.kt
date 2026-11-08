@@ -77,8 +77,17 @@ data class LyricOverride(
     val updatedAt: Long = 0,
 )
 
+/**
+ * [auto]: the artwork library match key (ArtLibraryMatch.key of the artist name at the time) when auto-apply put
+ * the image there; empty when the user picked it, or it was set before v0.13.2 recorded this.
+ */
 @Entity(tableName = "artist_image")
-data class ArtistImage(@PrimaryKey val artist: String, val path: String, val updatedAt: Long)
+data class ArtistImage(
+    @PrimaryKey val artist: String,
+    val path: String,
+    val updatedAt: Long,
+    @ColumnInfo(defaultValue = "") val auto: String = "",
+)
 
 @Entity(tableName = "artist_logo")
 data class ArtistLogo(
@@ -87,6 +96,7 @@ data class ArtistLogo(
     val aspect: Float,
     val luma: Float,
     val updatedAt: Long,
+    @ColumnInfo(defaultValue = "") val auto: String = "",
 )
 
 /**
@@ -130,6 +140,12 @@ interface PlayEventDao {
 
     @Query("DELETE FROM play_event")
     suspend fun clear()
+
+    @Query("SELECT DISTINCT artist FROM play_event UNION SELECT DISTINCT album FROM play_event UNION SELECT DISTINCT title FROM play_event UNION SELECT DISTINCT genre FROM play_event")
+    suspend fun distinctText(): List<String>
+
+    @Query("UPDATE play_event SET artist = CASE WHEN artist = :old THEN :new ELSE artist END, album = CASE WHEN album = :old THEN :new ELSE album END, title = CASE WHEN title = :old THEN :new ELSE title END, genre = CASE WHEN genre = :old THEN :new ELSE genre END WHERE artist = :old OR album = :old OR title = :old OR genre = :old")
+    suspend fun replaceText(old: String, new: String): Int
 
     @Query("SELECT * FROM play_event ORDER BY startedAt ASC")
     suspend fun all(): List<PlayEvent>
@@ -393,7 +409,7 @@ interface ArtAssetDao {
         PlayEvent::class, Playlist::class, PlaylistEntry::class, Favorite::class, ArtistImage::class, ArtistLogo::class, SongRef::class,
         SongAlias::class, LyricOverride::class, ArtAsset::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class EchoDatabase : RoomDatabase() {
@@ -479,8 +495,16 @@ abstract class EchoDatabase : RoomDatabase() {
             }
         }
 
+        /** v0.13.2: which artist logos and posters auto-apply put there (rows from before stay ''). */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `artist_logo` ADD COLUMN `auto` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `artist_image` ADD COLUMN `auto` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun create(context: Context, name: String = "echo.db") =
             Room.databaseBuilder(context, EchoDatabase::class.java, name)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
     }
 }

@@ -94,6 +94,7 @@ fun AlbumScreen(id: Long) {
     val coverStyle by container.coverStyle.collectAsState()
     val haptic = LocalHapticFeedback.current
     val multiDisc = album.songs.map { it.disc }.distinct().size > 1
+    val numbered = album.songs.any { it.track > 0 }
     val more = lib.artist(album.artist)?.albums?.filter { it.id != album.id }.orEmpty()
 
     Box(Modifier.fillMaxSize()) {
@@ -138,7 +139,7 @@ fun AlbumScreen(id: Long) {
                 }
                 item(key = s.id) {
                     SongRow(
-                        s, { actions.player.playSong(s, album.songs) }, index = if (s.track > 0) s.track else i + 1, showArt = false,
+                        s, { actions.player.playSong(s, album.songs) }, index = trackLabel(s.track, i, numbered), showArt = false,
                         current = state.song?.id == s.id, playing = state.isPlaying,
                         subtitle = if (s.artist != album.artist) displayArtist(s.artist) else null,
                     )
@@ -166,4 +167,11 @@ fun AlbumScreen(id: Long) {
     }
     if (addAll) AddToPlaylistDialog(album.songs) { addAll = false }
     if (picking) CoverStyleSheet(album.art, album.title, hint = false) { picking = false }
+}
+
+/** A song's number on its album page: its track number; position only when no song on the album has one; 0 shows as a dash. */
+internal fun trackLabel(track: Int, position: Int, albumNumbered: Boolean): Int = when {
+    track > 0 -> track
+    albumNumbered -> 0
+    else -> position + 1
 }

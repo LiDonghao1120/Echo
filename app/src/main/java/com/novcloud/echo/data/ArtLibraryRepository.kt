@@ -227,6 +227,10 @@ class ArtLibraryRepository(
         }
         scope.launch {
             library.library.first { it.loaded }
+            steps.once(NAME_REPAIR_STEP) { repairNames() }
+        }
+        scope.launch {
+            library.library.first { it.loaded }
             delay(LOGO_CLEANUP_DELAY_MS)
             runLogoCleanup()
             delay(BACKFILL_DELAY_MS - LOGO_CLEANUP_DELAY_MS)
@@ -430,6 +434,48 @@ class ArtLibraryRepository(
         added
     }
 
+    /**
+     * One-time pass (v0.13.2) after charset misreadings in tag text were fixed ("MAR虯 VELL" is "MARÍA VELL"): play history
+     * is rewritten to the repaired names; a logo or poster stored under a misread name that provably came from
+     * auto-apply (a library image whose name matched that misread spelling, added before it, and looking the same) is
+     * removed so auto-apply runs again on the correct name; the rest move onto the correct name, one per artist.
+     */
+    internal suspend fun repairNames() {
+        val started = System.currentTimeMillis()
+        val events = library.repairEventText()
+        var revoked = 0
+        val assets = withContext(Dispatchers.IO) { dao.allNow().filter { File(it.path).exists() } }
+        for (kind in ArtKind.entries) {
+            val rows = withContext(Dispatchers.IO) {
+                if (kind == ArtKind.Logo) db.artistLogos().allNow().map { Triple(it.artist, it.path, it.updatedAt to it.auto) }
+                else db.artistImages().allNow().map { Triple(it.artist, it.path, it.updatedAt to it.auto) }
+            }
+            for ((artist, path, meta) in rows) {
+                val (updatedAt, auto) = meta
+                if (auto.isNotEmpty() || !ArtistArtRows.misread(artist)) continue
+                if (provablyAuto(kind, artist, File(path), updatedAt, assets)) {
+                    library.dropArtRow(kind, artist)
+                    revoked++
+                }
+            }
+        }
+        val (dropped, renamed) = library.settleArtRows()
+        DiagLog.i(
+            TAG,
+            "name repair: $events misread history values rewritten, $revoked auto-applied images on misread names removed, " +
+                "$renamed images moved to the repaired name, $dropped duplicates dropped (${System.currentTimeMillis() - started} ms)",
+        )
+    }
+
+    /** Auto-apply before v0.13.2 matched on [ArtLibraryMatch.legacyKey]; the image must also be that library image. */
+    private fun provablyAuto(kind: ArtKind, artist: String, file: File, updatedAt: Long, assets: List<ArtAsset>): Boolean {
+        val k = ArtLibraryMatch.legacyKey(artist)
+        val candidates = assets.filter { ArtLibraryMatch.kindOf(it) == kind && it.addedAt <= updatedAt && ArtLibraryMatch.legacyKey(it.name) == k }
+        if (candidates.isEmpty() || !file.exists()) return false
+        val print = runCatching { ArtLibraryStore.fingerprint(context, Uri.fromFile(file), kind == ArtKind.Logo) }.getOrNull() ?: return false
+        return candidates.any { printOf(it)?.same(print) == true }
+    }
+
     /** Puts a copy of [asset] on [artist] as its [kind]. */
     fun use(asset: ArtAsset, artist: String, kind: ArtKind) = library.setArtistArt(artist, kind, File(asset.path))
 
@@ -464,13 +510,14 @@ class ArtLibraryRepository(
     internal suspend fun autoApplyNow(): Int = withContext(Dispatchers.IO) {
         val lib = library.library.value
         if (!lib.loaded || !prefs.artAutoApply.first()) return@withContext 0
+        library.dropStaleAutoArt()
         val items = dao.allNow().filter { File(it.path).exists() }
         if (items.isEmpty()) return@withContext 0
         val posters = db.artistImages().allNow().filter { File(it.path).exists() }.mapTo(HashSet()) { Names.key(it.artist) }
         val logos = db.artistLogos().allNow().filter { File(it.path).exists() }.mapTo(HashSet()) { Names.key(it.artist) }
         val plan = ArtLibraryMatch.plan(lib.artists.map { it.name }, posters, logos, items, prefs.artDeclined.first())
         var n = 0
-        for (a in plan) if (library.fillArt(a.artist, a.kind, File(a.asset.path))) n++
+        for (a in plan) if (library.fillArt(a.artist, a.kind, File(a.asset.path), a.key)) n++
         if (n > 0) DiagLog.i(TAG, "auto-applied $n of ${plan.size} artwork library images to artists without their own")
         n
     }
@@ -538,6 +585,7 @@ class ArtLibraryRepository(
         private const val BACKFILL_STEP = "art_library_backfill_v1"
         private const val BACKFILL_DELAY_MS = 6_000L
         private const val LOGO_CLEANUP_STEP = "art_library_logo_cleanup_v1"
+        private const val NAME_REPAIR_STEP = "repair_misread_names_v1"
         private const val LOGO_CLEANUP_DELAY_MS = 3_000L
     }
 }

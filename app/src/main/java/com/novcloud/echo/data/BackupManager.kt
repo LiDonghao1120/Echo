@@ -63,7 +63,7 @@ class BackupManager(
             val artists = names.entries.sortedBy { it.value }.mapIndexed { i, (key, name) ->
                 val p = posterRows[key]?.let { File(it.path) }?.let { f -> "poster_$i.${f.extension.ifEmpty { "jpg" }}".also { art[it] = f } }
                 val l = logoRows[key]?.let { File(it.path) }?.let { f -> "logo_$i.${f.extension.ifEmpty { "png" }}".also { art[it] = f } }
-                BackupArtist(name, p, l)
+                BackupArtist(name, p, l, posterRows[key]?.auto.orEmpty(), logoRows[key]?.auto.orEmpty())
             }
             artLibrary.backupItems().forEach { (b, f) -> art[b.file] = f }
             val data = base.copy(artists = artists)
@@ -147,14 +147,14 @@ class BackupManager(
             val key = Names.key(a.artist)
             a.poster?.let { File(pending.artDir, it) }?.takeIf { it.exists() && key !in havePoster }?.let { f ->
                 ArtistArtStore.savePoster(context, a.artist, Uri.fromFile(f))?.let {
-                    images.put(ArtistImage(a.artist, it.absolutePath, now))
+                    images.put(ArtistImage(a.artist, it.absolutePath, now, a.posterAuto))
                     havePoster += key
                     done = true
                 }
             }
             a.logo?.let { File(pending.artDir, it) }?.takeIf { it.exists() && key !in haveLogo }?.let { f ->
                 ArtistArtStore.saveLogo(context, a.artist, Uri.fromFile(f))?.let {
-                    logos.put(ArtistLogo(a.artist, it.file.absolutePath, it.aspect, it.luma, now))
+                    logos.put(ArtistLogo(a.artist, it.file.absolutePath, it.aspect, it.luma, now, a.logoAuto))
                     haveLogo += key
                     done = true
                 }

@@ -498,10 +498,8 @@ object TextDecoder {
         return strict(bytes, Charsets.UTF_8) ?: String(bytes, gbk)
     }
 
-    fun latinOrGbk(bytes: ByteArray): String {
-        if (bytes.all { it >= 0 }) return String(bytes, Charsets.ISO_8859_1)
-        return strict(bytes, Charsets.UTF_8) ?: String(bytes, gbk)
-    }
+    /** Text a tag declares as ISO-8859-1: see [com.novcloud.echo.data.tags.TagText.latin1]. */
+    fun latinOrGbk(bytes: ByteArray): String = com.novcloud.echo.data.tags.TagText.latin1(bytes)
 
     private val gbk: Charset = runCatching { Charset.forName("GB18030") }.getOrDefault(Charsets.UTF_8)
 

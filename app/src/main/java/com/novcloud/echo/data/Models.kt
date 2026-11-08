@@ -119,7 +119,7 @@ data class Library(
             val albums = albumGroups.values.map { groups ->
                 val main = groups.maxWith(compareBy<List<Song>> { it.size }.thenByDescending { it.first().albumId })
                 val list = groups.flatten()
-                val sorted = list.sortedWith(compareBy({ it.disc }, { it.track }, { it.title }))
+                val sorted = list.sortedWith(compareBy({ it.disc }, { it.track <= 0 }, { it.track }, { it.title }))
                 val albumArtist = mostCommon(list.map { it.albumArtist }.filter { it.isNotBlank() })
                 Album(
                     id = main.first().albumId,
