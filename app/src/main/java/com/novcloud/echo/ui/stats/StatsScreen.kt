@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
@@ -63,6 +64,8 @@ import com.novcloud.echo.domain.Ranked
 import com.novcloud.echo.domain.Stats
 import com.novcloud.echo.domain.StatsEngine
 import com.novcloud.echo.domain.StatsRange
+import com.novcloud.echo.domain.TodayStats
+import com.novcloud.echo.diag.DiagLog
 import com.novcloud.echo.domain.TrendPoint
 import com.novcloud.echo.ui.components.AnimatedNumber
 import com.novcloud.echo.ui.components.ArtistNameMark
@@ -93,6 +96,7 @@ import com.novcloud.echo.ui.theme.palette
 import com.novcloud.echo.ui.theme.seededColor
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private val riso = listOf(Vermilion, Cobalt, Sand, Color(0xFFE8B931), Color(0xFF2E8B6E), Color(0xFFD9475E))
@@ -104,26 +108,37 @@ fun StatsScreen() {
     val lib by container.library.library.collectAsState()
     var range by rememberSaveable { mutableStateOf(StatsRange.Week) }
     val stats by produceState<Stats?>(null, events, lib, range) {
-        value = withContext(Dispatchers.Default) { StatsEngine.compute(events, lib, range) }
+        value = DiagLog.guard("stats ($range, ${events.size} plays)") { withContext(Dispatchers.Default) { StatsEngine.compute(events, lib, range) } } ?: value
+    }
+    val minute by produceState(System.currentTimeMillis() / 60_000) {
+        while (true) {
+            delay(60_000 - System.currentTimeMillis() % 60_000)
+            value = System.currentTimeMillis() / 60_000
+        }
+    }
+    val today by produceState<TodayStats?>(null, events, lib, minute) {
+        value = DiagLog.guard("today stats (${events.size} plays)") { withContext(Dispatchers.Default) { StatsEngine.today(events, lib) } } ?: value
     }
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
     com.novcloud.echo.ui.components.OnTabReselect("stats") { list.animateScrollToItem(0) }
-    StatsReport(stats, range, list = list) { range = it }
+    StatsReport(stats, range, today = today, nowHour = remember(minute) { java.time.LocalTime.now().hour }, list = list) { range = it }
 }
 
 @Composable
 fun StatsReport(
     stats: Stats?,
     range: StatsRange,
-    today: LocalDate = LocalDate.now(),
+    today: TodayStats? = null,
+    nowHour: Int = java.time.LocalTime.now().hour,
     list: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
     onRange: (StatsRange) -> Unit,
 ) {
     val p = palette
+    val date = today?.date ?: LocalDate.now()
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomInset.current + 28.dp)) {
         item(key = "mast") {
             Column(Modifier.statusBarsPadding().padding(start = 20.dp, end = 20.dp, top = 16.dp).reveal(0)) {
-                Eyebrow(rangeLine(range, today))
+                Eyebrow(rangeLine(range, date))
                 Spacer(Modifier.height(4.dp))
                 Text(stringResource(R.string.stats_title), maxLines = 1, style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp))
                 Spacer(Modifier.height(14.dp))
@@ -131,11 +146,12 @@ fun StatsReport(
             }
         }
         val s = stats ?: return@LazyColumn
+        if (today != null && (!today.empty || !s.empty)) item(key = "today") { Box(Modifier.reveal(1)) { TodayCard(today, nowHour) } }
         if (s.empty) {
             item { EmptyState(null, stringResource(R.string.stats_empty), Modifier.padding(top = 40.dp)) }
             return@LazyColumn
         }
-        item(key = "poster") { Box(Modifier.reveal(1)) { ReportPoster(s, range, today) } }
+        item(key = "poster") { Box(Modifier.reveal(2)) { ReportPoster(s, range, date) } }
         item(key = "rhythm") {
             Chapter(1, stringResource(R.string.stats_rhythm)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -293,9 +309,9 @@ private fun ReportPoster(s: Stats, range: StatsRange, today: LocalDate) {
 }
 
 @Composable
-private fun PosterFigure(value: Long, label: String, modifier: Modifier = Modifier) {
+private fun PosterFigure(value: Long, label: String, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.TextUnit = 34.sp) {
     Column(modifier) {
-        AnimatedNumber(value, style = EchoType.poster(34.sp), color = Paper)
+        AnimatedNumber(value, style = EchoType.poster(size), color = Paper)
         Spacer(Modifier.height(4.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, color = Paper.copy(alpha = 0.55f), maxLines = 1, softWrap = false)
     }
@@ -467,6 +483,103 @@ private fun Habits(s: Stats) {
                 AnimatedNumber((s.completionRate * 100).toLong(), format = { "$it%" }, style = EchoType.poster(30.sp))
                 Text(stringResource(R.string.stats_completion), style = MaterialTheme.typography.labelSmall, color = p.muted)
             }
+        }
+    }
+}
+
+@Composable
+internal fun TodayCard(t: TodayStats, nowHour: Int, modifier: Modifier = Modifier) {
+    val actions = LocalActions.current
+    val minutes = t.totalMs / 60_000
+    val hours = minutes / 60
+    Column(
+        modifier.testTag("stats_today").padding(start = 16.dp, end = 16.dp, top = 18.dp).fillMaxWidth().clip(EchoShape.card).background(Cobalt).padding(20.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).background(Paper))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.stats_today), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black), color = Paper)
+            Spacer(Modifier.weight(1f))
+            Text(formatDate(t.date, R.string.date_home), style = EchoType.label, color = Paper.copy(alpha = 0.6f), maxLines = 1)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            AnimatedNumber(if (hours > 0) hours else minutes, style = EchoType.poster(88.sp), color = Paper)
+            Column(Modifier.padding(start = 8.dp, bottom = 12.dp)) {
+                Text(
+                    if (hours > 0) pluralStringResource(R.plurals.label_hours, hours.toInt()) else pluralStringResource(R.plurals.label_minutes, minutes.toInt()),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black), color = Paper,
+                )
+                if (hours > 0) Text(stringResource(R.string.duration_minutes, number((minutes % 60).toInt())), style = MaterialTheme.typography.bodySmall, color = Paper.copy(alpha = 0.65f))
+            }
+            Spacer(Modifier.weight(1f))
+            val avg = t.averageMs
+            if (avg != null && !t.empty) {
+                val diff = (t.totalMs - avg) / 60_000
+                Column(Modifier.padding(bottom = 14.dp), horizontalAlignment = Alignment.End) {
+                    Box(Modifier.background(if (diff >= 0) Paper else Ink).padding(horizontal = 7.dp, vertical = 3.dp)) {
+                        Text(
+                            (if (diff >= 0) "+" else "−") + durationText(kotlin.math.abs(diff)),
+                            style = EchoType.numeral(14.sp), color = if (diff >= 0) Cobalt else Paper, maxLines = 1,
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(stringResource(R.string.stats_today_vs_average), style = EchoType.label, color = Paper.copy(alpha = 0.65f), maxLines = 1)
+                }
+            }
+        }
+        if (!t.empty) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                PosterFigure(t.plays.toLong(), pluralStringResource(R.plurals.label_plays, t.plays), Modifier.weight(1f), size = 26.sp)
+                Box(Modifier.width(1.dp).fillMaxHeight().background(Paper.copy(alpha = 0.2f)))
+                PosterFigure(t.songs.toLong(), pluralStringResource(R.plurals.label_songs_poster, t.songs), Modifier.weight(1f).padding(start = 14.dp), size = 26.sp)
+                Box(Modifier.width(1.dp).fillMaxHeight().background(Paper.copy(alpha = 0.2f)))
+                PosterFigure(t.artists.toLong(), pluralStringResource(R.plurals.label_artists, t.artists), Modifier.weight(1f).padding(start = 14.dp), size = 26.sp)
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        TodayHours(t.hourly, nowHour, Paper, Vermilion, Paper.copy(alpha = 0.16f), Modifier.fillMaxWidth().height(52.dp))
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth()) {
+            listOf(0, 6, 12, 18).forEach { h ->
+                Text("%02d".format(h), Modifier.weight(1f), style = EchoType.label, color = Paper.copy(alpha = 0.55f))
+            }
+        }
+        val song = t.topSong
+        val artist = t.topArtist
+        if (song != null || artist != null) {
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (song != null) TodayPick(
+                    stringResource(R.string.stats_today_top_song), song.title, displayArtist(song.subtitle), Modifier.weight(1f).fillMaxHeight(),
+                    onClick = { song.key.toLongOrNull()?.let { id -> actions.repo.library.value.songById[id] }?.let { actions.player.playSong(it, listOf(it)) } },
+                ) { Artwork(song.art, Modifier.size(44.dp), EchoShape.cover, song.title) }
+                if (artist != null) TodayPick(
+                    stringResource(R.string.stats_today_top_artist), displayArtist(artist.title), shortDuration(artist.ms), Modifier.weight(1f).fillMaxHeight(),
+                    onClick = { actions.openArtist(artist.key) },
+                ) { ArtistThumb(rememberArtistPoster(artist.key), artist.key, Modifier.size(44.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun durationText(minutes: Long): String =
+    if (minutes >= 60) stringResource(R.string.duration_hours_minutes, number((minutes / 60).toInt()), number((minutes % 60).toInt()))
+    else stringResource(R.string.duration_minutes, number(minutes.toInt()))
+
+@Composable
+private fun TodayPick(label: String, title: String, sub: String, modifier: Modifier, onClick: () -> Unit, art: @Composable () -> Unit) {
+    Row(
+        modifier.clip(EchoShape.cover).background(Ink.copy(alpha = 0.22f)).clickable(onClick = onClick).padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        art()
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = EchoType.label, color = Paper.copy(alpha = 0.6f), maxLines = 1)
+            Text(title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(sub, style = MaterialTheme.typography.bodySmall, color = Paper.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

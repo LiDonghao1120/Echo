@@ -120,9 +120,36 @@ object TagText {
     fun unexplained(s: String): Boolean {
         if (!suspicious(s) || repair(s) != null) return false
         if (s.any { it.code == 0xFFFD || it.code in 0x80..0x9F }) return true
+        if (utf8AsLatin1(s)) return true
+        if (!loneHanInLatinWord(s)) return false
         val bytes = encode(s, gbk) ?: return true
         return !plausibleGbk(bytes)
     }
+
+    private fun utf8AsLatin1(s: String): Boolean =
+        (0 until s.length - 1).any { (s[it].code == 0xC2 || s[it].code == 0xC3) && s[it + 1].code in 0x80..0xBF }
+
+    /**
+     * One Han or private-use character, alone, inside a word that is otherwise ASCII letters ("ROSAL虯", "Gr虯ner"): what
+     * a misread accented letter looks like. Runs of CJK ("Jay周杰伦") and kana-bearing Japanese ("流しのOOJA") are not.
+     */
+    fun loneHanInLatinWord(s: String): Boolean {
+        var i = 0
+        while (i < s.length) {
+            val c = s.codePointAt(i)
+            val len = Character.charCount(c)
+            if (isIdeo(c) && !isKana(c)) {
+                val prev = if (i > 0) s.codePointBefore(i) else -1
+                val next = if (i + len < s.length) s.codePointAt(i + len) else -1
+                val alone = (prev == -1 || !isIdeo(prev)) && (next == -1 || !isIdeo(next))
+                if (alone && (isAsciiLetter(prev) || isAsciiLetter(next))) return true
+            }
+            i += len
+        }
+        return false
+    }
+
+    private fun isKana(c: Int) = c in 0x3040..0x30FF || c in 0x31F0..0x31FF
 
     /** A CJK character with ASCII letters right before and after it ("Gr虯ner"): never how Chinese is written. */
     fun cjkInsideWord(s: String): Boolean {

@@ -96,7 +96,7 @@ object ArtLibraryMatch {
         declined: Set<String> = emptySet(),
     ): List<Apply> {
         if (assets.isEmpty()) return emptyList()
-        val byKey = assets.sortedWith(compareByDescending<ArtAsset> { it.updatedAt }.thenByDescending { it.id })
+        val byKey = assets.sortedWith(newestFirst)
             .filter { confident(it.name) }
             .groupBy { key(it.name) to kindOf(it) }
         val out = ArrayList<Apply>()
@@ -139,12 +139,18 @@ object ArtLibraryMatch {
         return assets.asSequence()
             .filter { matches(it.name, query) }
             .map { it to (k.isNotEmpty() && key(it.name) == k) }
-            .sortedWith(
-                compareByDescending<Pair<ArtAsset, Boolean>> { it.second }
-                    .thenByDescending { kindOf(it.first) == kind }
-                    .thenBy { sortKey(it.first.name) }
-                    .thenByDescending { it.first.updatedAt },
-            )
+            .map { Picked(it.first, it.second, kindOf(it.first) == kind, sortKey(it.first.name)) }
+            .sortedWith(pickerOrder)
+            .map { it.asset to it.matches }
             .toList()
     }
+
+    class Picked(val asset: ArtAsset, val matches: Boolean, val sameKind: Boolean, val sortKey: String)
+
+    /** Matching name, then the wanted kind, then by sort key, newest and id last: a total order on precomputed keys. */
+    val pickerOrder: Comparator<Picked> = compareByDescending<Picked> { it.matches }.thenByDescending { it.sameKind }
+        .thenBy { it.sortKey }.thenByDescending { it.asset.updatedAt }.thenBy { it.asset.id }
+
+    /** Newest first, ties by id. */
+    val newestFirst: Comparator<ArtAsset> = compareByDescending<ArtAsset> { it.updatedAt }.thenByDescending { it.id }
 }

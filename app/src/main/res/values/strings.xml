@@ -180,6 +180,10 @@
     <string name="stats_habits">习惯</string>
     <string name="stats_streak">连续收听</string>
     <string name="stats_completion">完整播放</string>
+    <string name="stats_today">今天</string>
+    <string name="stats_today_vs_average">比近 7 天日均</string>
+    <string name="stats_today_top_song">今日单曲</string>
+    <string name="stats_today_top_artist">今日歌手</string>
     <string name="time_peak_hour">HH:mm</string>
     <string name="date_range_day">M.d</string>
     <string name="date_range_day_year">yyyy.M.d</string>

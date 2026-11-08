@@ -157,7 +157,7 @@ fun ArtLibraryScreen() {
     val shown = remember(assets, query, filter) {
         assets.filter { a ->
             (filter == KindFilter.All || ArtLibraryMatch.kindOf(a).name == filter.name) && ArtLibraryMatch.matches(a.name, query)
-        }.sortedWith(compareBy<ArtAsset> { Pinyin.sortKey(it.name, name = true) }.thenByDescending { it.updatedAt })
+        }.map { it to Pinyin.sortKey(it.name, name = true) }.sortedWith(compareBy<Pair<ArtAsset, String>> { it.second }.thenBy(ArtLibraryMatch.newestFirst) { it.first }).map { it.first }
     }
     val linkedCount = remember(assets, linked) { assets.map { ArtLibraryMatch.key(it.name) }.distinct().count { it in linked } }
     val grid = rememberLazyGridState()

@@ -49,6 +49,29 @@ data class Stats(
     val peakWeekday get() = weekday.indices.maxByOrNull { weekday[it] } ?: 0
 }
 
+/** Today, from local midnight: time is the part of each play that falls inside the day, so a play across midnight is split. */
+@Immutable
+data class TodayStats(
+    val date: LocalDate,
+    val totalMs: Long = 0,
+    val plays: Int = 0,
+    val songs: Int = 0,
+    val artists: Int = 0,
+    val hourly: List<Long> = List(24) { 0L },
+    val topSong: Ranked? = null,
+    val topArtist: Ranked? = null,
+    /** Daily average over the seven days before today; null when none of them had music. */
+    val averageMs: Long? = null,
+) {
+    val empty get() = totalMs <= 0L
+}
+
+/** Total orders (ties broken down to the key) so sorts are stable and never see an inconsistent comparator. */
+object StatsOrder {
+    val byPlays: Comparator<Ranked> = compareByDescending<Ranked> { it.plays }.thenByDescending { it.ms }.thenBy { it.key }
+    val byTime: Comparator<Ranked> = compareByDescending<Ranked> { it.ms }.thenByDescending { it.plays }.thenBy { it.key }
+}
+
 object StatsEngine {
     private const val DAY = 86_400_000L
 
@@ -79,7 +102,7 @@ object StatsEngine {
             val e = l.last()
             val s = lib.songById[id]
             Ranked(id.toString(), s?.title ?: Names.clean(e.title), s?.artist ?: Names.clean(e.artist), s?.art ?: ArtRef(e.albumId, -1), l.sumOf { it.listenedMs }, l.size)
-        }.sortedWith(compareByDescending<Ranked> { it.plays }.thenByDescending { it.ms }).take(10)
+        }.sortedWith(StatsOrder.byPlays).take(10)
 
         val artistMs = HashMap<String, Long>()
         val artistPlays = HashMap<String, Int>()
@@ -92,7 +115,7 @@ object StatsEngine {
                 artistSpellings.getOrPut(key) { mutableListOf() }.add(name)
             }
         }
-        val artistAgg = artistMs.entries.sortedByDescending { it.value }.take(10).map { (key, ms) ->
+        val artistAgg = artistMs.entries.sortedWith(compareByDescending<Map.Entry<String, Long>> { it.value }.thenBy { it.key }).take(10).map { (key, ms) ->
             val name = lib.artistByKey[key]?.name ?: mostCommon(artistSpellings[key].orEmpty())
             Ranked(name, name, "", name, ms, artistPlays[key] ?: 0)
         }
@@ -100,12 +123,12 @@ object StatsEngine {
         val albumAgg = events.groupBy { lib.albumById[it.albumId]?.id ?: it.albumId }.map { (id, l) ->
             val al = lib.albumById[id]
             Ranked(id.toString(), displayAlbum(al?.title ?: Names.clean(l.last().album)), al?.artist ?: Names.clean(l.last().artist), al?.art ?: ArtRef(id, -1), l.sumOf { it.listenedMs }, l.size)
-        }.sortedByDescending { it.ms }.take(10)
+        }.sortedWith(StatsOrder.byTime).take(10)
 
         val genreAgg = events.groupBy { Names.key(lib.songById[it.songId]?.genre?.ifBlank { null } ?: it.genre) }.filterKeys { it.isNotBlank() }.map { (k, l) ->
             val g = lib.genreByKey[k]?.name ?: Names.clean(l.last().genre)
             Ranked(g, g, "", null, l.sumOf { it.listenedMs }, l.size)
-        }.sortedByDescending { it.ms }.take(6)
+        }.sortedWith(StatsOrder.byTime).take(6)
 
         val dayMs = all.filter { it.startedAt >= today.minusDays(27).atStartOfDay(zone).toInstant().toEpochMilli() }
             .groupBy { Instant.ofEpochMilli(it.startedAt).atZone(zone).toLocalDate() }
@@ -132,6 +155,76 @@ object StatsEngine {
             longestStreak = longest,
             completionRate = if (events.isEmpty()) 0f else events.count { it.completed } / events.size.toFloat(),
         )
+    }
+
+    fun today(all: List<PlayEvent>, lib: Library, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): TodayStats {
+        val date = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
+        val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val weekStart = date.minusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
+        val hourly = LongArray(24)
+        val songMs = HashMap<Long, Long>()
+        val songPlays = HashMap<Long, Int>()
+        val last = HashMap<Long, PlayEvent>()
+        val artistMs = HashMap<String, Long>()
+        val artistPlays = HashMap<String, Int>()
+        val spellings = HashMap<String, MutableList<String>>()
+        var total = 0L
+        var plays = 0
+        var before = 0L
+        for (e in all) {
+            val from = e.startedAt
+            val to = from + e.listenedMs.coerceAtLeast(0)
+            if (to <= weekStart || from >= end) continue
+            before += overlap(from, to, weekStart, start)
+            val ms = overlap(from, to, start, end)
+            if (ms <= 0) continue
+            total += ms
+            plays++
+            spreadOverHours(maxOf(from, start), minOf(to, end), zone, hourly)
+            songMs.merge(e.songId, ms, Long::plus)
+            songPlays.merge(e.songId, 1, Int::plus)
+            last[e.songId] = e
+            com.novcloud.echo.data.artistsOf(e.artist).filter { it != UNKNOWN }.map { it to Names.key(it) }.distinctBy { it.second }.forEach { (name, key) ->
+                if (key.isEmpty()) return@forEach
+                artistMs.merge(key, ms, Long::plus)
+                artistPlays.merge(key, 1, Int::plus)
+                spellings.getOrPut(key) { mutableListOf() }.add(name)
+            }
+        }
+        val topSong = songMs.entries.map { (id, ms) ->
+            val e = last.getValue(id)
+            val s = lib.songById[id]
+            Ranked(id.toString(), s?.title ?: Names.clean(e.title), s?.artist ?: Names.clean(e.artist), s?.art ?: ArtRef(e.albumId, -1), ms, songPlays[id] ?: 0)
+        }.minWithOrNull(StatsOrder.byTime)
+        val topArtist = artistMs.entries.map { (key, ms) ->
+            val name = lib.artistByKey[key]?.name ?: mostCommon(spellings[key].orEmpty())
+            Ranked(key, name, "", name, ms, artistPlays[key] ?: 0)
+        }.minWithOrNull(StatsOrder.byTime)?.let { it.copy(key = it.title) }
+        return TodayStats(
+            date = date,
+            totalMs = total,
+            plays = plays,
+            songs = songMs.size,
+            artists = artistMs.size,
+            hourly = hourly.toList(),
+            topSong = topSong,
+            topArtist = topArtist,
+            averageMs = if (before > 0) before / 7 else null,
+        )
+    }
+
+    private fun overlap(from: Long, to: Long, start: Long, end: Long): Long = (minOf(to, end) - maxOf(from, start)).coerceAtLeast(0)
+
+    /** Adds [from, to) to the local clock hours it covers (DST days have 23 or 25 of them; each lands on its hour of day). */
+    private fun spreadOverHours(from: Long, to: Long, zone: ZoneId, hourly: LongArray) {
+        var t = from
+        while (t < to) {
+            val z = Instant.ofEpochMilli(t).atZone(zone)
+            val next = minOf(to, z.truncatedTo(ChronoUnit.HOURS).plusHours(1).toInstant().toEpochMilli())
+            hourly[z.hour] += next - t
+            t = next
+        }
     }
 
     private fun trend(events: List<PlayEvent>, range: StatsRange, today: LocalDate, zone: ZoneId, first: Long?): List<TrendPoint> {

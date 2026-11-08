@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
@@ -42,7 +43,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class AppContainer(app: Application) {
-    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + DiagLog.handler("app"))
     val db = EchoDatabase.create(app)
     val prefs = Prefs(app)
     val library = LibraryRepository(app, db, prefs, appScope)
@@ -63,10 +64,12 @@ class AppContainer(app: Application) {
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     val home: StateFlow<HomeData> = combine(library.library, merge(events.take(1), events.drop(1).debounce(800)), today) { lib, ev, _ -> lib to ev }
-        .map { (lib, ev) ->
-            val data = Recommender.build(lib, ev, pinned = dailyPin.read(LocalDate.now()))
-            if (lib.songs.isNotEmpty()) data.daily?.let { dailyPin.write(data.day, it.songs) }
-            data
+        .mapNotNull { (lib, ev) ->
+            DiagLog.guard("recommendations (${lib.songs.size} songs, ${ev.size} plays)") {
+                val data = Recommender.build(lib, ev, pinned = dailyPin.read(LocalDate.now()))
+                if (lib.songs.isNotEmpty()) data.daily?.let { dailyPin.write(data.day, it.songs) }
+                data
+            }
         }
         .flowOn(Dispatchers.Default)
         .stateIn(appScope, SharingStarted.Eagerly, HomeData())

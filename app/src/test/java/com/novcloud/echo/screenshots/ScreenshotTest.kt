@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -311,6 +312,40 @@ abstract class ScreenshotBase {
         com.novcloud.echo.ui.detail.CoverStylePicker(com.novcloud.echo.data.CoverStyle.Vinyl, album.art, album.title, hint = true) {}
     }
 
+    /** The stats page's Today card on its own, with fixed fictional numbers (the app's own Today depends on the clock). */
+    protected fun todayCard(name: String, dark: Boolean = true, empty: Boolean = false) {
+        compose.mainClock.autoAdvance = false
+        Samples.seed(ctx, withArt = true)
+        val c = Samples.app(ctx)
+        val song = Samples.songs.first { it.artist == "Ivy Calder" }
+        val min = 60_000L
+        val hourly = LongArray(24).also { h ->
+            if (!empty) mapOf(8 to 12, 9 to 6, 12 to 4, 13 to 3, 18 to 8, 19 to 14).forEach { (k, v) -> h[k] = v * min }
+        }.toList()
+        val stats = if (empty) com.novcloud.echo.domain.TodayStats(java.time.LocalDate.of(2026, 11, 8), averageMs = 35 * min)
+        else com.novcloud.echo.domain.TodayStats(
+            date = java.time.LocalDate.of(2026, 11, 8), totalMs = 47 * min, plays = 14, songs = 11, artists = 6, hourly = hourly,
+            topSong = com.novcloud.echo.domain.Ranked(song.id.toString(), song.title, song.artist, song.art, 11 * min, 3),
+            topArtist = com.novcloud.echo.domain.Ranked("Ivy Calder", "Ivy Calder", "", "Ivy Calder", 21 * min, 6),
+            averageMs = 35 * min,
+        )
+        compose.setContent {
+            EchoTheme(dark, motion = false) {
+                val nav = androidx.navigation.compose.rememberNavController()
+                val actions = AppActions(nav, c.player, c.library, c.home, { _, _ -> }, {}, {})
+                androidx.compose.runtime.CompositionLocalProvider(LocalActions provides actions) {
+                    Surface(color = MaterialTheme.colorScheme.surface) {
+                        Column(Modifier.fillMaxWidth().testTag("today_shot").padding(bottom = 18.dp)) {
+                            com.novcloud.echo.ui.stats.TodayCard(stats, nowHour = 19)
+                        }
+                    }
+                }
+            }
+        }
+        settle(2)
+        compose.onNodeWithTag("today_shot").captureRoboImage("build/outputs/roborazzi/$name.png")
+    }
+
     protected fun primeEffects() {
         val fx = Samples.app(ctx).audioFx
         fx.publishCaps(com.novcloud.echo.playback.audio.EqCaps(true, listOf(60, 230, 910, 3600, 14000), -1500, 1500, bassBoost = true))
@@ -357,6 +392,9 @@ class ScreenshotTest : ScreenshotBase() {
     @Test fun stats_dark_tall() = app("stats_dark_tall", route = "stats", tall = 3300)
     @Test fun stats_dark() = app("stats_dark", route = "stats")
     @Test fun stats_light_tall() = app("stats_light_tall", dark = false, route = "stats", tall = 3300)
+    @Test fun stats_today_dark() = todayCard("stats_today_dark")
+    @Test fun stats_today_light() = todayCard("stats_today_light", dark = false)
+    @Test fun stats_today_empty_dark() = todayCard("stats_today_empty_dark", empty = true)
 
     @Test fun nowplaying_dark() = app("nowplaying_dark", expanded = true)
 

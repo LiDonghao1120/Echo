@@ -41,7 +41,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class PlaybackService : MediaSessionService() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + DiagLog.handler("playback"))
     private var session: MediaSession? = null
     private lateinit var player: ExoPlayer
     private lateinit var tracker: PlayTracker
@@ -168,17 +168,19 @@ class PlaybackService : MediaSessionService() {
         scope.launch {
             while (isActive) {
                 delay(15_000)
-                tracker.checkpoint()
-                if (player.isPlaying) saveQueue()
+                DiagLog.guard("listening checkpoint") { tracker.checkpoint() }
+                DiagLog.guard("queue save") { if (player.isPlaying) saveQueue() }
             }
         }
         scope.launch {
             while (isActive) {
                 delay(1_000)
-                val action = watchdog.tick(SystemClock.elapsedRealtime(), snapshot())
-                if (action != PlaybackWatchdog.Action.None) {
-                    DiagLog.w(TAG, "playback stalled at ${player.currentPosition} ms on ${player.currentMediaItem?.mediaId} (state ${player.playbackState}, buffered ${player.bufferedPosition} ms): $action")
-                    recover(action, resume = true)
+                DiagLog.guard("playback watchdog") {
+                    val action = watchdog.tick(SystemClock.elapsedRealtime(), snapshot())
+                    if (action != PlaybackWatchdog.Action.None) {
+                        DiagLog.w(TAG, "playback stalled at ${player.currentPosition} ms on ${player.currentMediaItem?.mediaId} (state ${player.playbackState}, buffered ${player.bufferedPosition} ms): $action")
+                        recover(action, resume = true)
+                    }
                 }
             }
         }

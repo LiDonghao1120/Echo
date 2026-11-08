@@ -94,7 +94,7 @@ object Recommender {
         genres.mapNotNull { lib.genre(it) }.take(3).forEachIndexed { i, genre ->
             val g = genre.name
             val pool = genre.songs
-            val picked = diverse(pool.sortedByDescending { scoreOf(it, aff, dayStart, seed * 31 + i + 1, 0.6) }, 25, 3)
+            val picked = diverse(pool.map { it to scoreOf(it, aff, dayStart, seed * 31 + i + 1, 0.6) }.sortedByDescending { it.second }.map { it.first }, 25, 3)
             if (picked.size >= 5) mixes += Mix("genre:$g", g, MixKind.Genre, picked)
         }
         val topArtists = if (aff.artist.isNotEmpty()) aff.artist.entries.sortedByDescending { it.value }.map { it.key }
@@ -105,8 +105,8 @@ object Recommender {
             val own = artist.songs.shuffled(r).take(12)
             val artistGenres = artist.songs.map { it.genre }.filter { it.isNotBlank() }.toSet()
             val similarArtists = lib.artists.filter { a -> a.name != name && a.songs.any { it.genre in artistGenres } }
-                .sortedByDescending { aff.artist[Names.key(it.name)] ?: 0.0 }
-                .take(8).map { Names.key(it.name) }.toSet()
+                .map { Names.key(it.name) }.sortedByDescending { aff.artist[it] ?: 0.0 }
+                .take(8).toSet()
             val similar = lib.songs.filter { s -> s.artists.any { Names.key(it) in similarArtists } && s.genre in artistGenres }
                 .shuffled(r).let { diverse(it, 13, 2) }
             val songs = interleave(own, similar)
@@ -126,7 +126,7 @@ object Recommender {
                 if (d <= 2) momentCounts.merge(e.songId, 1, Int::plus)
             }
             val r = Random(seed * 7 + hour / 3)
-            val moment = momentCounts.entries.sortedByDescending { it.value + r.nextDouble() }.mapNotNull { lib.songById[it.key] }
+            val moment = momentCounts.entries.map { it.key to it.value + r.nextDouble() }.sortedByDescending { it.second }.mapNotNull { lib.songById[it.first] }
             if (moment.size >= 6) mixes += Mix("moment", "", MixKind.Moment, diverse(moment, 25, 3), momentSlot(hour))
         }
         val fresh = lib.songs.filter { it.id !in live.plays }.sortedByDescending { it.dateAdded }

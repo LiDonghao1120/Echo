@@ -11,6 +11,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineName
 
 /**
  * Two-file rolling log: lines go to [current] until it passes [maxBytes], then it replaces [previous]. The pair never
@@ -52,6 +55,7 @@ class RollingLog(private val dir: File, private val maxBytes: Long, private val 
 /** In-app diagnostics: playback watchdog events, scan timings, errors and crashes, kept on the device until exported. */
 object DiagLog {
     const val MAX_BYTES = 256L * 1024
+    const val CRASH = "EchoCrash"
 
     private var log: RollingLog? = null
     private val writer = Executors.newSingleThreadExecutor { r -> Thread(r, "echo-diag").apply { isDaemon = true } }
@@ -68,12 +72,32 @@ object DiagLog {
             marker.delete()
             l.append(line('W', "Crash", "previous launch ended in a crash (stack trace above)"))
         }
+        val main = android.os.Looper.getMainLooper()?.thread
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             runCatching { if (Thread.currentThread().name != "echo-diag") writer.submit {}.get(500, java.util.concurrent.TimeUnit.MILLISECONDS) }
+            if (t !== main && main != null) {
+                l.append(line('E', CRASH, "uncaught on ${t.name}, process kept alive\n${stack(e)}"))
+                return@setDefaultUncaughtExceptionHandler
+            }
             l.append(line('F', "Crash", "uncaught on ${t.name}\n${stack(e)}"))
             runCatching { marker.parentFile?.mkdirs(); marker.createNewFile() }
             previous?.uncaughtException(t, e)
         }
+    }
+
+    /** For app-wide scopes: a failed coroutine is logged under [CRASH] with its stack and its siblings keep running. */
+    fun handler(scope: String) = CoroutineExceptionHandler { ctx, e ->
+        e(CRASH, "uncaught in $scope coroutine${ctx[CoroutineName]?.let { " " + it.name }.orEmpty()}", e)
+    }
+
+    /** Runs [block]; a failure is logged under [CRASH] as [what] and gives null. Cancellation passes through. */
+    inline fun <T> guard(what: String, block: () -> T): T? = try {
+        block()
+    } catch (c: CancellationException) {
+        throw c
+    } catch (t: Throwable) {
+        e(CRASH, "$what failed", t)
+        null
     }
 
     fun i(tag: String, msg: String) = write('I', tag, msg, null)

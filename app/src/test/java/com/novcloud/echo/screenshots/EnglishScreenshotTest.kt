@@ -64,6 +64,8 @@ class EnglishScreenshotTest : ScreenshotBase() {
     @Test fun stats_en() = app("stats_en", route = "stats")
     @Test fun stats_tall_en() = app("stats_tall_en", route = "stats", tall = 3900)
     @Test fun stats_light_tall_en() = app("stats_light_tall_en", dark = false, route = "stats", tall = 3900)
+    @Test fun stats_today_en() = todayCard("stats_today_en")
+    @Test fun stats_today_light_en() = todayCard("stats_today_light_en", dark = false)
 
     @Test fun settings_en() = app("settings_en", route = "settings")
     @Test fun settings_tall_en() = app("settings_tall_en", route = "settings", tall = 2200)

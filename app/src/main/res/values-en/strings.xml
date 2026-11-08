@@ -180,6 +180,10 @@
     <string name="stats_habits">Habits</string>
     <string name="stats_streak">Day streak</string>
     <string name="stats_completion">Played through</string>
+    <string name="stats_today">Today</string>
+    <string name="stats_today_vs_average">vs. 7-day average</string>
+    <string name="stats_today_top_song">Top song</string>
+    <string name="stats_today_top_artist">Top artist</string>
     <string name="time_peak_hour">h a</string>
     <string name="date_range_day">MMM d</string>
     <string name="date_range_day_year">MMM d, yyyy</string>

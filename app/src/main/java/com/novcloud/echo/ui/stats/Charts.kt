@@ -251,3 +251,27 @@ fun DayStrip(days: List<Long>, color: Color, empty: Color, modifier: Modifier = 
         }
     }
 }
+
+/** Today by clock hour: square-topped columns from a baseline, the current hour in [now]. Empty hours are a tick. */
+@Composable
+fun TodayHours(hourly: List<Long>, nowHour: Int, bar: Color, now: Color, track: Color, modifier: Modifier = Modifier) {
+    val maxV = max(1L, hourly.maxOrNull() ?: 1L)
+    val grow = rememberGrow(hourly.sum(), 200)
+    Canvas(modifier) {
+        val n = 24
+        val gap = 2.dp.toPx()
+        val w = (size.width - gap * (n - 1)) / n
+        val tick = 2.dp.toPx()
+        for (i in 0 until n) {
+            val x = i * (w + gap)
+            val v = hourly.getOrElse(i) { 0L }
+            val c = if (i == nowHour) now else bar
+            if (v <= 0) {
+                drawRect(if (i == nowHour) now else track, Offset(x, size.height - tick), Size(w, tick))
+            } else {
+                val h = max(tick * 2, size.height * (v.toFloat() / maxV) * grow)
+                drawRect(c, Offset(x, size.height - h), Size(w, h))
+            }
+        }
+    }
+}

@@ -119,7 +119,7 @@ data class Library(
             val albums = albumGroups.values.map { groups ->
                 val main = groups.maxWith(compareBy<List<Song>> { it.size }.thenByDescending { it.first().albumId })
                 val list = groups.flatten()
-                val sorted = list.sortedWith(compareBy({ it.disc }, { it.track <= 0 }, { it.track }, { it.title }))
+                val sorted = list.sortedWith(albumTrackOrder)
                 val albumArtist = mostCommon(list.map { it.albumArtist }.filter { it.isNotBlank() })
                 Album(
                     id = main.first().albumId,
@@ -167,6 +167,10 @@ fun splitArtists(raw: String): List<String> {
 /** The most frequent value; ties go to the one that sorts first, so the choice does not depend on scan order. */
 fun mostCommon(values: List<String>): String =
     values.groupingBy { it }.eachCount().entries.minWithOrNull(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })?.key ?: ""
+
+/** Disc, then numbered tracks before unnumbered ones, then number, title and id: a total order. */
+val albumTrackOrder: Comparator<Song> =
+    compareBy<Song> { it.disc }.thenBy { it.track <= 0 }.thenBy { it.track }.thenBy { it.title }.thenBy { it.id }
 
 inline fun <T> List<T>.sortedByKey(key: (T) -> String): List<T> =
     map { it to key(it) }.sortedBy { it.second }.map { it.first }

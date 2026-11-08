@@ -66,6 +66,21 @@ class TagTextTest {
         assertFalse(TagText.cjkInsideWord("Kai林雾"))
     }
 
+    /** Japanese titles mix kana and kanji with Latin words; that is how they are written, not a misreading. */
+    @Test
+    fun japaneseNextToLatinIsNotSuspicious() {
+        val names = listOf("夜明けのMOMO〜STREET COVERS〜", "雨音のKAI", "東京NIGHT DRIVE", "MOMOの歌", "ミナトBLUE", "森川遥 feat. Aria Moss")
+        names.forEach { assertFalse(it, TagText.unexplained(it)); assertFalse(it, TagText.cjkInsideWord(it)) }
+        val raw = names.mapIndexed { i, n -> song(i + 1, "Ms.MOMO", album = n) }
+        val found = NameAudit.find(raw, raw.map { it.cleaned() })
+        assertTrue(found.toString(), found.none { it.kind == NameAudit.Kind.Suspicious })
+        assertTrue(TagText.loneHanInLatinWord("Gr\u554Aner"))
+        assertTrue(TagText.loneHanInLatinWord("MAR\u866F"))
+        assertFalse(TagText.loneHanInLatinWord("Jay周景澜"))
+        assertFalse(TagText.loneHanInLatinWord("夜明けのMOMO"))
+        assertTrue(TagText.unexplained("Ren\u00C3\u00A9e Sol\u00C3"))
+    }
+
     private fun song(n: Int, artist: String, album: String = "Lumen Fields", title: String = "Track $n", albumArtist: String = "") =
         Song(n.toLong(), title, artist, album, 7, albumArtist, "Pop", 200_000, n, 1, 2025, 0, "/m/lumen/$n.mp3", "/m/lumen", "audio/mpeg", 1000L + n)
 
