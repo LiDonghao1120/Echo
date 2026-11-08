@@ -163,6 +163,7 @@
     <string name="sleep_this_track">本曲</string>
     <string name="stats_title">收听报告</string>
     <string name="stats_empty">暂无收听记录</string>
+    <string name="stats_range_today">今天</string>
     <string name="stats_range_week">7天</string>
     <string name="stats_range_month">30天</string>
     <string name="stats_range_year">一年</string>
@@ -180,10 +181,7 @@
     <string name="stats_habits">习惯</string>
     <string name="stats_streak">连续收听</string>
     <string name="stats_completion">完整播放</string>
-    <string name="stats_today">今天</string>
     <string name="stats_today_vs_average">比近 7 天日均</string>
-    <string name="stats_today_top_song">今日单曲</string>
-    <string name="stats_today_top_artist">今日歌手</string>
     <string name="time_peak_hour">HH:mm</string>
     <string name="date_range_day">M.d</string>
     <string name="date_range_day_year">yyyy.M.d</string>

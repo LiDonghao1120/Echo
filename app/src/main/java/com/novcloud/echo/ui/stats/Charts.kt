@@ -252,11 +252,11 @@ fun DayStrip(days: List<Long>, color: Color, empty: Color, modifier: Modifier = 
     }
 }
 
-/** Today by clock hour: square-topped columns from a baseline, the current hour in [now]. Empty hours are a tick. */
+/** A day by clock hour: square-topped columns from a baseline, the current hour in [now]. Empty hours are a tick. */
 @Composable
 fun TodayHours(hourly: List<Long>, nowHour: Int, bar: Color, now: Color, track: Color, modifier: Modifier = Modifier) {
     val maxV = max(1L, hourly.maxOrNull() ?: 1L)
-    val grow = rememberGrow(hourly.sum(), 200)
+    val grow = rememberGrow(Unit, 200)
     Canvas(modifier) {
         val n = 24
         val gap = 2.dp.toPx()

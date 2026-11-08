@@ -48,7 +48,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
@@ -64,7 +63,6 @@ import com.novcloud.echo.domain.Ranked
 import com.novcloud.echo.domain.Stats
 import com.novcloud.echo.domain.StatsEngine
 import com.novcloud.echo.domain.StatsRange
-import com.novcloud.echo.domain.TodayStats
 import com.novcloud.echo.diag.DiagLog
 import com.novcloud.echo.domain.TrendPoint
 import com.novcloud.echo.ui.components.AnimatedNumber
@@ -107,34 +105,31 @@ fun StatsScreen() {
     val events by container.allEvents.collectAsState()
     val lib by container.library.library.collectAsState()
     var range by rememberSaveable { mutableStateOf(StatsRange.Week) }
-    val stats by produceState<Stats?>(null, events, lib, range) {
-        value = DiagLog.guard("stats ($range, ${events.size} plays)") { withContext(Dispatchers.Default) { StatsEngine.compute(events, lib, range) } } ?: value
-    }
     val minute by produceState(System.currentTimeMillis() / 60_000) {
         while (true) {
             delay(60_000 - System.currentTimeMillis() % 60_000)
             value = System.currentTimeMillis() / 60_000
         }
     }
-    val today by produceState<TodayStats?>(null, events, lib, minute) {
-        value = DiagLog.guard("today stats (${events.size} plays)") { withContext(Dispatchers.Default) { StatsEngine.today(events, lib) } } ?: value
+    val clock = if (range == StatsRange.Today) minute else 0L
+    val stats by produceState<Stats?>(null, events, lib, range, clock) {
+        value = DiagLog.guard("stats ($range, ${events.size} plays)") { withContext(Dispatchers.Default) { StatsEngine.compute(events, lib, range) } } ?: value
     }
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
     com.novcloud.echo.ui.components.OnTabReselect("stats") { list.animateScrollToItem(0) }
-    StatsReport(stats, range, today = today, nowHour = remember(minute) { java.time.LocalTime.now().hour }, list = list) { range = it }
+    StatsReport(stats, range, nowHour = remember(minute) { java.time.LocalTime.now().hour }, list = list) { range = it }
 }
 
 @Composable
 fun StatsReport(
     stats: Stats?,
     range: StatsRange,
-    today: TodayStats? = null,
     nowHour: Int = java.time.LocalTime.now().hour,
     list: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
     onRange: (StatsRange) -> Unit,
 ) {
     val p = palette
-    val date = today?.date ?: LocalDate.now()
+    val date = stats?.date ?: LocalDate.now()
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomInset.current + 28.dp)) {
         item(key = "mast") {
             Column(Modifier.statusBarsPadding().padding(start = 20.dp, end = 20.dp, top = 16.dp).reveal(0)) {
@@ -146,47 +141,72 @@ fun StatsReport(
             }
         }
         val s = stats ?: return@LazyColumn
-        if (today != null && (!today.empty || !s.empty)) item(key = "today") { Box(Modifier.reveal(1)) { TodayCard(today, nowHour) } }
-        if (s.empty) {
+        val today = s.range == StatsRange.Today
+        if (s.empty && !today) {
             item { EmptyState(null, stringResource(R.string.stats_empty), Modifier.padding(top = 40.dp)) }
             return@LazyColumn
         }
-        item(key = "poster") { Box(Modifier.reveal(2)) { ReportPoster(s, range, date) } }
-        item(key = "rhythm") {
-            Chapter(1, stringResource(R.string.stats_rhythm)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    HourDial(s.hourly, Vermilion, Cobalt, p.rule, MaterialTheme.colorScheme.onSurface, Modifier.size(168.dp))
-                    Spacer(Modifier.width(18.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.stats_peak_hour), style = MaterialTheme.typography.labelMedium, color = p.muted)
-                        Text(formatDate(java.time.LocalTime.of(s.peakHour, 0), R.string.time_peak_hour), style = EchoType.poster(48.sp), maxLines = 1)
-                        Spacer(Modifier.height(10.dp))
-                        Text(periodName(s.peakHour), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
-                        Text(stringArrayResource(R.array.stats_peak_weekday)[s.peakWeekday], style = MaterialTheme.typography.bodyMedium, color = p.muted)
+        item(key = "poster") { Box(Modifier.reveal(2)) { ReportPoster(s, s.date) } }
+        var chapter = 0
+        if (!s.empty) {
+            val n = ++chapter
+            item(key = "rhythm") {
+                Chapter(n, stringResource(R.string.stats_rhythm)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        HourDial(s.hourly, Vermilion, Cobalt, p.rule, MaterialTheme.colorScheme.onSurface, Modifier.size(168.dp))
+                        Spacer(Modifier.width(18.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.stats_peak_hour), style = MaterialTheme.typography.labelMedium, color = p.muted)
+                            Text(formatDate(java.time.LocalTime.of(s.peakHour, 0), R.string.time_peak_hour), style = EchoType.poster(48.sp), maxLines = 1)
+                            Spacer(Modifier.height(10.dp))
+                            Text(periodName(s.peakHour), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
+                            if (!today) Text(stringArrayResource(R.array.stats_peak_weekday)[s.peakWeekday], style = MaterialTheme.typography.bodyMedium, color = p.muted)
+                        }
                     }
                 }
             }
         }
+        val trendIndex = ++chapter
         item(key = "trend") {
-            Chapter(2, stringResource(R.string.stats_trend)) {
-                RidgeChart(s.trend, trendLabels(s.trend, range), Vermilion, Cobalt, p.muted, MaterialTheme.colorScheme.onSurface)
+            Chapter(trendIndex, stringResource(R.string.stats_trend)) {
+                if (today) DayHours(s.hourly, nowHour)
+                else RidgeChart(s.trend, trendLabels(s.trend, s.range), Vermilion, Cobalt, p.muted, MaterialTheme.colorScheme.onSurface)
             }
         }
-        item(key = "week") {
-            Chapter(3, stringResource(R.string.stats_week)) {
-                TallyWeek(s.weekday, stringArrayResource(R.array.weekdays_short).toList(), p.signal, p.card, p.muted)
+        if (s.empty) return@LazyColumn
+        if (!today) {
+            val n = ++chapter
+            item(key = "week") {
+                Chapter(n, stringResource(R.string.stats_week)) {
+                    TallyWeek(s.weekday, stringArrayResource(R.array.weekdays_short).toList(), p.signal, p.card, p.muted)
+                }
             }
         }
-        if (s.topArtists.isNotEmpty()) item(key = "artists") { Chapter(4, stringResource(R.string.stats_top_artists)) { TopArtists(s.topArtists) } }
-        if (s.topSongs.isNotEmpty()) item(key = "songs") { Chapter(5, stringResource(R.string.stats_on_repeat)) { TopSongs(s.topSongs) } }
-        if (s.topAlbums.isNotEmpty()) item(key = "albums") { TopAlbums(s.topAlbums) }
-        if (s.topGenres.isNotEmpty()) item(key = "genres") { Chapter(7, stringResource(R.string.stats_genres)) { Genres(s.topGenres) } }
-        item(key = "habit") { Chapter(8, stringResource(R.string.stats_habits)) { Habits(s) } }
+        if (s.topArtists.isNotEmpty()) { val n = ++chapter; item(key = "artists") { Chapter(n, stringResource(R.string.stats_top_artists)) { TopArtists(s.topArtists) } } }
+        if (s.topSongs.isNotEmpty()) { val n = ++chapter; item(key = "songs") { Chapter(n, stringResource(R.string.stats_on_repeat)) { TopSongs(s.topSongs) } } }
+        if (s.topAlbums.isNotEmpty()) { val n = ++chapter; item(key = "albums") { TopAlbums(n, s.topAlbums) } }
+        if (s.topGenres.isNotEmpty()) { val n = ++chapter; item(key = "genres") { Chapter(n, stringResource(R.string.stats_genres)) { Genres(s.topGenres) } } }
+        val habits = ++chapter
+        item(key = "habit") { Chapter(habits, stringResource(R.string.stats_habits)) { Habits(s) } }
+    }
+}
+
+/** Today by clock hour, labelled every six hours; the current hour in vermilion. */
+@Composable
+private fun DayHours(hourly: List<Long>, nowHour: Int) {
+    val p = palette
+    TodayHours(hourly, nowHour, Cobalt, Vermilion, p.rule, Modifier.fillMaxWidth().height(132.dp))
+    Spacer(Modifier.height(8.dp))
+    Row(Modifier.fillMaxWidth()) {
+        listOf(0, 6, 12, 18).forEach { h ->
+            Text("%02d".format(h), Modifier.weight(1f), style = EchoType.label, color = p.muted)
+        }
     }
 }
 
 @Composable
 private fun rangeLine(range: StatsRange, today: LocalDate): String {
+    if (range == StatsRange.Today) return formatDate(today, R.string.date_home)
     val d = range.days ?: return stringResource(R.string.stats_all_time)
     val from = today.minusDays(d - 1)
     val pattern = if (from.year == today.year) R.string.date_range_day else R.string.date_range_day_year
@@ -223,6 +243,7 @@ private fun trendLabels(points: List<TrendPoint>, range: StatsRange): List<Strin
 @Composable
 private fun rangeLabel(r: StatsRange): String = stringResource(
     when (r) {
+        StatsRange.Today -> R.string.stats_range_today
         StatsRange.Week -> R.string.stats_range_week
         StatsRange.Month -> R.string.stats_range_month
         StatsRange.Year -> R.string.stats_range_year
@@ -253,7 +274,8 @@ private fun RangeTabs(range: StatsRange, onChange: (StatsRange) -> Unit) {
 }
 
 @Composable
-private fun ReportPoster(s: Stats, range: StatsRange, today: LocalDate) {
+private fun ReportPoster(s: Stats, today: LocalDate) {
+    val range = s.range
     val minutes = s.totalMs / 60_000
     val hours = minutes / 60
     Column(
@@ -279,14 +301,19 @@ private fun ReportPoster(s: Stats, range: StatsRange, today: LocalDate) {
                 if (hours > 0) Text(stringResource(R.string.duration_minutes, number((minutes % 60).toInt())), style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.6f))
             }
             Spacer(Modifier.weight(1f))
-            if (range.days != null && s.previousMs > 0) {
-                val pct = ((s.totalMs - s.previousMs) * 100 / s.previousMs)
-                Box(
-                    Modifier.padding(bottom = 26.dp).graphicsLayer { rotationZ = -6f }
-                        .background(if (pct >= 0) Vermilion else Cobalt).padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text((if (pct >= 0) "+" else "−") + "${kotlin.math.abs(pct)}%", style = EchoType.numeral(15.sp), color = Ink)
+            val avg = s.averageMs
+            if (range == StatsRange.Today) {
+                if (avg != null && !s.empty) {
+                    val diff = (s.totalMs - avg) / 60_000
+                    Column(Modifier.padding(bottom = 18.dp), horizontalAlignment = Alignment.End) {
+                        Stamp((if (diff >= 0) "+" else "−") + durationText(kotlin.math.abs(diff)), diff >= 0)
+                        Spacer(Modifier.height(8.dp))
+                        Text(stringResource(R.string.stats_today_vs_average), style = EchoType.label, color = Paper.copy(alpha = 0.55f), maxLines = 1)
+                    }
                 }
+            } else if (range.days != null && s.previousMs > 0) {
+                val pct = ((s.totalMs - s.previousMs) * 100 / s.previousMs)
+                Stamp((if (pct >= 0) "+" else "−") + "${kotlin.math.abs(pct)}%", pct >= 0, Modifier.padding(bottom = 26.dp))
             }
         }
         Spacer(Modifier.height(4.dp))
@@ -305,6 +332,15 @@ private fun ReportPoster(s: Stats, range: StatsRange, today: LocalDate) {
             Spacer(Modifier.weight(1f))
             Text(count(R.plurals.stats_days_with_music, s.activeDays), style = EchoType.label, color = Paper.copy(alpha = 0.45f))
         }
+    }
+}
+
+@Composable
+private fun Stamp(text: String, up: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier.graphicsLayer { rotationZ = -6f }.background(if (up) Vermilion else Cobalt).padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        Text(text, style = EchoType.numeral(15.sp), color = Ink, maxLines = 1)
     }
 }
 
@@ -407,12 +443,12 @@ private fun TopSongs(list: List<Ranked>) {
 }
 
 @Composable
-private fun TopAlbums(list: List<Ranked>) {
+private fun TopAlbums(index: Int, list: List<Ranked>) {
     val actions = LocalActions.current
     Column(Modifier.padding(top = 26.dp)) {
         Column(Modifier.padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {
-                Text("06", style = EchoType.poster(30.sp), color = palette.signal)
+                Text("%02d".format(index), style = EchoType.poster(30.sp), color = palette.signal)
                 Spacer(Modifier.width(10.dp))
                 Text(stringResource(R.string.stats_shelf), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black), modifier = Modifier.padding(bottom = 2.dp))
             }
@@ -488,98 +524,6 @@ private fun Habits(s: Stats) {
 }
 
 @Composable
-internal fun TodayCard(t: TodayStats, nowHour: Int, modifier: Modifier = Modifier) {
-    val actions = LocalActions.current
-    val minutes = t.totalMs / 60_000
-    val hours = minutes / 60
-    Column(
-        modifier.testTag("stats_today").padding(start = 16.dp, end = 16.dp, top = 18.dp).fillMaxWidth().clip(EchoShape.card).background(Cobalt).padding(20.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(8.dp).background(Paper))
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.stats_today), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black), color = Paper)
-            Spacer(Modifier.weight(1f))
-            Text(formatDate(t.date, R.string.date_home), style = EchoType.label, color = Paper.copy(alpha = 0.6f), maxLines = 1)
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            AnimatedNumber(if (hours > 0) hours else minutes, style = EchoType.poster(88.sp), color = Paper)
-            Column(Modifier.padding(start = 8.dp, bottom = 12.dp)) {
-                Text(
-                    if (hours > 0) pluralStringResource(R.plurals.label_hours, hours.toInt()) else pluralStringResource(R.plurals.label_minutes, minutes.toInt()),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black), color = Paper,
-                )
-                if (hours > 0) Text(stringResource(R.string.duration_minutes, number((minutes % 60).toInt())), style = MaterialTheme.typography.bodySmall, color = Paper.copy(alpha = 0.65f))
-            }
-            Spacer(Modifier.weight(1f))
-            val avg = t.averageMs
-            if (avg != null && !t.empty) {
-                val diff = (t.totalMs - avg) / 60_000
-                Column(Modifier.padding(bottom = 14.dp), horizontalAlignment = Alignment.End) {
-                    Box(Modifier.background(if (diff >= 0) Paper else Ink).padding(horizontal = 7.dp, vertical = 3.dp)) {
-                        Text(
-                            (if (diff >= 0) "+" else "−") + durationText(kotlin.math.abs(diff)),
-                            style = EchoType.numeral(14.sp), color = if (diff >= 0) Cobalt else Paper, maxLines = 1,
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(stringResource(R.string.stats_today_vs_average), style = EchoType.label, color = Paper.copy(alpha = 0.65f), maxLines = 1)
-                }
-            }
-        }
-        if (!t.empty) {
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-                PosterFigure(t.plays.toLong(), pluralStringResource(R.plurals.label_plays, t.plays), Modifier.weight(1f), size = 26.sp)
-                Box(Modifier.width(1.dp).fillMaxHeight().background(Paper.copy(alpha = 0.2f)))
-                PosterFigure(t.songs.toLong(), pluralStringResource(R.plurals.label_songs_poster, t.songs), Modifier.weight(1f).padding(start = 14.dp), size = 26.sp)
-                Box(Modifier.width(1.dp).fillMaxHeight().background(Paper.copy(alpha = 0.2f)))
-                PosterFigure(t.artists.toLong(), pluralStringResource(R.plurals.label_artists, t.artists), Modifier.weight(1f).padding(start = 14.dp), size = 26.sp)
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-        TodayHours(t.hourly, nowHour, Paper, Vermilion, Paper.copy(alpha = 0.16f), Modifier.fillMaxWidth().height(52.dp))
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth()) {
-            listOf(0, 6, 12, 18).forEach { h ->
-                Text("%02d".format(h), Modifier.weight(1f), style = EchoType.label, color = Paper.copy(alpha = 0.55f))
-            }
-        }
-        val song = t.topSong
-        val artist = t.topArtist
-        if (song != null || artist != null) {
-            Spacer(Modifier.height(16.dp))
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (song != null) TodayPick(
-                    stringResource(R.string.stats_today_top_song), song.title, displayArtist(song.subtitle), Modifier.weight(1f).fillMaxHeight(),
-                    onClick = { song.key.toLongOrNull()?.let { id -> actions.repo.library.value.songById[id] }?.let { actions.player.playSong(it, listOf(it)) } },
-                ) { Artwork(song.art, Modifier.size(44.dp), EchoShape.cover, song.title) }
-                if (artist != null) TodayPick(
-                    stringResource(R.string.stats_today_top_artist), displayArtist(artist.title), shortDuration(artist.ms), Modifier.weight(1f).fillMaxHeight(),
-                    onClick = { actions.openArtist(artist.key) },
-                ) { ArtistThumb(rememberArtistPoster(artist.key), artist.key, Modifier.size(44.dp)) }
-            }
-        }
-    }
-}
-
-@Composable
 private fun durationText(minutes: Long): String =
     if (minutes >= 60) stringResource(R.string.duration_hours_minutes, number((minutes / 60).toInt()), number((minutes % 60).toInt()))
     else stringResource(R.string.duration_minutes, number(minutes.toInt()))
-
-@Composable
-private fun TodayPick(label: String, title: String, sub: String, modifier: Modifier, onClick: () -> Unit, art: @Composable () -> Unit) {
-    Row(
-        modifier.clip(EchoShape.cover).background(Ink.copy(alpha = 0.22f)).clickable(onClick = onClick).padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        art()
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(label, style = EchoType.label, color = Paper.copy(alpha = 0.6f), maxLines = 1)
-            Text(title, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(sub, style = MaterialTheme.typography.bodySmall, color = Paper.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}

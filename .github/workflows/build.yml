@@ -68,6 +68,7 @@ jobs:
           DEST="Echo-${VER}.apk"
           cp "$SRC" "$DEST"
           echo "file=$DEST" >> "$GITHUB_OUTPUT"
+          echo "mapping=mapping-${VER}.txt" >> "$GITHUB_OUTPUT"
           ls -la "$DEST"
 
       - name: Verify APK signature
@@ -96,6 +97,15 @@ jobs:
           name: ${{ steps.apk.outputs.file }}
           path: ${{ steps.apk.outputs.file }}
           if-no-files-found: error
+
+      # R8 mapping for this exact build, to retrace crash stacks from the app's diagnostic log. Not attached to the Release.
+      - name: Upload R8 mapping
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.apk.outputs.mapping }}
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')

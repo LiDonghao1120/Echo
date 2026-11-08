@@ -14,7 +14,7 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 enum class StatsRange(val days: Long?) {
-    Week(7), Month(30), Year(365), All(null)
+    Today(1), Week(7), Month(30), Year(365), All(null)
 }
 
 @Immutable
@@ -26,6 +26,7 @@ data class TrendPoint(val date: LocalDate, val ms: Long, val monthly: Boolean = 
 @Immutable
 data class Stats(
     val range: StatsRange,
+    val date: LocalDate = LocalDate.now(),
     val totalMs: Long = 0,
     val previousMs: Long = 0,
     val plays: Int = 0,
@@ -43,27 +44,12 @@ data class Stats(
     val longestStreak: Int = 0,
     val completionRate: Float = 0f,
     val recentDays: List<Long> = List(28) { 0L },
+    /** Today only: daily average over the seven days before today; null when none of them had music. */
+    val averageMs: Long? = null,
 ) {
     val empty get() = plays == 0
     val peakHour get() = hourly.indices.maxByOrNull { hourly[it] } ?: 0
     val peakWeekday get() = weekday.indices.maxByOrNull { weekday[it] } ?: 0
-}
-
-/** Today, from local midnight: time is the part of each play that falls inside the day, so a play across midnight is split. */
-@Immutable
-data class TodayStats(
-    val date: LocalDate,
-    val totalMs: Long = 0,
-    val plays: Int = 0,
-    val songs: Int = 0,
-    val artists: Int = 0,
-    val hourly: List<Long> = List(24) { 0L },
-    val topSong: Ranked? = null,
-    val topArtist: Ranked? = null,
-    /** Daily average over the seven days before today; null when none of them had music. */
-    val averageMs: Long? = null,
-) {
-    val empty get() = totalMs <= 0L
 }
 
 /** Total orders (ties broken down to the key) so sorts are stable and never see an inconsistent comparator. */
@@ -75,24 +61,45 @@ object StatsOrder {
 object StatsEngine {
     private const val DAY = 86_400_000L
 
-    fun compute(all: List<PlayEvent>, lib: Library, range: StatsRange, now: Long = System.currentTimeMillis()): Stats {
-        val zone = ZoneId.systemDefault()
+    /**
+     * [StatsRange.Today] runs from local midnight to [now]: each play counts only the part of it inside the day (a play
+     * across midnight is split), its hours are spread over the clock hours it covers, and [Stats.previousMs] is the seven days before.
+     */
+    fun compute(
+        all: List<PlayEvent>, lib: Library, range: StatsRange, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault(),
+    ): Stats {
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         val from = range.days?.let { today.minusDays(it - 1).atStartOfDay(zone).toInstant().toEpochMilli() } ?: Long.MIN_VALUE
-        val events = all.filter { it.startedAt >= from }
-        val previousMs = range.days?.let { d ->
-            val pFrom = from - d * DAY
-            all.filter { it.startedAt in pFrom until from }.sumOf { it.listenedMs }
-        } ?: 0L
+        val events: List<PlayEvent>
+        val previousMs: Long
+        val hourly = LongArray(24)
+        if (range == StatsRange.Today) {
+            val end = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            val weekStart = today.minusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
+            events = all.mapNotNull { e ->
+                val to = e.startedAt + e.listenedMs.coerceAtLeast(0)
+                val ms = overlap(e.startedAt, to, from, end)
+                if (ms <= 0) null else {
+                    spreadOverHours(maxOf(e.startedAt, from), minOf(to, end), zone, hourly)
+                    e.copy(startedAt = maxOf(e.startedAt, from), listenedMs = ms)
+                }
+            }
+            previousMs = all.sumOf { overlap(it.startedAt, it.startedAt + it.listenedMs.coerceAtLeast(0), weekStart, from) }
+        } else {
+            events = all.filter { it.startedAt >= from }
+            previousMs = range.days?.let { d ->
+                val pFrom = from - d * DAY
+                all.filter { it.startedAt in pFrom until from }.sumOf { it.listenedMs }
+            } ?: 0L
+        }
 
         val days = all.map { Instant.ofEpochMilli(it.startedAt).atZone(zone).toLocalDate() }.toSortedSet()
         val (current, longest) = streaks(days, today)
 
-        val hourly = LongArray(24)
         val weekday = LongArray(7)
         events.forEach {
             val z = Instant.ofEpochMilli(it.startedAt).atZone(zone)
-            hourly[z.hour] += it.listenedMs
+            if (range != StatsRange.Today) hourly[z.hour] += it.listenedMs
             weekday[z.dayOfWeek.value - 1] += it.listenedMs
         }
 
@@ -138,6 +145,8 @@ object StatsEngine {
         return Stats(
             recentDays = recentDays,
             range = range,
+            date = today,
+            averageMs = if (range == StatsRange.Today && previousMs > 0) previousMs / 7 else null,
             totalMs = events.sumOf { it.listenedMs },
             previousMs = previousMs,
             plays = events.size,
@@ -157,63 +166,6 @@ object StatsEngine {
         )
     }
 
-    fun today(all: List<PlayEvent>, lib: Library, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): TodayStats {
-        val date = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-        val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
-        val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
-        val weekStart = date.minusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
-        val hourly = LongArray(24)
-        val songMs = HashMap<Long, Long>()
-        val songPlays = HashMap<Long, Int>()
-        val last = HashMap<Long, PlayEvent>()
-        val artistMs = HashMap<String, Long>()
-        val artistPlays = HashMap<String, Int>()
-        val spellings = HashMap<String, MutableList<String>>()
-        var total = 0L
-        var plays = 0
-        var before = 0L
-        for (e in all) {
-            val from = e.startedAt
-            val to = from + e.listenedMs.coerceAtLeast(0)
-            if (to <= weekStart || from >= end) continue
-            before += overlap(from, to, weekStart, start)
-            val ms = overlap(from, to, start, end)
-            if (ms <= 0) continue
-            total += ms
-            plays++
-            spreadOverHours(maxOf(from, start), minOf(to, end), zone, hourly)
-            songMs.merge(e.songId, ms, Long::plus)
-            songPlays.merge(e.songId, 1, Int::plus)
-            last[e.songId] = e
-            com.novcloud.echo.data.artistsOf(e.artist).filter { it != UNKNOWN }.map { it to Names.key(it) }.distinctBy { it.second }.forEach { (name, key) ->
-                if (key.isEmpty()) return@forEach
-                artistMs.merge(key, ms, Long::plus)
-                artistPlays.merge(key, 1, Int::plus)
-                spellings.getOrPut(key) { mutableListOf() }.add(name)
-            }
-        }
-        val topSong = songMs.entries.map { (id, ms) ->
-            val e = last.getValue(id)
-            val s = lib.songById[id]
-            Ranked(id.toString(), s?.title ?: Names.clean(e.title), s?.artist ?: Names.clean(e.artist), s?.art ?: ArtRef(e.albumId, -1), ms, songPlays[id] ?: 0)
-        }.minWithOrNull(StatsOrder.byTime)
-        val topArtist = artistMs.entries.map { (key, ms) ->
-            val name = lib.artistByKey[key]?.name ?: mostCommon(spellings[key].orEmpty())
-            Ranked(key, name, "", name, ms, artistPlays[key] ?: 0)
-        }.minWithOrNull(StatsOrder.byTime)?.let { it.copy(key = it.title) }
-        return TodayStats(
-            date = date,
-            totalMs = total,
-            plays = plays,
-            songs = songMs.size,
-            artists = artistMs.size,
-            hourly = hourly.toList(),
-            topSong = topSong,
-            topArtist = topArtist,
-            averageMs = if (before > 0) before / 7 else null,
-        )
-    }
-
     private fun overlap(from: Long, to: Long, start: Long, end: Long): Long = (minOf(to, end) - maxOf(from, start)).coerceAtLeast(0)
 
     /** Adds [from, to) to the local clock hours it covers (DST days have 23 or 25 of them; each lands on its hour of day). */
@@ -230,6 +182,7 @@ object StatsEngine {
     private fun trend(events: List<PlayEvent>, range: StatsRange, today: LocalDate, zone: ZoneId, first: Long?): List<TrendPoint> {
         fun dayOf(e: PlayEvent) = Instant.ofEpochMilli(e.startedAt).atZone(zone).toLocalDate()
         return when (range) {
+            StatsRange.Today -> emptyList()
             StatsRange.Week, StatsRange.Month -> {
                 val n = range.days!!.toInt()
                 val byDay = events.groupBy { dayOf(it) }.mapValues { (_, l) -> l.sumOf { it.listenedMs } }

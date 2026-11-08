@@ -312,22 +312,29 @@ abstract class ScreenshotBase {
         com.novcloud.echo.ui.detail.CoverStylePicker(com.novcloud.echo.data.CoverStyle.Vinyl, album.art, album.title, hint = true) {}
     }
 
-    /** The stats page's Today card on its own, with fixed fictional numbers (the app's own Today depends on the clock). */
-    protected fun todayCard(name: String, dark: Boolean = true, empty: Boolean = false) {
+    /** The stats page on the Today range with a fixed fictional day (the app's own Today depends on the clock): 19:40 on 8 Nov 2026 in Shanghai. */
+    protected fun todayStats(name: String, dark: Boolean = true, empty: Boolean = false, tall: Int? = null) {
+        if (tall != null) RuntimeEnvironment.setQualifiers("+h${tall}dp")
         compose.mainClock.autoAdvance = false
         Samples.seed(ctx, withArt = true)
         val c = Samples.app(ctx)
-        val song = Samples.songs.first { it.artist == "Ivy Calder" }
+        val zone = java.time.ZoneId.of("Asia/Shanghai")
+        fun at(d: Int, h: Int, m: Int) = java.time.LocalDateTime.of(2026, 11, d, h, m).atZone(zone).toInstant().toEpochMilli()
+        val now = at(8, 19, 40)
+        val songs = listOf("Ivy Calder", "Ivy Calder", "Kira Nox", "温屿", "The Velvet Static", "Ivy Calder", "Otis Fenwick")
+            .mapIndexed { i, artist -> Samples.songs.filter { it.artist == artist }.let { l -> l[i % l.size] } }
+        fun play(i: Int, start: Long, ms: Long = songs[i].durationMs) = com.novcloud.echo.data.db.PlayEvent(
+            songId = songs[i].id, title = songs[i].title, artist = songs[i].artist, album = songs[i].album, albumId = songs[i].albumId,
+            genre = songs[i].genre, startedAt = start, listenedMs = ms, songDurationMs = songs[i].durationMs, completed = ms >= songs[i].durationMs,
+        )
         val min = 60_000L
-        val hourly = LongArray(24).also { h ->
-            if (!empty) mapOf(8 to 12, 9 to 6, 12 to 4, 13 to 3, 18 to 8, 19 to 14).forEach { (k, v) -> h[k] = v * min }
-        }.toList()
-        val stats = if (empty) com.novcloud.echo.domain.TodayStats(java.time.LocalDate.of(2026, 11, 8), averageMs = 35 * min)
-        else com.novcloud.echo.domain.TodayStats(
-            date = java.time.LocalDate.of(2026, 11, 8), totalMs = 47 * min, plays = 14, songs = 11, artists = 6, hourly = hourly,
-            topSong = com.novcloud.echo.domain.Ranked(song.id.toString(), song.title, song.artist, song.art, 11 * min, 3),
-            topArtist = com.novcloud.echo.domain.Ranked("Ivy Calder", "Ivy Calder", "", "Ivy Calder", 21 * min, 6),
-            averageMs = 35 * min,
+        val week = (1..7).flatMap { d -> listOf(play(d % 7, at(8 - d, 21, 5), 18 * min), play((d + 3) % 7, at(8 - d, 12, 30), 16 * min)) }
+        val day = listOf(
+            play(0, at(7, 23, 52), 14 * min), play(1, at(8, 8, 10)), play(2, at(8, 8, 16)), play(0, at(8, 9, 2)), play(3, at(8, 12, 40)),
+            play(4, at(8, 13, 5)), play(5, at(8, 18, 20)), play(0, at(8, 18, 26)), play(6, at(8, 19, 12)), play(1, at(8, 19, 30), 10 * min),
+        )
+        val stats = com.novcloud.echo.domain.StatsEngine.compute(
+            if (empty) week else week + day, Samples.library, com.novcloud.echo.domain.StatsRange.Today, now, zone,
         )
         compose.setContent {
             EchoTheme(dark, motion = false) {
@@ -335,15 +342,13 @@ abstract class ScreenshotBase {
                 val actions = AppActions(nav, c.player, c.library, c.home, { _, _ -> }, {}, {})
                 androidx.compose.runtime.CompositionLocalProvider(LocalActions provides actions) {
                     Surface(color = MaterialTheme.colorScheme.surface) {
-                        Column(Modifier.fillMaxWidth().testTag("today_shot").padding(bottom = 18.dp)) {
-                            com.novcloud.echo.ui.stats.TodayCard(stats, nowHour = 19)
-                        }
+                        com.novcloud.echo.ui.stats.StatsReport(stats, com.novcloud.echo.domain.StatsRange.Today, nowHour = 19) {}
                     }
                 }
             }
         }
         settle(2)
-        compose.onNodeWithTag("today_shot").captureRoboImage("build/outputs/roborazzi/$name.png")
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }
 
     protected fun primeEffects() {
@@ -392,9 +397,9 @@ class ScreenshotTest : ScreenshotBase() {
     @Test fun stats_dark_tall() = app("stats_dark_tall", route = "stats", tall = 3300)
     @Test fun stats_dark() = app("stats_dark", route = "stats")
     @Test fun stats_light_tall() = app("stats_light_tall", dark = false, route = "stats", tall = 3300)
-    @Test fun stats_today_dark() = todayCard("stats_today_dark")
-    @Test fun stats_today_light() = todayCard("stats_today_light", dark = false)
-    @Test fun stats_today_empty_dark() = todayCard("stats_today_empty_dark", empty = true)
+    @Test fun stats_today_dark() = todayStats("stats_today_dark", tall = 2900)
+    @Test fun stats_today_light() = todayStats("stats_today_light", dark = false)
+    @Test fun stats_today_empty_dark() = todayStats("stats_today_empty_dark", empty = true)
 
     @Test fun nowplaying_dark() = app("nowplaying_dark", expanded = true)
 
