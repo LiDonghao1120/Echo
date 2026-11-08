@@ -312,43 +312,38 @@ private fun SharedTransitionScope.PlayerStage(
                     }
                 }
             }
-            Column(Modifier.layoutId(Slot.BigTitle)) {
-                AnimatedContent(
-                    song,
-                    contentKey = { it.id },
-                    transitionSpec = {
-                        (slideInVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(EchoMotion.Medium))) togetherWith
-                            (slideOutVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { -it } + fadeOut(tween(EchoMotion.Quick))) using
-                            SizeTransform(clip = true)
-                    },
-                    modifier = (if (atArt) Modifier.sharedBounds(rememberSharedContentState("title"), avs) else Modifier).clipToBounds(),
-                    label = "title",
-                ) { s ->
-                    val text = markTitle(s.title)
-                    Text(
-                        text,
-                        style = displayStyle(text, 34.sp), color = Paper, maxLines = 1,
-                        modifier = if (pane == PlayerPane.Art) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2200) else Modifier,
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
+            AnimatedContent(
+                song,
+                contentKey = { it.id },
+                transitionSpec = {
+                    (slideInVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(EchoMotion.Medium))) togetherWith
+                        (slideOutVertically(tween(EchoMotion.Emphasized, easing = FastOutSlowInEasing)) { -it } + fadeOut(tween(EchoMotion.Quick))) using
+                        SizeTransform(clip = true)
+                },
+                modifier = Modifier.layoutId(Slot.Title).testTag("np_title")
+                    .then(if (atArt) Modifier.sharedBounds(rememberSharedContentState("title"), avs) else Modifier).clipToBounds(),
+                label = "title",
+            ) { s ->
+                val text = markTitle(s.title)
                 Text(
-                    "${displayArtist(song.artist)}  /  ${displayAlbum(song.album)}",
-                    style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.62f), maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable(enabled = pane == PlayerPane.Art) { actions.openArtist(song.artists.first()) },
+                    text,
+                    style = displayStyle(text, 34.sp), color = Paper, maxLines = 1,
+                    modifier = if (pane == PlayerPane.Art) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2200) else Modifier,
                 )
             }
-            Column(Modifier.layoutId(Slot.SmallTitle).testTag("np_small_title")) {
-                Text(
-                    song.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Paper, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    displayArtist(song.artist), style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.6f), maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            val byline = "${displayArtist(song.artist)}  /  ${displayAlbum(song.album)}"
+            Text(
+                byline,
+                style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.62f), maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.layoutId(Slot.BigByline).clickable(enabled = pane == PlayerPane.Art) { actions.openArtist(song.artists.first()) },
+            )
+            Text(
+                byline,
+                style = MaterialTheme.typography.bodyMedium, color = Paper.copy(alpha = 0.62f), maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.layoutId(Slot.SmallByline).testTag("np_small_byline"),
+            )
             if (pane != PlayerPane.Art) Box(Modifier.layoutId(Slot.Header).clickable(onClick = onArt))
             Box(Modifier.layoutId(Slot.Cover).echoAura(playing, accent, corner = 4.dp, reach = 30.dp, amount = { 1f - f() })) {
                 Artwork(
@@ -396,10 +391,12 @@ private fun SharedTransitionScope.PlayerStage(
         val heart = m(Slot.Heart)!!.measure(Constraints())
         val heartX = w - 14.dp.roundToPx() - heart.width
         val bigX = 28.dp.roundToPx()
-        val big = m(Slot.BigTitle)!!.measure(Constraints(maxWidth = (heartX - bigX).coerceAtLeast(0)))
+        val title = m(Slot.Title)!!.measure(Constraints(maxWidth = (heartX - bigX).coerceAtLeast(0)))
+        val bigBy = m(Slot.BigByline)!!.measure(Constraints(maxWidth = (heartX - bigX).coerceAtLeast(0)))
         val smallX = thumbX + thumb + 14.dp.roundToPx()
-        val small = m(Slot.SmallTitle)!!.measure(Constraints(maxWidth = (heartX - 4.dp.roundToPx() - smallX).coerceAtLeast(0)))
-        val rowH = 6.dp.roundToPx() + maxOf(big.height, heart.height)
+        val smallBy = m(Slot.SmallByline)!!.measure(Constraints(maxWidth = (heartX - 4.dp.roundToPx() - smallX).coerceAtLeast(0)))
+        val bigBlock = title.height + 6.dp.roundToPx() + bigBy.height
+        val rowH = 6.dp.roundToPx() + maxOf(bigBlock, heart.height)
         val artH = (h - rowH).coerceAtLeast(0)
         val side = minOf(w - 64.dp.roundToPx(), artH - 48.dp.roundToPx()).coerceAtLeast(1)
         val cover = m(Slot.Cover)!!.measure(Constraints.fixed(side, side))
@@ -409,35 +406,40 @@ private fun SharedTransitionScope.PlayerStage(
         val coverY = (artH - side) / 2
         geo.side = side.toFloat()
         geo.thumb = thumb.toFloat()
-        val bigY = h - big.height
-        val smallY = thumbY + (thumb - small.height) / 2
-        val k = if (big.height > 0 && small.height > 0) small.height.toFloat() / big.height else 1f
+        val titleBigY = h - bigBlock
+        val bigByY = h - bigBy.height
+        val smallTitleH = title.height * TITLE_SCALE
+        val gap = 2.dp.toPx()
+        val titleSmallY = thumbY + (thumb - (smallTitleH + gap + smallBy.height)) / 2f
+        val smallByY = (titleSmallY + smallTitleH + gap).roundToInt()
         val heartBigY = h - heart.height
         val heartSmallY = thumbY + (thumb - heart.height) / 2
         val lift = 28.dp.toPx()
         layout(w, h) {
             panelP?.placeWithLayer(0, headerH) {
                 val t = f()
-                alpha = ((t - 0.3f) / 0.7f).coerceIn(0f, 1f)
+                alpha = ((t - 0.5f) / 0.5f).coerceIn(0f, 1f)
                 translationY = (1f - t.coerceIn(0f, 1f)) * lift
             }
-            big.placeWithLayer(bigX, bigY) {
+            title.placeWithLayer(bigX, titleBigY) {
                 val t = f()
                 transformOrigin = TransformOrigin(0f, 0f)
                 translationX = (smallX - bigX) * t
-                translationY = (smallY - bigY) * t
-                val sc = 1f + (k - 1f) * t
+                translationY = (titleSmallY - titleBigY) * t
+                val sc = 1f + (TITLE_SCALE - 1f) * t
                 scaleX = sc; scaleY = sc
-                alpha = 1f - ((t - 0.15f) / 0.45f).coerceIn(0f, 1f)
             }
-            small.placeWithLayer(smallX, smallY) {
+            bigBy.placeWithLayer(bigX, bigByY) {
                 val t = f()
-                transformOrigin = TransformOrigin(0f, 0f)
+                translationX = (smallX - bigX) * t
+                translationY = (smallByY - bigByY) * t
+                alpha = 1f - ((t - 0.55f) / 0.15f).coerceIn(0f, 1f)
+            }
+            smallBy.placeWithLayer(smallX, smallByY) {
+                val t = f()
                 translationX = (bigX - smallX) * (1f - t)
-                translationY = (bigY - smallY) * (1f - t)
-                val sc = 1f / k + (1f - 1f / k) * t
-                scaleX = sc; scaleY = sc
-                alpha = ((t - 0.4f) / 0.45f).coerceIn(0f, 1f)
+                translationY = (bigByY - smallByY) * (1f - t)
+                alpha = ((t - 0.4f) / 0.15f).coerceIn(0f, 1f)
             }
             hit?.place(0, 0)
             cover.placeWithLayer(coverX, coverY) {
@@ -458,7 +460,10 @@ private fun SharedTransitionScope.PlayerStage(
 
 private val MORPH_SPRING = spring<Float>(dampingRatio = 0.9f, stiffness = 140f)
 
-private enum class Slot { Panel, BigTitle, SmallTitle, Header, Cover, Heart }
+private enum class Slot { Panel, Title, BigByline, SmallByline, Header, Cover, Heart }
+
+/** The Anton title shrinks from 34sp under the big cover to 20sp beside the thumbnail. */
+private const val TITLE_SCALE = 20f / 34f
 
 /** Size of the big cover slot and of the header thumbnail in px, from the last layout pass. */
 private class CoverGeometry {

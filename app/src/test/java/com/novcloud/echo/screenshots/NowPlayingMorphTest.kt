@@ -105,9 +105,12 @@ class NowPlayingMorphTest : ScreenshotBase() {
             val frames = run(big, thumb, toThumb = true, mapOf(0.25f to "morph_lyrics_025", 0.5f to "morph_lyrics_050", 0.75f to "morph_lyrics_075"))
             assertTrue("morph takes a visible while: ${frames * 16}ms", frames * 16 in 300..1_400)
             assertNear("thumbnail at rest", thumb, cover())
-            val title = compose.onNodeWithTag("np_small_title", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val title = compose.onNodeWithTag("np_title", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val byline = compose.onNodeWithTag("np_small_byline", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             assertEquals("title beside the thumbnail", thumb.right + 14 * d, title.left, 2.5f)
-            assertTrue("title centred on the thumbnail", abs(title.center.y - thumb.center.y) < 3 * d)
+            assertEquals("byline under the title", title.left, byline.left, 2.5f)
+            assertTrue("title block within the thumbnail's height: $title $byline", title.top >= thumb.top - 2 * d && byline.bottom <= thumb.bottom + 2 * d)
+            assertTrue("byline below the title", byline.top >= title.bottom - 1)
             compose.onRoot().captureRoboImage("build/outputs/roborazzi/morph_lyrics_100.png")
             tap("pane_lyrics")
             run(big, thumb, toThumb = false, mapOf(0.5f to "morph_lyrics_closing_050"))
@@ -123,13 +126,29 @@ class NowPlayingMorphTest : ScreenshotBase() {
             val big = bigRest()
             val thumb = thumbSlot()
             tap("pane_lyrics")
-            repeat(10) { frame() }
-            val before = fraction(big, thumb, cover())
+            var last = 0f
+            var fastest = 0f
+            repeat(10) {
+                frame()
+                val f = fraction(big, thumb, cover())
+                fastest = maxOf(fastest, abs(f - last))
+                last = f
+            }
+            val before = last
             assertTrue("mid-way after 160ms: $before", before in 0.15f..0.9f)
+            val clock = compose.mainClock.currentTime
             tap("pane_lyrics")
-            frame()
-            val after = fraction(big, thumb, cover())
-            assertTrue("reverses without a jump: $before -> $after", abs(after - before) < 0.1f)
+            val tapFrames = ((compose.mainClock.currentTime - clock) / 16).toInt()
+            var peak = before
+            repeat(4) {
+                frame()
+                val f = fraction(big, thumb, cover())
+                assertOnPath(big, thumb, cover())
+                assertTrue("reverses without a jump: $last -> $f (fastest so far $fastest, ${tapFrames} frames in the tap)", abs(f - last) <= fastest * (tapFrames + 1) + 0.01f)
+                peak = maxOf(peak, f)
+                last = f
+            }
+            assertTrue("carries on a little, then turns back: $before -> peak $peak -> $last", peak - before < 0.2f && last < peak)
             compose.onRoot().captureRoboImage("build/outputs/roborazzi/morph_interrupt_dark.png")
             run(big, thumb, toThumb = false)
             assertNear("big cover back at rest", big, cover())
